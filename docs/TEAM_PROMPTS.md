@@ -34,10 +34,18 @@ Build, in order:
 3. Ask: chat bubbles, input, suggested-prompt chips ("Can I afford $180 Friday?", "Fix it",
    "What subscriptions do I have?") using api.chat(). When a reply has pending_action, show an
    approval card (description, amount, Approve / Decline → api.approve(id)), then refresh Today so
-   the chart visibly turns green — that is the demo's big moment.
-4. Spending: subscriptions from api.recurring() with monthly + yearly totals; accounts from api.me().
-5. Login screen (app/src/app/login.tsx) that calls login() from app/src/lib/auth.ts.
-6. Polish: icons, splash, empty/loading/error states, animations. Must look great on web AND phone.
+   the chart visibly turns green — that is the demo's big moment. If approve returns 503 show
+   "nothing moved — try again"; if it returns 502 (status "failed") show "we're checking with the
+   bank" and do NOT offer a retry.
+4. Spending: api.spending(month, persona) gives real data from Tiger Data — category totals (biggest
+   first), a daily spend series for a chart, and the transaction list (newest first). Add a month
+   picker. Subscriptions from api.recurring() with monthly + yearly totals; live balances from
+   api.me(persona).
+5. Persona switcher: api.personas() returns maya / jordan / sam — a small picker (e.g. on Today)
+   lets the demo jump between the overdraft story, subscription creep and a healthy runway. Pass
+   the chosen slug to api.me / api.spending.
+6. Login screen (app/src/app/login.tsx) that calls login() from app/src/lib/auth.ts.
+7. Polish: icons, splash, empty/loading/error states, animations. Must look great on web AND phone.
 
 Before each push: `cd app && npx expo lint && npx expo export -p web` (CI runs the same).
 Branch names: ui/<feature>. Small PRs.
