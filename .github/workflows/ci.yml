@@ -1,0 +1,98 @@
+name: CI/CD
+
+# PRs: test + lint + build. Pushes to main: the same, then deploy to Vultr.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — lint, tests, image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check . && ruff format --check .
+      - run: pytest -q
+      - name: Docker image builds
+        run: docker build -t runway-api .
+
+  app:
+    name: App — lint, web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx expo lint
+      - name: Export web build
+        run: npx expo export --platform web --output-dir dist
+        env:
+          # repo variable PUBLIC_API_URL = http://<server>/api once the Vultr server exists
+          EXPO_PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL || 'http://localhost:8000' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: app/dist
+          retention-days: 3
+
+  deploy:
+    name: Deploy to Vultr
+    needs: [backend, app]
+    # skipped until the server is set up (repo variable VULTR_HOST exists)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VULTR_HOST != ''
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      HOST: ${{ vars.VULTR_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: web
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VULTR_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VULTR_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts   # pinned host key — no trust-on-first-use
+      - name: Upload code and web build
+        run: |
+          rsync -az --delete backend/ "deploy@$HOST:/opt/runway/backend/"
+          rsync -az --delete deploy/  "deploy@$HOST:/opt/runway/deploy/"
+          rsync -az --delete web/     "deploy@$HOST:/opt/runway/web/"
+      - name: Restart services
+        run: |
+          ssh "deploy@$HOST" 'cd /opt/runway/deploy && docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f'
+      - name: Smoke test
+        run: curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "http://$HOST/api/health"

@@ -1,0 +1,15 @@
+# One origin serves both: the web app at / and the API at /api (same origin → no CORS for web).
+# SITE_ADDRESS defaults to :80; set it to the domain (e.g. runway.example) and Caddy gets HTTPS certs itself.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+}

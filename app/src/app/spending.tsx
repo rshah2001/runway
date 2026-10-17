@@ -1,4 +1,4 @@
-// Spending screen (categories + subscription detective) — owner: Friend 1.
+// Spending screen (categories + subscription detective) — owner: an2thu.
 import { StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';

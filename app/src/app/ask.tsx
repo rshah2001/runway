@@ -1,4 +1,4 @@
-// Ask screen (agent chat + approve/decline cards) — owner: Friend 2.
+// Ask screen (agent chat + approve/decline cards) — owner: an2thu.
 import { StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';

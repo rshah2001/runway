@@ -1,4 +1,4 @@
-// Today screen — owner: Friend 1. Placeholder that proves the app ↔ backend wiring;
+// Today screen — owner: an2thu. Placeholder that proves the app ↔ backend wiring;
 // replace with the runway chart, status card and "do this next" list (see prototype/).
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';

@@ -1,0 +1,33 @@
+# Production stack on the Vultr server, run from /opt/runway/deploy:
+#   docker compose --env-file ../.env up -d --build
+# Secrets live only in /opt/runway/.env on the server (never in git).
+services:
+  api:
+    build: ../backend
+    env_file: ../.env
+    environment:
+      ROOT_PATH: /api
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # ":80" serves plain HTTP on the server IP; set to your domain for automatic HTTPS
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

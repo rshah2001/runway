@@ -1,10 +1,11 @@
-"""Forecast engine — owner: B.
+"""Forecast engine — owner: Patil-Hemangi.
 
 MOCK: projects the fictional demo persona "Maya" forward from a fixed schedule so the
 app has realistic data on day one. Replace with the real engine (port `buildEvents` +
 `project` from prototype/index.html, then feed it Nessie data from Tiger Data).
 The function signatures are the contract main.py relies on; keep them stable.
 """
+
 from datetime import date, timedelta
 
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Recurring
@@ -65,12 +66,13 @@ def simulate_purchase(amount: float, on: date, label: str) -> Forecast:
 
 
 def recurring() -> list[Recurring]:
-    """MOCK — owner B replaces with the recurring-transaction detector over purchase history."""
+    """MOCK — to be replaced with the recurring-transaction detector over purchase history."""
     today = date.today()
     out = []
     for day, amount, label, kind in MONTHLY:
         if kind != "subscription":
             continue
-        nxt = today.replace(day=day) if today.day <= day else (today.replace(day=1) + timedelta(days=32)).replace(day=day)
+        next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=day)
+        nxt = today.replace(day=day) if today.day <= day else next_month
         out.append(Recurring(merchant=label, amount=-amount, interval_days=30, next_date=nxt))
     return out

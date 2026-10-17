@@ -18,6 +18,7 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 | See who owns which files + your starter prompt | [`docs/TEAM.md`](docs/TEAM.md) · [`docs/TEAM_PROMPTS.md`](docs/TEAM_PROMPTS.md) |
 | See the system design and API contract | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Work with Nessie | [`docs/NESSIE.md`](docs/NESSIE.md) |
+| Deploy / CI-CD to Vultr | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 | Give your AI coding tool context | [`CLAUDE.md`](CLAUDE.md) |
 | See the working UI prototype | open [`prototype/index.html`](prototype/index.html) in a browser |
 
@@ -26,8 +27,10 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 ```
 runway/
 ├── prototype/      single-file HTML prototype — the reference UI + forecast logic (demo data)
-├── app/            Expo app → web + iOS + Android (Today, Ask, Spending)      — Friend 1 + Friend 2
-├── backend/        FastAPI: Nessie, Tiger Data, forecast, Gemini agent (mock-first) — team lead + Claude
+├── app/            Expo app → web + iOS + Android (Today, Ask, Spending)      — an2thu
+├── backend/        FastAPI: Nessie + Tiger Data (rshah2001) · forecast + agent + evals (Patil-Hemangi)
+├── deploy/         Docker + Caddy config for the Vultr server
+├── .github/        CI (tests, lint, web build) + auto-deploy to Vultr on main
 ├── docs/           plan, architecture, Nessie notes
 └── CLAUDE.md       shared context for AI coding assistants
 ```

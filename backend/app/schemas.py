@@ -3,6 +3,7 @@
 Changing a model here changes the contract: do it in its own PR and update
 `app/src/lib/types.ts` in the same PR so web, iOS and Android stay in sync.
 """
+
 from datetime import date
 from typing import Literal
 

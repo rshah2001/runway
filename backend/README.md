@@ -1,13 +1,14 @@
 # Backend
 
-FastAPI service. Owners: **team lead + Claude**. Mock-first: every route already returns realistic
+FastAPI service. Owners: **rshah2001** (routes, Nessie, Tiger Data, deploy) and **Patil-Hemangi** (forecast, agent, auth, evals). Mock-first: every route already returns realistic
 data in the final contract shape (`app/schemas.py`) so the app team can build in parallel.
 
 ## Run
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest -q                                      # contract tests — CI runs these on every PR
 .venv/bin/uvicorn app.main:app --reload --port 8000     # interactive docs: http://localhost:8000/docs
 ```
 

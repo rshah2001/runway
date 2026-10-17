@@ -30,5 +30,6 @@ goals and prizes and `docs/ARCHITECTURE.md` for the API contract before making c
 
 ## Workflow
 
-- Branch per feature (`feat/forecast-api`, `feat/agent-tools`), small PRs, one teammate reviews.
+- Branch per feature (`be/…`, `ui/…`, `ai/…`), small PRs, one teammate reviews.
+- CI must be green before merging. **Merging to `main` auto-deploys to Vultr**, so `main` must always be demo-able.
 - Don't push directly to `main` after hour 2.
