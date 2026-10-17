@@ -419,3 +419,32 @@ def test_p2p_questions_still_go_to_p2p(monkeypatch: pytest.MonkeyPatch) -> None:
     """Teammates' peer-to-peer routing must win over the safety-net words it shares ("money back")."""
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert agent.chat("who owes me money?", persona="maya", today=TODAY).tool_calls == ["who_owes_me"]
+
+
+# ---------- weekly money brief ----------
+
+
+def test_brief_facts_come_from_the_engine() -> None:
+    r = tools.weekly_brief(persona="maya", today=TODAY)
+    week = engine.forecast(days=tools.BRIEF_DAYS - 1, start=TODAY, persona="maya")
+    assert r["lowest_balance"] == tools.money(week.low.balance) and r["lowest_day"] == tools.day(week.low.date)
+    assert r["below_safety_floor"] is True and r["safe_to_spend_this_week"] == "$0.00"
+    assert all(not c["amount"].startswith("-") for c in r["coming_up"])  # "a $35 bill", never "a -$35 bill"
+    assert r["spent_last_7_days"] == "$20.80" and r["spending_vs_week_before"] == "less"
+
+
+def test_brief_mentions_family_only_when_there_is_something() -> None:
+    assert tools.weekly_brief(persona="jordan", today=TODAY)["family_requests_waiting_for_you"] == 1
+    assert tools.weekly_brief(persona="sam", today=TODAY)["family_requests_waiting_for_you"] == 0
+
+
+def test_router_answers_brief_me_with_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = agent.weekly_brief(persona="sam", today=TODAY)
+    assert r.tool_calls == ["weekly_brief"] and "$5,997.55" in r.reply and r.pending_action is None
+
+
+def test_an_ungrounded_gemini_brief_is_replaced_by_the_rule_based_one() -> None:
+    fake = FakeGemini(_calls(("weekly_brief", {})), _text("Great week! You'll have about $9,999 to spare."))
+    r = agent.weekly_brief(persona="sam", client=fake, today=TODAY)
+    assert "$9,999" not in r.reply and "$5,997.55" in r.reply

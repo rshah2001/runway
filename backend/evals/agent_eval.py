@@ -1,9 +1,9 @@
 """Agent eval: does the agent pick the right tool, give the right answer, and quote only real numbers?
 
-51 questions across the three seeded personas, with ground truth from the deterministic tools:
+53 questions across the three seeded personas, with ground truth from the deterministic tools:
 30 "can I afford $X on day Y?" (10 per persona, in five phrasings; 15 safe and 15 not), plus fix-it,
 subscription, forecast, peer-to-peer (who owes me, split / request, unknown contact) and family safety
-net questions (explained, never acted on).
+net questions (explained, never acted on), and weekly briefs.
 Each question is asked as its persona, so Gemini answers in that persona's voice (Maya genz, Jordan
 direct, Sam classic). Three metrics per question:
   * tool    — the expected tool was called
@@ -162,6 +162,10 @@ def build_cases() -> list[Case]:
     ]:
         truth = tools.explain_safety_net(persona=persona, today=TODAY)
         cases.append(Case(persona, msg, "explain_safety_net", _names_without_acting(who), truth))
+    # weekly brief: a right answer leads with the week's real low point
+    for persona, msg in [("maya", "Brief me on my week ahead."), ("sam", "How's my week looking?")]:
+        brief = tools.weekly_brief(persona=persona, today=TODAY)
+        cases.append(Case(persona, msg, "weekly_brief", _quotes(brief["lowest_balance"]), brief))
     return cases
 
 

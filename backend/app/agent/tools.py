@@ -475,6 +475,63 @@ def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
     }
 
 
+# ---------- weekly money brief ----------
+
+BRIEF_DAYS = 7
+
+
+def _purchases_between(data: PersonaData, start: date, end: date) -> float:
+    """Everything bought in [start, end), card or debit: what a person means by "what I spent"."""
+    return sum(-t.amount for t in data.history if t.kind == "purchase" and t.amount < 0 and start <= t.date < end)
+
+
+def weekly_brief(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """The facts for a weekly money brief, every one computed here: the week's low point and whether
+    it's safe, what's coming in and going out, subscriptions renewing, spending this week vs last, and
+    anything from the family safety net due this week. The model only turns them into a few sentences."""
+    from app import safety_views  # the backend's read-only view of the safety net
+
+    today = today or sources.local_today()
+    data, sched = _inputs(persona, today)
+    end = today + timedelta(days=BRIEF_DAYS - 1)
+    f = engine.forecast(days=BRIEF_DAYS - 1, start=today, schedule=sched)
+    coming = [  # plain amounts with a direction: people say "a $35 phone bill", not "a -$35 bill"
+        {
+            "day": day(e.date),
+            "label": e.label,
+            "amount": money(abs(e.amount)),
+            "in_or_out": "in" if e.amount > 0 else "out",
+        }
+        for e in f.events
+        if e.kind != "spending"
+    ]
+    renewing = [
+        {"merchant": s.merchant, "amount": money(s.amount), "day": day(s.next_date)}
+        for s in detect_recurring(data.history, today)
+        if s.next_date <= end
+    ]
+    last = _purchases_between(data, today - timedelta(days=BRIEF_DAYS), today)
+    before = _purchases_between(data, today - timedelta(days=2 * BRIEF_DAYS), today - timedelta(days=BRIEF_DAYS))
+    s = safety_views.summary(persona)
+    due = [b for b in s.borrowed + s.lent if today <= b.due_date <= end and b.status in ("active", "repaying")]
+    return {
+        **_low_summary(f),
+        **_confidence(sched),
+        "week": f"{day(today)} to {day(end)}",
+        "safe_to_spend_this_week": money(max(0.0, f.low.balance - f.safe_floor)),
+        "coming_up": coming,
+        "subscriptions_renewing": renewing,
+        "spent_last_7_days": money(last),
+        "spent_the_7_days_before": money(before),
+        "spending_vs_week_before": "more" if last > before else "less" if last < before else "the same",
+        "family_money_due_back_this_week": [
+            {"from": b.borrower_name, "to": b.lender_name, "amount": money(b.amount), "day": day(b.due_date)}
+            for b in due
+        ],
+        "family_requests_waiting_for_you": len(s.approvals_waiting),
+    }
+
+
 def discard(action_id: str) -> None:
     """Forget a proposal that was never shown to the user, so it can never be approved."""
     PENDING.pop(action_id, None)
@@ -590,6 +647,14 @@ DECLARATIONS: list[dict[str, Any]] = [
         "decline or start anything.",
         "parameters": {"type": "object", "properties": {}},
     },
+    {
+        "type": "function",
+        "name": "weekly_brief",
+        "description": "Everything for a short brief on the user's coming week: the lowest point and whether it's "
+        "safe, paychecks and bills coming, subscriptions renewing, spending this week vs last, and family "
+        "safety-net money due back. Use for 'brief me', 'how's my week looking', 'weekly summary'.",
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 READ_TOOLS = {
@@ -598,6 +663,7 @@ READ_TOOLS = {
     "find_recurring": find_recurring,
     "who_owes_me": who_owes_me,
     "explain_safety_net": explain_safety_net,
+    "weekly_brief": weekly_brief,
 }
 WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
 

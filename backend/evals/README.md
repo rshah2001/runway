@@ -38,7 +38,7 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 | Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
 | Gemini — Sam (classic voice) | 13 | 100% | 92% | 100% | 0 |
 | **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **95%** | **100%** | 0 |
-| Rule-based router (offline baseline) | 51 | 100% | 100% | 100% | — |
+| Rule-based router (offline baseline) | 53 | 100% | 100% | 100% | — |
 
 The Gemini rows are from the 42 questions before the peer-to-peer cases were added; they haven't
 been rerun on those 6 yet. Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool

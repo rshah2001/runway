@@ -75,6 +75,12 @@ Family safety net:
 - You can't approve, decline, start or change anything in the safety net. If asked, say so and point to the
   Family screen, where the person whose money it is decides.
 
+Weekly brief:
+- For "brief me" or "how's my week", call weekly_brief and write 3-4 short sentences, most important first:
+  the week's low point and whether it's safe, what's coming (paycheck, bills, renewals), and spending vs the
+  week before. Mention family money due back or requests waiting only if there are any. Quote every figure
+  exactly as the tool wrote it, and don't list everything: pick what matters for this person this week.
+
 How sure you are:
 - Tool results carry "readiness" and a "confidence_note". If readiness is "confident", you may say so
   briefly, in your voice. If it is "learning" or "calibrating", always pass the note on in your voice, so
@@ -302,6 +308,32 @@ def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
 
 
+BRIEF = re.compile(r"\b(brief|my week|this week|week ahead|weekly|week look)")
+BRIEF_MESSAGE = "Brief me on my week ahead."
+
+
+def weekly_brief(
+    *, persona: str = engine.DEFAULT_PERSONA, client: Any = None, today: date | None = None
+) -> ChatResponse:
+    """A short weekly money brief in the person's own voice, for the app to show without being asked.
+    It goes through the same path as any chat message, so the same guarantees hold: every figure comes
+    from the weekly_brief tool, and a reply quoting anything else is replaced by a rule-based brief."""
+    return chat(BRIEF_MESSAGE, persona=persona, client=client, today=today)
+
+
+def _route_brief(today: date, persona: str) -> ChatResponse:
+    r = tools.weekly_brief(persona=persona, today=today)
+    reply = f"This week your lowest day is {r['lowest_day']} at {r['lowest_balance']}"
+    reply += ", under your floor." if r["below_safety_floor"] else f"; safe to spend {r['safe_to_spend_this_week']}."
+    pay = next((c for c in r["coming_up"] if c["in_or_out"] == "in"), None)
+    if pay:
+        reply += f" Payday {pay['day']}: {pay['amount']}."
+    reply += (
+        f" You spent {r['spent_last_7_days']} in the last 7 days ({r['spending_vs_week_before']} than the week before)."
+    )
+    return ChatResponse(reply=reply, tool_calls=["weekly_brief"])
+
+
 SAFETY_NET = re.compile(r"safety net|anyone cover|cover(ed)? me\b|covered|family|bridge|\blen[dt]\b|money back|my ok")
 
 
@@ -323,6 +355,8 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
 
     if re.search(r"\b(approve|decline)\b", text):  # never from chat: the money's owner decides in the app
         return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
+    if BRIEF.search(text):
+        return _route_brief(today, persona)
     # before "fix": "did anyone cover me?" is about the safety net, "cover the shortfall" is a fix
     if SAFETY_NET.search(text):
         return _explain_safety_net(persona, today)
