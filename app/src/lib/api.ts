@@ -15,6 +15,7 @@ import type {
   Spending,
 } from './types';
 import { authHeader } from './auth';
+import { currentPersona } from './session';
 
 // Set EXPO_PUBLIC_API_URL in app/.env. On a physical phone use your laptop's LAN IP
 // (e.g. http://192.168.1.20:8000); the Android emulator reaches the laptop at http://10.0.2.2:8000.
@@ -33,23 +34,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   personas: () => request<Persona[]>('/personas'),
-  me: (persona = 'maya') => request<Me>(`/me?persona=${persona}`),
-  forecast: (days = 30, persona = 'maya') => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
-  simulate: (amount: number, date: string, label = 'Purchase', persona = 'maya') =>
+  me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
+  forecast: (days = 30, persona = currentPersona()) => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
+  simulate: (amount: number, date: string, label = 'Purchase', persona = currentPersona()) =>
     request<Forecast>(`/simulate?persona=${persona}`, { method: 'POST', body: JSON.stringify({ amount, date, label }) }),
-  recurring: (persona = 'maya') => request<Recurring[]>(`/recurring?persona=${persona}`),
+  recurring: (persona = currentPersona()) => request<Recurring[]>(`/recurring?persona=${persona}`),
   // month = 'YYYY-MM' (defaults to the current month on the server)
-  spending: (month?: string, persona = 'maya') =>
+  spending: (month?: string, persona = currentPersona()) =>
     request<Spending>(`/spending?persona=${persona}${month ? `&month=${month}` : ''}`),
   // peer-to-peer — amount in dollars (max $1,000 per payment), memo 1–80 chars
-  p2p: (persona = 'maya') => request<P2PSummary>(`/p2p?persona=${persona}`),
-  p2pSend: (contactId: string, amount: number, memo: string, persona = 'maya') =>
+  p2p: (persona = currentPersona()) => request<P2PSummary>(`/p2p?persona=${persona}`),
+  p2pSend: (contactId: string, amount: number, memo: string, persona = currentPersona()) =>
     request<P2PPayment>('/p2p/send', { method: 'POST', body: JSON.stringify({ persona, contact_id: contactId, amount, memo }) }),
-  p2pRequest: (contactId: string, amount: number, memo: string, persona = 'maya') =>
+  p2pRequest: (contactId: string, amount: number, memo: string, persona = currentPersona()) =>
     request<P2PRequest>('/p2p/requests', { method: 'POST', body: JSON.stringify({ persona, contact_id: contactId, amount, memo }) }),
   p2pSettle: (requestId: string) => request<P2PRequest>(`/p2p/requests/${requestId}/settle`, { method: 'POST' }),
   // family safety net
-  safetyNet: (persona = 'maya') => request<SafetyNetSummary>(`/safety-net?persona=${persona}`),
+  safetyNet: (persona = currentPersona()) => request<SafetyNetSummary>(`/safety-net?persona=${persona}`),
   setSafetyLimit: (lender: string, borrower: string, limit: number, enabled = true) =>
     request<SafetyLimit>('/safety-net/limits', { method: 'PUT', body: JSON.stringify({ lender, borrower, limit, enabled }) }),
   runSafetyNet: (persona?: string) =>
@@ -57,7 +58,7 @@ export const api = {
   approveBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/approve`, { method: 'POST' }),
   declineBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/decline`, { method: 'POST' }),
   // the agent answers with this persona's numbers, in the voice for their age
-  chat: (message: string, persona = 'maya') =>
+  chat: (message: string, persona = currentPersona()) =>
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),
   approve: (actionId: string) => request<PendingAction>(`/actions/${actionId}/approve`, { method: 'POST' }),
 };

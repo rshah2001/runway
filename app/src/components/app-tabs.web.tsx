@@ -5,6 +5,7 @@ import { type ComponentRef, forwardRef } from 'react';
 import { Pressable, type PressableStateCallbackType, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import { AccountButton } from '@/components/login/account-button';
 import { Swoosh } from '@/components/rw/icons';
 import { Caps, useWide } from '@/components/rw/ui';
 import { C, F, MAX_WIDTH } from '@/constants/runway';
@@ -41,7 +42,10 @@ const Bar = forwardRef<ComponentRef<typeof View>, TabListProps & { wide: boolean
     <View ref={ref} {...props} style={s.topWrap}>
       <View style={s.top}>
         <View style={s.brand}><Swoosh /><Caps size={20} style={{ letterSpacing: 7, fontFamily: F.condMedium }}>Runway</Caps></View>
-        <View style={s.links}>{children}</View>
+        <View style={s.right}>
+          <View style={s.links}>{children}</View>
+          <AccountButton />
+        </View>
       </View>
     </View>
   );
@@ -66,6 +70,7 @@ const s = StyleSheet.create({
   top: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, height: 64 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   links: { flexDirection: 'row', gap: 6 },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   topTab: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 14, borderRadius: 999 },
   bottom: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, paddingBottom: 18, backgroundColor: C.tabBar, borderTopWidth: 1, borderTopColor: '#20262c' },
   bottomTab: { alignItems: 'center', gap: 4, minWidth: 72 },
