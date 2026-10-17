@@ -13,8 +13,8 @@ Nessie (only with LIVE_TRANSFERS=1) and claims each bridge with an atomic status
 bridge can never be funded or repaid twice.
 """
 
+import dataclasses
 import logging
-import math
 import secrets
 import threading
 from dataclasses import dataclass
@@ -24,10 +24,10 @@ from typing import Literal
 
 import psycopg
 
-from app import auth0_ciba, prefs, reconcile
+from app import agreements, auth0_ciba, guardian, prefs, reconcile
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
-from app.db import journal_repo, pool, repo, safety_repo
+from app.db import agreements_repo, journal_repo, pool, repo, safety_repo
 from app.ingest import sync_customer
 from app.nessie.client import NessieClient
 from app.nessie.moves import TransferNotMade, move_money
@@ -35,7 +35,7 @@ from app.nessie.moves import TransferNotMade, move_money
 log = logging.getLogger(__name__)
 
 SAFE_FLOOR = Decimal("300")  # the default floor; each person can set their own (app/prefs.py)
-ROUND_TO = 10  # bridges are whole tens: a $92.18 gap becomes a $100 bridge
+REPAY_CHECK_DAYS = 7  # repaying must not cause a new predicted shortfall in the week after payday
 MAX_BRIDGE = Decimal("1000")
 MAX_DAYS_TO_PAYDAY = 31  # "it comes back" means by the next payday, and that must be soon
 REPAY_GRACE_DAYS = 3  # after this many days past due without enough money, the bridge is flagged
@@ -50,6 +50,7 @@ class Helper:
     outstanding: Decimal  # already lent to this borrower and not yet back
     enabled: bool
     is_borrowing: bool  # someone who owes money right now never lends (no chains)
+    exposure_remaining: Decimal = guardian.DEFAULT_EXPOSURE  # their total cap across everyone, minus what's out
 
     @property
     def remaining(self) -> Decimal:
@@ -67,6 +68,8 @@ class Decision:
     low_balance: Decimal | None = None
     due_date: date | None = None
     floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
+    allocations: tuple[tuple[str, Decimal], ...] = ()  # (supporter, amount): one bridge each
+    versions: tuple[tuple[str, int], ...] = ()  # the consent each share relied on; re-checked before money moves
 
 
 def _md(d: date) -> str:
@@ -102,42 +105,62 @@ def decide(
     if low is None or low[1] >= floor:
         return Decision(b.slug, "none", f"{name} stays above {_money(floor)} until payday.")
     short_day, short_bal = low
-    need = Decimal(math.ceil((floor - short_bal) / ROUND_TO) * ROUND_TO)
+    need = guardian.round_up(floor - short_bal)
     base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday, floor=floor)
     gap = f"{name} would drop to {_money(short_bal)} on {_md(short_day)}, before payday on {_md(b.next_payday)}"
 
     if need > MAX_BRIDGE:
         return Decision(b.slug, "no_safe_helper", f"{gap} — the gap is bigger than any bridge.", need, **base)
-    after_payday = b.low(b.next_payday, b.next_payday + timedelta(days=4))
-    if after_payday and after_payday[1] < floor:
-        reason = f"{gap}, but repaying on payday would leave {name} under {_money(floor)} — not a safe bridge."
+    # repaying on payday must not just move the shortfall a few days later
+    after_payday = b.low(b.next_payday, b.next_payday + timedelta(days=REPAY_CHECK_DAYS))
+    if after_payday and after_payday[1] - need < floor:
+        reason = (
+            f"{gap}, but repaying {_money(need)} on payday would leave {name} under {_money(floor)} "
+            "— that would only move the shortfall, so it isn't a safe bridge."
+        )
         return Decision(b.slug, "no_safe_helper", reason, need, **base)
 
-    safe = []
-    for h in helpers:
-        if not h.enabled or h.is_borrowing:
-            continue
-        h_low = h.projection.low(today, b.next_payday + timedelta(days=1))
-        if h_low is not None and h_low[1] - need >= h.projection.floor:  # helping keeps the helper above *their* floor
-            safe.append((h, h_low[1]))
-    if not safe:
-        return Decision(b.slug, "no_safe_helper", f"{gap}. Nobody in the family can cover it safely.", need, **base)
-
-    safe.sort(key=lambda x: x[1], reverse=True)  # most runway first
-    under = [h for h, _ in safe if h.remaining >= need]
-    if under:
-        h = under[0]
-        reason = (
-            f"{gap}. {h.projection.first_name} covers {_money(need)} within their {_money(h.limit)} limit "
-            f"and stays safe; it comes back on {_md(b.next_payday)}."
+    # Network Guardian: each supporter's SAFE room over the whole time the money is out
+    end = b.next_payday + timedelta(days=REPAY_GRACE_DAYS)
+    caps = [
+        (
+            h,
+            guardian.capacity(
+                h.projection.days_low or h.projection.days,
+                h.projection.floor,
+                start=today,
+                end=end,
+                pair_remaining=h.remaining,
+                exposure_remaining=h.exposure_remaining,
+                confident=h.projection.confident,
+            ),
         )
-        return Decision(b.slug, "auto_bridge", reason, need, h.projection.slug, **base)
-    h = safe[0][0]
-    reason = (
-        f"{gap}. {_money(need)} is over {h.projection.first_name}'s auto limit "
-        f"({_money(h.remaining)} left), so they need to approve it."
+        for h in helpers
+        if h.enabled and not h.is_borrowing
+    ]
+    names = {h.projection.slug: h.projection.first_name for h, _ in caps}
+    shares = guardian.allocate(need, [(h.projection.slug, c) for h, c in caps])
+    if shares and sum(a for _, a in shares) >= need:
+        who = " and ".join(f"{names[s]} covers {_money(a)}" for s, a in shares)
+        reason = f"{gap}. {who} — within their limits, with their own bills still covered."
+        reason += f" Expected back {_md(b.next_payday)}."
+        return Decision(b.slug, "auto_bridge", reason, need, shares[0][0], allocations=tuple(shares), **base)
+
+    # not enough automatic room: ask ONE person whose own cushion allows the whole amount
+    approvable = [(h, c) for h, c in caps if c.cash_room >= need]
+    if approvable:
+        h, _ = max(approvable, key=lambda hc: (hc[1].cash_room, hc[0].projection.slug))
+        slug = h.projection.slug
+        reason = f"{gap}. {_money(need)} is more than Runway can move automatically,"
+        reason += f" so {names[slug]} is asked to approve it."
+        return Decision(b.slug, "needs_approval", reason, need, slug, allocations=((slug, need),), **base)
+    return Decision(
+        b.slug,
+        "no_safe_helper",
+        f"{gap}. Nobody who agreed to help can cover it without risking their own bills.",
+        need,
+        **base,
     )
-    return Decision(b.slug, "needs_approval", reason, need, h.projection.slug, **base)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -169,19 +192,61 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     if not prefs.setting(borrower_slug, "family_cover", conn, strict=True):
         name = projections[borrower_slug].first_name
         return Decision(borrower_slug, "family_off", f"{name} turned family cover off, so nobody is asked.")
-    owing = {b["borrower_slug"] for b in safety_repo.outstanding_bridges(conn)}
+    committed = safety_repo.open_bridges(conn)  # incl. approvals still waiting and transfers in flight
+    owing = {b["borrower_slug"] for b in committed if b["status"] in safety_repo.OUTSTANDING}
+    lent_out: dict[str, Decimal] = {}  # everything a supporter has committed, for their exposure cap
+    unfunded: dict[str, Decimal] = {}  # committed but not yet out of their balance: not in the forecast
+    for b in committed:
+        amount = Decimal(b["amount"])
+        lent_out[b["lender_slug"]] = lent_out.get(b["lender_slug"], Decimal(0)) + amount
+        if b["status"] in safety_repo.UNFUNDED:
+            unfunded[b["lender_slug"]] = unfunded.get(b["lender_slug"], Decimal(0)) + amount
+    # only supporters with an ACTIVE agreement (both people said yes) are ever considered
+    consented = {
+        a["supporter"]: a
+        for a in agreements_repo.involving(conn, borrower_slug)
+        if a["recipient"] == borrower_slug and agreements.is_active(a)
+    }
     helpers = [
         Helper(
-            projection=projections[lim["lender_slug"]],
+            projection=_less(projections[lim["lender_slug"]], unfunded.get(lim["lender_slug"], Decimal(0))),
             limit=Decimal(lim["limit_amount"]),
             outstanding=Decimal(lim["outstanding"]),
             enabled=lim["enabled"],
             is_borrowing=lim["lender_slug"] in owing,
+            exposure_remaining=_exposure_limit(conn, lim["lender_slug"]) - lent_out.get(lim["lender_slug"], Decimal(0)),
         )
         for lim in safety_repo.limits(conn, borrower=borrower_slug)
+        if lim["lender_slug"] in consented
     ]
     has_open = safety_repo.open_bridge_for_borrower(conn, borrower_slug) is not None
-    return decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
+    decision = decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
+    versions = tuple((slug, consented[slug]["version"]) for slug, _ in decision.allocations if slug in consented)
+    return dataclasses.replace(decision, versions=versions)
+
+
+def _less(p: Projection, amount: Decimal) -> Projection:
+    """A supporter's forecast with money they've already promised (but not yet sent) taken out, so the
+    same dollars can't be offered to two people."""
+    if not amount:
+        return p
+    return dataclasses.replace(
+        p, days=[(d, bal - amount) for d, bal in p.days], days_low=[(d, bal - amount) for d, bal in p.days_low]
+    )
+
+
+def _exposure_limit(conn, slug: str) -> Decimal:
+    """A supporter's total cap across everyone they help (their own setting, or the default)."""
+    row = conn.execute("SELECT support_exposure_limit FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
+    value = row and list(row.values())[0]
+    return Decimal(str(value)) if value is not None else guardian.DEFAULT_EXPOSURE
+
+
+def _consent_still_holds(conn, lender: str, borrower: str, version: int | None) -> bool:
+    """Re-check, under the people's locks, that the agreement a decision relied on is still active and
+    unchanged — a revoke, pause or limit change in between means nothing moves."""
+    row = agreements_repo.get(conn, lender, borrower)
+    return agreements.is_active(row) and version is not None and row["version"] == version
 
 
 def _both(conn, b: dict, kind: str, to_borrower: str, to_lender: str) -> None:
@@ -229,6 +294,17 @@ def _fund(bridge_id: str) -> dict | None:
         except Exception:
             conn.rollback()
             raise
+        if covered and not _consent_still_holds(conn, b["lender_slug"], b["borrower_slug"], b.get("agreement_version")):
+            safety_repo.transition(conn, bridge_id, ("funding",), "declined")
+            _both(
+                conn,
+                b,
+                "bridge_declined",
+                "Your support agreement changed, so nothing was moved.",
+                f"Your support agreement with {b['borrower_name']} changed, so nothing was moved.",
+            )
+            conn.commit()
+            return None
         if not covered:
             safety_repo.transition(conn, bridge_id, ("funding",), "declined")
             _both(
@@ -340,51 +416,102 @@ def _request_approval(conn, b: dict) -> str:
     return "in_app"
 
 
+def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, version: int | None) -> bool:
+    """Re-validate one share under the people's locks, from fresh rows: the agreement is still active and
+    unchanged, the supporter isn't borrowing, and the share still fits their pair limit (automatic only)
+    and their total exposure. The forecast-based cash room was computed moments ago in plan()."""
+    if not _consent_still_holds(conn, lender, borrower, version):
+        return False
+    committed = safety_repo.open_bridges(conn)  # incl. approvals waiting and transfers in flight
+    if any(b["borrower_slug"] == lender for b in committed):  # no chains: a borrower never lends
+        return False
+    lent = sum((Decimal(b["amount"]) for b in committed if b["lender_slug"] == lender), Decimal(0))
+    if lent + amount > _exposure_limit(conn, lender):
+        return False
+    if auto:
+        lim = next(iter(safety_repo.limits(conn, lender=lender, borrower=borrower)), None)
+        if lim is None or not lim["enabled"] or Decimal(lim["limit_amount"]) - Decimal(lim["outstanding"]) < amount:
+            return False
+    return True
+
+
 def act(decision: Decision) -> dict | None:
-    """Turn an auto_bridge / needs_approval decision into a bridge (and real money if auto)."""
+    """Turn an auto_bridge / needs_approval decision into bridges — one per supporter's share, all
+    under one decision id — and move the money for automatic ones. Every share is re-validated under
+    the borrower's and every supporter's lock first; if any share no longer holds, nothing is created
+    (plan() runs again on the next pass with fresh numbers). Returns the first bridge."""
     if decision.action not in ("auto_bridge", "needs_approval"):
         return None
-    bridge_id = f"bridge-{secrets.token_hex(6)}"
+    auto = decision.action == "auto_bridge"
+    shares = decision.allocations or ((decision.lender, decision.amount),)
+    versions = dict(decision.versions)
+    decision_id = f"dec-{secrets.token_hex(6)}"
+    ids: list[str] = []
     with pool.connection() as conn:
-        safety_repo.lock_people(conn, decision.borrower, decision.lender)
+        safety_repo.lock_people(conn, decision.borrower, *(slug for slug, _ in shares))
         if safety_repo.open_bridge_for_borrower(conn, decision.borrower):  # re-check under the lock
             conn.rollback()
             return None
+        if not all(
+            _still_safe(conn, slug, decision.borrower, amount, auto, versions.get(slug)) for slug, amount in shares
+        ):
+            conn.rollback()
+            log.info("decision for %s no longer holds under the lock; re-planning next pass", decision.borrower)
+            return None
         try:
-            safety_repo.insert_bridge(
-                conn,
-                {
-                    "id": bridge_id,
-                    "borrower_slug": decision.borrower,
-                    "lender_slug": decision.lender,
-                    "amount": decision.amount,
-                    "reason": decision.reason,
-                    "status": "pending_approval",
-                    "mode": "auto" if decision.action == "auto_bridge" else "approval",
-                    "shortfall_date": decision.shortfall_date,
-                    "due_date": decision.due_date,
-                    "approval_channel": None,
-                    "borrower_floor": decision.floor,
-                },
-            )
+            for slug, amount in shares:
+                bridge_id = f"bridge-{secrets.token_hex(6)}"
+                safety_repo.insert_bridge(
+                    conn,
+                    {
+                        "id": bridge_id,
+                        "borrower_slug": decision.borrower,
+                        "lender_slug": slug,
+                        "amount": amount,
+                        "reason": decision.reason,
+                        "status": "pending_approval",
+                        "mode": "auto" if auto else "approval",
+                        "shortfall_date": decision.shortfall_date,
+                        "due_date": decision.due_date,
+                        "approval_channel": None,
+                        "borrower_floor": decision.floor,
+                        "agreement_version": versions.get(slug),
+                        "decision_id": decision_id,
+                    },
+                )
+                ids.append(bridge_id)
         except psycopg.errors.UniqueViolation:  # the database's own one-open-bridge-per-pair rule
             conn.rollback()
             return None
-        b = safety_repo.bridge(conn, bridge_id)
-        if decision.action == "needs_approval":
+        if not auto:
+            b = safety_repo.bridge(conn, ids[0])
             channel = _request_approval(conn, b)
             where = "on your phone" if channel == "auth0_push" else "in Runway"
             _both(
                 conn,
                 b,
                 "approval_needed",
-                f"Asked {b['lender_name']} to approve ${decision.amount:,.0f} — it's over their auto limit.",
+                f"Asked {b['lender_name']} to approve ${decision.amount:,.0f} of support.",
                 # the supporter learns who and how much — never when or why someone runs short
                 f"🔔 {b['borrower_name']} could use ${decision.amount:,.0f} of support (over your auto limit). "
                 f"Approve {where} — expected back {_md(decision.due_date)}.",
             )
         conn.commit()
-    return _fund(bridge_id) if decision.action == "auto_bridge" else b
+    if not auto:
+        with pool.connection() as conn:
+            return safety_repo.bridge(conn, ids[0])
+    funded = [b for b in (_fund(i) for i in ids) if b is not None]
+    if len(funded) < len(ids):  # some shares landed, some didn't: say so, never "covered"
+        got = sum((Decimal(b["amount"]) for b in funded), Decimal(0))
+        with pool.connection() as conn:
+            safety_repo.add_event(
+                conn,
+                decision.borrower,
+                "partially_covered",
+                f"Your safety net covered {_money(got)} of {_money(decision.amount)} — the rest didn't go through.",
+            )
+            conn.commit()
+    return funded[0] if funded else None
 
 
 def withdraw_requests(borrower_slug: str) -> int:
@@ -565,6 +692,23 @@ def reconcile_pending() -> int:
     return settled
 
 
+def _safe_to_repay(conn, b: dict, borrower: dict, keep: Decimal, today: date) -> bool:
+    """All must hold before paying a bridge back: (1) a real paycheck has landed since the bridge was
+    funded — not just "the date passed"; (2) the balance stays at or above the cushion after repaying;
+    (3) the forecast for the next week doesn't dip under the cushion because of the repayment."""
+    amount = Decimal(b["amount"])
+    if _checking_balance(conn, borrower) - amount < keep:
+        return False
+    p = project(conn, b["borrower_slug"], today)
+    since = b["funded_at"].astimezone(LOCAL_TZ).date() if b.get("funded_at") else b["due_date"]
+    at_least = p.paycheck / 2 if p.paycheck else amount
+    if not repo.paycheck_landed(conn, borrower["checking_id"], since, at_least):
+        return False
+    low = p.low(today, today + timedelta(days=REPAY_CHECK_DAYS))
+    already_scheduled = b["due_date"] >= today  # project() books this repayment on its due date
+    return low is not None and low[1] - (Decimal(0) if already_scheduled else amount) >= keep
+
+
 def repay_due(today: date | None = None) -> list[dict]:
     """On (or after) the due date, pay each lender back — but never push the borrower under the floor."""
     today, done = today or _today(), []
@@ -578,16 +722,17 @@ def repay_due(today: date | None = None) -> list[dict]:
         with pool.connection() as conn:
             borrower = repo.persona(conn, b["borrower_slug"])
             keep = _repay_floor(conn, b)
-            if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:  # paycheck not in yet: wait
+            if not _safe_to_repay(conn, b, borrower, keep, today):  # paycheck not in yet, or it'd cause a dip
                 if (today - b["due_date"]).days >= REPAY_GRACE_DAYS and b["status"] == "active":
                     safety_repo.transition(conn, b["id"], ("active",), "repay_failed")
                     _both(
                         conn,
                         b,
                         "repay_late",
-                        f"Your ${b['amount']:,.0f} repayment to {b['lender_name']} is waiting for your paycheck.",
-                        f"{b['borrower_name']}'s ${b['amount']:,.0f} repayment is late — "
-                        "no new bridges until it's back.",
+                        f"Your ${b['amount']:,.0f} repayment to {b['lender_name']} is waiting — it goes back "
+                        "after your next verified payday, when it won't cause a shortfall.",
+                        f"{b['borrower_name']}'s ${b['amount']:,.0f} repayment is expected after their next "
+                        "verified payday. No new support to them until it's back.",
                     )
                     conn.commit()
                 continue

@@ -5,7 +5,16 @@ from datetime import date, datetime, timedelta
 
 from app.cashflow import LOCAL_TZ
 from app.config import get_settings
-from app.schemas import Bridge, ProjectedLow, SafetyDecision, SafetyEvent, SafetyLimit, SafetyNetSummary
+from app.schemas import (
+    Bridge,
+    ProjectedLow,
+    SafetyDecision,
+    SafetyEvent,
+    SafetyLimit,
+    SafetyNetSummary,
+    SupportAgreement,
+    SupportSummary,
+)
 
 log = logging.getLogger(__name__)
 
@@ -227,3 +236,58 @@ def demo_summary(slug: str) -> SafetyNetSummary:
         approvals_waiting=[for_lender(b) for b in mine if b.lender == slug and b.status == "pending_approval"],
         events=ev.get(slug, []),
     )
+
+
+# ---------- Quiet Support Agreements ----------
+def agreement(row: dict, viewer: str) -> SupportAgreement:
+    """An agreement row as `viewer` (one of the two people) may see it."""
+    from app import agreements
+
+    mine = "supporter" if row["supporter"] == viewer else "recipient"
+    theirs = "recipient" if mine == "supporter" else "supporter"
+    return SupportAgreement(
+        supporter=row["supporter"],
+        supporter_name=row["supporter_name"],
+        recipient=row["recipient"],
+        recipient_name=row["recipient_name"],
+        my_side=mine,
+        state=agreements.state(row),
+        i_agreed=row[f"{mine}_consent_at"] is not None,
+        they_agreed=row[f"{theirs}_consent_at"] is not None,
+        limit=float(row["limit_amount"]) if row.get("limit_amount") is not None else None,
+        outstanding=float(row["outstanding"]),
+        version=row["version"],
+    )
+
+
+def support_summary(viewer: str, rows: list[dict]) -> SupportSummary:
+    mine = [agreement(r, viewer) for r in rows if viewer in (r["supporter"], r["recipient"])]
+    return SupportSummary(
+        persona=viewer,
+        supporting=[a for a in mine if a.my_side == "supporter"],
+        supporters=[a for a in mine if a.my_side == "recipient"],
+    )
+
+
+def demo_support(viewer: str) -> SupportSummary:
+    """Offline/demo mode: the scripted relationships, both sides agreed."""
+    from seed.personas import PERSONAS, SAFETY_LIMITS
+
+    names = {p.slug: p.first_name for p in PERSONAS}
+    rows = [
+        {
+            "supporter": s,
+            "supporter_name": names[s],
+            "recipient": r,
+            "recipient_name": names[r],
+            "supporter_consent_at": "demo",
+            "recipient_consent_at": "demo",
+            "revoked_at": None,
+            "limit_amount": amount,
+            "enabled": True,
+            "outstanding": 0,
+            "version": 1,
+        }
+        for s, r, amount in SAFETY_LIMITS
+    ]
+    return support_summary(viewer, rows)

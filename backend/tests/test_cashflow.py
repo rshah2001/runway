@@ -35,13 +35,13 @@ def test_scheduled_repayments_move_the_projection() -> None:
     assert paid.balance_on(due - timedelta(days=1)) == base.balance_on(due - timedelta(days=1))
 
 
-def test_maya_demo_dip_is_208_on_the_engine_every_day() -> None:
+def test_maya_demo_dip_is_165_on_the_engine_every_day() -> None:
     """The seed tunes Maya's balance against the engine itself, so chat, charts and the safety net
-    all see the same $208 low before payday — whatever day the demo runs."""
+    all see the same $165 low before payday ($135 short) — whatever day the demo runs."""
     for offset in range(14):
         today = TODAY + timedelta(days=offset)
         p = projection_for("maya", first_name="Maya", age=20, today=today)
-        assert abs(p.low(today, p.next_payday)[1] - Decimal("208")) <= Decimal("0.01"), today
+        assert abs(p.low(today, p.next_payday)[1] - Decimal("165")) <= Decimal("0.01"), today
 
 
 def test_safety_net_inputs_never_fall_back_to_demo_data(monkeypatch) -> None:

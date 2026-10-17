@@ -294,7 +294,7 @@ function Pick({ on, label, onPress }: { on: boolean; label: string; onPress: () 
   );
 }
 
-const DEMO = ['maya', 'jordan', 'sam'];
+const DEMO = ['maya', 'jordan', 'sam', 'emma'];
 
 /** Demo accounts only: rebuild Maya, Jordan and Sam, and pause automatic help until it's shown live. */
 function DemoReset({ onDone }: { onDone: () => void }) {
@@ -302,7 +302,7 @@ function DemoReset({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<string | null>(null);
   if (session.mode !== 'signed-in' || !DEMO.includes(session.persona)) return null;
   async function reset() {
-    setState('Rebuilding Maya, Jordan and Sam… about a minute.');
+    setState('Rebuilding Maya, Jordan, Sam and Emma… about a minute.');
     try {
       await api.demoReset();
       for (let i = 0; i < 90; i++) {
@@ -325,7 +325,7 @@ function DemoReset({ onDone }: { onDone: () => void }) {
   }
   return (
     <View style={{ alignItems: 'center', marginTop: 28, gap: 8 }}>
-      <TwoTap label="Reset demo" confirm="Reset all three demo accounts?" light={false} onPress={reset} />
+      <TwoTap label="Reset demo" confirm="Reset all four demo accounts?" light={false} onPress={reset} />
       {state && <Text style={[s.fineText, { textAlign: 'center' }]}>{state}</Text>}
     </View>
   );

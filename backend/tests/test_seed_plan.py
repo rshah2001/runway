@@ -52,8 +52,8 @@ def test_jordan_has_subscription_creep() -> None:
     assert len(subs) >= 8
 
 
-def test_personas_are_20_40_and_60() -> None:
-    assert [(p.slug, p.age) for p in PERSONAS] == [("maya", 20), ("jordan", 40), ("sam", 60)]
+def test_personas_are_20_40_60_and_emma_32() -> None:
+    assert [(p.slug, p.age) for p in PERSONAS] == [("maya", 20), ("jordan", 40), ("sam", 60), ("emma", 32)]
 
 
 @pytest.mark.parametrize("spec", PERSONAS, ids=lambda p: p.slug)

@@ -6,7 +6,8 @@ import psycopg
 
 Row = dict[str, Any]
 OUTSTANDING = ("active", "repaying", "repay_failed", "reconcile")  # money that hasn't (certainly) come back yet
-OPEN = ("pending_approval", *OUTSTANDING)
+OPEN = ("pending_approval", "funding", *OUTSTANDING)  # anything that still commits a supporter's money
+UNFUNDED = ("pending_approval", "funding")  # committed, but not yet out of the supporter's balance
 SETTABLE = {
     "funded_at",
     "repaid_at",
@@ -74,10 +75,11 @@ _BRIDGE = """SELECT b.*, lp.first_name AS lender_name, bp.first_name AS borrower
 def insert_bridge(conn: psycopg.Connection, b: Row) -> None:
     conn.execute(
         """INSERT INTO bridges (id, borrower_slug, lender_slug, amount, reason, status, mode, shortfall_date, due_date,
-                                approval_channel, borrower_floor)
+                                approval_channel, borrower_floor, agreement_version, decision_id)
            VALUES (%(id)s, %(borrower_slug)s, %(lender_slug)s, %(amount)s, %(reason)s, %(status)s, %(mode)s,
-                   %(shortfall_date)s, %(due_date)s, %(approval_channel)s, %(borrower_floor)s)""",
-        {"borrower_floor": None, **b},
+                   %(shortfall_date)s, %(due_date)s, %(approval_channel)s, %(borrower_floor)s,
+                   %(agreement_version)s, %(decision_id)s)""",
+        {"borrower_floor": None, "agreement_version": None, "decision_id": None, **b},
     )
 
 
@@ -95,6 +97,11 @@ def open_bridge_for_borrower(conn: psycopg.Connection, borrower: str) -> Row | N
     return conn.execute(
         f"{_BRIDGE} WHERE b.borrower_slug = %s AND b.status = ANY(%s) LIMIT 1", (borrower, list(OPEN))
     ).fetchone()
+
+
+def open_bridges(conn: psycopg.Connection) -> list[Row]:
+    """Every bridge that still commits someone's money: waiting for approval, being sent, or out."""
+    return conn.execute(f"{_BRIDGE} WHERE b.status = ANY(%s) ORDER BY b.due_date", (list(OPEN),)).fetchall()
 
 
 def outstanding_bridges(conn: psycopg.Connection) -> list[Row]:

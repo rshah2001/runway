@@ -92,6 +92,15 @@ class PersonaSpec:
     # demo tuning: if set, today's checking balance is computed so the lowest point before the next
     # payday is exactly this — the safety-net story is then the same whatever day you demo
     demo_low_before_payday: float | None = None
+    # supporter tuning: today's balance is computed so the CAUTIOUS (p5) low between today and a few days
+    # after payday — the window a supporter's money is out — is exactly this. Sets the Network Guardian's
+    # safe capacity for the demo (e.g. 390 with a $300 cushion → $90) whatever day you demo.
+    demo_cautious_low_in_window: float | None = None
+    cushion: float | None = None  # what this person keeps in checking by default (None → $300)
+
+    @property
+    def tuned(self) -> bool:
+        return self.demo_low_before_payday is not None or self.demo_cautious_low_in_window is not None
 
 
 # name → (category, street, lat, lng) — fictional addresses around Gainesville, FL
@@ -169,7 +178,7 @@ PERSONAS: list[PersonaSpec] = [
             P2PPattern("priya", "in", 16.00, "Dinner split", per_month=2),
         ],
         requests=[OpenRequest("alex", 45.00, "Concert tickets 🎶", days_ago=4)],
-        demo_low_before_payday=208.00,  # → a $100 bridge, exactly Sam's auto limit
+        demo_low_before_payday=165.00,  # → $135 short of her $300 cushion: Sam $90 + Emma $45
     ),
     PersonaSpec(
         slug="jordan",
@@ -177,12 +186,12 @@ PERSONAS: list[PersonaSpec] = [
         last_name="Demo",
         age=40,
         story="Parent of two — subscriptions creep across the whole family",
-        checking=2450.00,
+        checking=2000.00,
         savings=3200.00,
         credit_owed=1284.60,
         paycheck=Paycheck(2900.00, "Salary"),
         bills=[
-            Bill("Home Mortgage Co", "Mortgage", 1850.00, 1),
+            Bill("Home Mortgage Co", "Mortgage", 1850.00, 24),
             Bill("Little Gators Daycare", "Daycare", 1100.00, 3),
             Bill("GRU Utilities", "Utilities", 210.00, 6),
             Bill("Auto Lender", "Car payment", 420.00, 15),
@@ -218,6 +227,9 @@ PERSONAS: list[PersonaSpec] = [
             P2PPattern("dana", "out", 60.00, "Kids soccer fees", day=10),
         ],
         requests=[OpenRequest("riley", 86.40, "Birthday party supplies", days_ago=2)],
+        # authorized $300 for Maya, but his $1,850 mortgage is due on the 24th, before she can repay:
+        # on a bad week that leaves him under the $1,500 he keeps for the family, so the Guardian gives $0
+        cushion=1500.00,
     ),
     PersonaSpec(
         slug="sam",
@@ -235,6 +247,7 @@ PERSONAS: list[PersonaSpec] = [
             Bill("GRU Utilities", "Utilities", 165.00, 7),
             Bill("State Auto Insurance", "Car insurance", 120.00, 12),
             Bill("Mobile Carrier", "Phone bill", 60.00, 20),
+            Bill("Home Renovation Lender", "Renovation loan", 1450.00, 21),
             Bill("Rewards credit card", "Credit card payment", 612.35, 24),
         ],
         subscriptions=[
@@ -257,6 +270,40 @@ PERSONAS: list[PersonaSpec] = [
             P2PPattern("emma", "out", 150.00, "Help with grad school 🎓", day=1),
             P2PPattern("leo", "out", 25.00, "Allowance", per_month=1),
         ],
+        # looks healthy today, but the $1,450 renovation payment lands before Maya can repay: his
+        # cautious low in that window is $390, so with his $300 cushion he can safely give $90 of $150
+        demo_cautious_low_in_window=390.00,
+    ),
+    PersonaSpec(
+        slug="emma",
+        first_name="Emma",
+        last_name="Demo",
+        age=32,
+        story="Product designer on a steady salary — Maya's cousin, glad to help quietly",
+        checking=3800.00,
+        savings=9200.00,
+        credit_owed=420.00,
+        paycheck=Paycheck(2150.00, "Salary"),
+        bills=[
+            Bill("Midtown Lofts", "Rent", 1450.00, 1),
+            Bill("GRU Utilities", "Utilities", 95.00, 6),
+            Bill("Mobile Carrier", "Phone bill", 45.00, 20),
+            Bill("Rewards credit card", "Credit card payment", 420.00, 26),
+        ],
+        subscriptions=[
+            Subscription("Spotify", 11.99, 9),
+            Subscription("iCloud+", 9.99, 13),
+        ],
+        habits=[
+            Habit("FreshMart", 1.2, 25, 80, "checking"),
+            Habit("Starbucks", 1.5, 5, 8),
+            Habit("Chipotle", 0.7, 11, 17),
+            Habit("Shell", 0.5, 35, 55, "checking"),
+            Habit("Target", 0.5, 20, 90),
+            Habit("Amazon", 0.6, 15, 60),
+        ],
+        contacts=[Contact("jules", "Jules", "Park", "Friend")],
+        p2p=[P2PPattern("jules", "in", 22.00, "Brunch split", per_month=2)],
     ),
 ]
 
@@ -264,7 +311,8 @@ PERSONAS: list[PersonaSpec] = [
 # family safety net defaults — (lender, borrower, auto limit): what each LENDER lets the agent move
 # from them without asking, if it comes back by the borrower's next payday
 SAFETY_LIMITS: list[tuple[str, str, float]] = [
-    ("sam", "maya", 100.00),  # grandpa covers Maya's small gaps
+    ("sam", "maya", 150.00),  # grandpa: authorized $150, though his safe room this week is $90
     ("sam", "jordan", 300.00),
-    ("jordan", "maya", 50.00),  # parent, smaller cushion
+    ("jordan", "maya", 300.00),  # authorized — but a big bill this week leaves no safe room
+    ("emma", "maya", 45.00),  # cousin: a quiet $45
 ]

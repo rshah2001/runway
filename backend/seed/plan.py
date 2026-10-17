@@ -113,11 +113,15 @@ def build_plan(spec: PersonaSpec, today: date) -> list[Op]:
 
 
 def demo_opening_balance(spec: PersonaSpec, plan: list[Op], today: date) -> float:
-    """Checking balance today such that the forecast engine's lowest point before the next payday is
-    `spec.demo_low_before_payday`. The engine is linear in the opening balance (every day shifts by
-    the same amount), so one projection from $0 gives the answer exactly."""
+    """Checking balance today that puts the demo exactly where the story needs it. The engine is linear
+    in the opening balance (every day — expected and cautious alike — shifts by the same amount), so
+    one projection from $0 gives the answer exactly:
+      * demo_low_before_payday      → the expected low before the next payday is that number
+      * demo_cautious_low_in_window → the cautious (p5) low from today to payday + grace is that number
+    """
     from app.cashflow import HORIZON_DAYS, next_paycheck  # local: app.forecast.sources imports this module
     from app.forecast import engine, schedule, sources
+    from app.safety_net import REPAY_GRACE_DAYS
 
     sched = schedule.build(sources.demo_data(spec, plan, 0.0), today)
     payday, _ = next_paycheck(sched, today)
@@ -126,5 +130,9 @@ def demo_opening_balance(spec: PersonaSpec, plan: list[Op], today: date) -> floa
     # same horizon as the safety net: the engine books everyday spending in weekly blocks, so the
     # first block (and therefore the low) depends on the horizon
     f = engine.forecast(days=HORIZON_DAYS - 1, start=today, schedule=sched)
-    low_from_zero = min(p.balance for p in f.points if p.date < payday)
-    return round(spec.demo_low_before_payday - low_from_zero, 2)
+    if spec.demo_low_before_payday is not None:
+        low_from_zero = min(p.balance for p in f.points if p.date < payday)
+        return round(spec.demo_low_before_payday - low_from_zero, 2)
+    end = payday + timedelta(days=REPAY_GRACE_DAYS)
+    window = [p.balance if p.balance_low is None else p.balance_low for p in f.points if today <= p.date <= end]
+    return round(spec.demo_cautious_low_in_window - min(window), 2)
