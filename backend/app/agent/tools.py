@@ -2,7 +2,7 @@
 
 This is where "the LLM never does math" is enforced. Each tool calls the deterministic forecast
 engine and returns every number the reply could need, already formatted ("$251.61", "Nov 5"), so
-the model only has to quote. Read tools are pure; the one write tool only creates a PendingAction.
+the model only has to quote. Read tools are pure; the write tools only create a PendingAction.
 
 Every tool works on one persona's real data. The persona comes from the request, never from the
 model: `call` drops any persona the model tries to pass, so a prompt injection can't read or move
@@ -13,20 +13,28 @@ import math
 import re
 import secrets
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from app import data
 from app.forecast import engine, readiness, sources
 from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import Schedule
 from app.forecast.sources import PersonaData
-from app.schemas import Forecast, ForecastEvent, ForecastPoint, PendingAction
+from app.schemas import Contact, Forecast, ForecastEvent, ForecastPoint, P2PSummary, PendingAction
 
 PENDING: dict[str, PendingAction] = {}  # in-memory for now; moves to the DB with Tiger Data
-ACTION_PERSONA: dict[str, str] = {}  # whose savings a pending transfer moves, until Auth0 supplies the user
+ACTION_PERSONA: dict[str, str] = {}  # whose money a pending action touches, until Auth0 supplies the user
+# what a pending P2P request asks for, (contact_id, memo): kept off PendingAction so the API shape is unchanged
+ACTION_P2P: dict[str, tuple[str, str]] = {}
 TRANSFER_STEP = 50.0  # proposals round up to a tidy amount instead of an exact-cents shortfall
 MAX_PURCHASE = 100_000.0
 SAFE_DATE_SEARCH_DAYS = 90
 LOOKAHEAD_DAYS = 30  # a purchase is judged on the month that follows it
+MAX_P2P_REQUEST = 1000.0  # the per-request cap POST /p2p/requests enforces (P2PSend.amount)
+MAX_SPLIT_PEOPLE = 20
+MAX_MEMO_CHARS = 80  # P2PSend.memo's limit, so an approved request always fits the route's contract
+RECENT_PAYMENTS = 5
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
@@ -258,15 +266,170 @@ def propose_transfer(
     }
 
 
+# ---------- peer-to-peer: who owes you, and asking someone to pay you back ----------
+
+
+def _cents(x: float | Decimal) -> float:
+    """Round half-up to cents: round() on a binary float may send $0.125 either way."""
+    return float(Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _p2p(persona: str) -> P2PSummary:
+    """The persona's P2P data, through the same data layer as GET /p2p. An unknown persona is an error,
+    never somebody's contacts: demo data would otherwise invent contacts for any slug."""
+    if persona not in {p.slug for p in data.personas()}:
+        raise sources.UnknownPersona(persona)  # call() turns this into an error result
+    try:
+        return data.p2p_summary(persona)
+    except data.PersonaNotFound:
+        raise sources.UnknownPersona(persona) from None
+
+
+def who_owes_me(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """Open IOUs (who owes the user, how much, what for, how long) and recent payments, with totals.
+
+    Totals and days open are worked out here, so the model only has to quote them.
+    """
+    today = today or sources.local_today()
+    summary = _p2p(persona)
+    open_requests = [r for r in summary.requests if r.status == "open"]
+    owed_by: dict[str, float] = {}
+    for r in open_requests:
+        owed_by[r.contact] = _cents(owed_by.get(r.contact, 0) + r.amount)
+    recent = summary.payments[:RECENT_PAYMENTS]  # newest first, per the P2PSummary contract
+    return {
+        "open_count": len(open_requests),
+        "total_owed_to_you": money(_cents(sum(r.amount for r in open_requests))),
+        "open_requests": [
+            {
+                "contact": r.contact,
+                "amount": money(r.amount),
+                "memo": r.memo,
+                "days_open": max(0, (today - r.created).days),  # never negative if the data's clock runs ahead
+                "since": day(r.created),
+            }
+            for r in open_requests
+        ],
+        "owed_by_contact": [{"contact": name, "owes_you": money(total)} for name, total in owed_by.items()],
+        "recent_payments": [
+            {
+                "day": day(p.date),
+                "contact": p.contact,
+                "direction": "paid you" if p.direction == "in" else "you paid",
+                "amount": money(p.amount),
+                "memo": p.memo,
+            }
+            for p in recent
+        ],
+        "recently_received": money(_cents(sum(p.amount for p in recent if p.direction == "in"))),
+        "recently_sent": money(_cents(sum(p.amount for p in recent if p.direction == "out"))),
+        "contacts": [c.name for c in summary.contacts],
+    }
+
+
+def find_contact(name: str, contacts: list[Contact]) -> Contact | None:
+    """The contact called `name` (first name, any case, or contact id). No fuzzy matching on purpose:
+    a request must go to exactly the person the user named, so "Al" never silently becomes "Alex"."""
+    wanted = (name or "").strip().lower()
+    return next((c for c in contacts if wanted in (c.name.lower(), c.id.lower())), None) if wanted else None
+
+
+def split_share(total: float, people: int) -> tuple[float, float]:
+    """(each other person's share, what the user covers) of `total` split `people` ways, the user included.
+
+    Shares round to cents and the user absorbs the leftover cent, so the parts always add up to the total.
+    """
+    if not 2 <= people <= MAX_SPLIT_PEOPLE:
+        raise ValueError(f"A split needs between 2 and {MAX_SPLIT_PEOPLE} people, counting you")
+    whole = Decimal(str(total))
+    share = _cents(whole / people)
+    return share, _cents(whole - Decimal(str(share)) * (people - 1))
+
+
+def _memo(memo: str | None, split: bool) -> str:
+    text = " ".join((memo or "").split())[:MAX_MEMO_CHARS]
+    return text or ("Split" if split else "Request")
+
+
+def _no_such_contact(asked_for: str, contacts: list[Contact]) -> dict[str, Any]:
+    return {
+        "contact_found": False,
+        "asked_for": asked_for,
+        "your_contacts": [c.name for c in contacts],
+        "status": "no such contact: ask the user which of their contacts they mean; nothing was created",
+    }
+
+
+def request_money(
+    contact: str,
+    amount: float | None = None,
+    total: float | None = None,
+    people: int | None = None,
+    memo: str | None = None,
+    *,
+    persona: str = engine.DEFAULT_PERSONA,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Propose asking one of the persona's contacts for money: a set `amount`, or their share of a
+    `total` split `people` ways (default 2: the user and the contact).
+
+    The share is computed here, never by the model, and the contact must be one of the persona's own:
+    an unknown name creates nothing. Nothing is sent either way: this creates a PendingAction, and the
+    request reaches the contact only when the user approves it.
+    """
+    summary = _p2p(persona)
+    match = find_contact(contact, summary.contacts)
+    if match is None:
+        return _no_such_contact(contact, summary.contacts)
+    split = amount is None
+    if split:
+        if total is None:
+            raise ValueError("Say how much they owe, or the total to split")
+        whole, people = abs(float(total)), int(people or 2)
+        ask, you_cover = split_share(whole, people)
+    else:
+        ask = _cents(abs(float(amount)))
+    if not 0 < ask <= MAX_P2P_REQUEST:
+        raise ValueError(f"A request must be between $0 and {money(MAX_P2P_REQUEST)}")
+    note = _memo(memo, split)
+    action = PendingAction(
+        id=secrets.token_urlsafe(16),  # unguessable, like a transfer's
+        kind="p2p_request",
+        description=f"Ask {match.name} for {money(ask)}: {note}",
+        amount=ask,
+    )
+    PENDING[action.id] = action
+    ACTION_PERSONA[action.id] = persona
+    ACTION_P2P[action.id] = (match.id, note)
+    result: dict[str, Any] = {
+        "contact_found": True,
+        "action_id": action.id,
+        "contact": match.name,
+        "request": money(ask),
+        "memo": note,
+        "already_owes_you": money(match.owes_you),
+        "status": "awaiting the user's approval — nothing has been sent yet",
+    }
+    if split:
+        result |= {"total": money(whole), "people": people, "you_cover": money(you_cover)}
+    return result
+
+
 def discard(action_id: str) -> None:
     """Forget a proposal that was never shown to the user, so it can never be approved."""
     PENDING.pop(action_id, None)
     ACTION_PERSONA.pop(action_id, None)
+    ACTION_P2P.pop(action_id, None)
 
 
 def persona_of(action_id: str) -> str:
-    """Whose transfer a pending action is, so approval moves that persona's money."""
+    """Whose money a pending action touches, so approval acts for that persona and only they may approve."""
     return ACTION_PERSONA.get(action_id, engine.DEFAULT_PERSONA)
+
+
+def p2p_details(action_id: str) -> tuple[str, str] | None:
+    """(contact_id, memo) of a pending P2P request, so approval creates exactly what was proposed."""
+    return ACTION_P2P.get(action_id)
 
 
 # Declarations Gemini sees. Descriptions say *when* to use each tool; the code above says *how*.
@@ -324,10 +487,49 @@ DECLARATIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "name": "who_owes_me",
+        "description": "Money friends and family owe the user: open IOUs (who, how much, what for, how many "
+        "days open), recent payments in and out, and totals. Use for 'who owes me', 'did Alex pay me back', "
+        "'what am I owed'.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "request_money",
+        "description": "Propose asking one of the user's contacts to pay them: a set amount ('ask Alex for $45 "
+        "for concert tickets') or the contact's share of a bill ('split dinner $60 with Alex'). For a split, pass "
+        "the total and the number of people; the share is calculated for you. If the result says no such "
+        "contact, ask the user which contact they mean; never invent one. This does NOT send anything: the "
+        "user must approve.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "contact": {"type": "string", "description": "The contact's first name, as the user said it."},
+                "amount": {
+                    "type": "number",
+                    "description": "What the contact owes, exactly as the user said it. Omit for a split.",
+                },
+                "total": {"type": "number", "description": "For a split: the whole bill, as the user said it."},
+                "people": {
+                    "type": "integer",
+                    "description": "For a split: how many people share the bill, counting the user. Default 2.",
+                },
+                "memo": {"type": "string", "description": "What it's for, e.g. 'Dinner split', 'Concert tickets'."},
+            },
+            "required": ["contact"],
+        },
+    },
 ]
 
-READ_TOOLS = {"get_forecast": get_forecast, "simulate_purchase": simulate_purchase, "find_recurring": find_recurring}
-WRITE_TOOLS = {"propose_transfer": propose_transfer}
+READ_TOOLS = {
+    "get_forecast": get_forecast,
+    "simulate_purchase": simulate_purchase,
+    "find_recurring": find_recurring,
+    "who_owes_me": who_owes_me,
+}
+WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
 
 
 def call(

@@ -18,7 +18,7 @@ from datetime import date
 from typing import Any
 
 from app.agent import tools, voice
-from app.agent.tools import PENDING, persona_of  # noqa: F401 — main.py reads pending actions from here
+from app.agent.tools import PENDING, p2p_details, persona_of  # noqa: F401 — main.py reads pending actions from here
 from app.forecast import engine, sources
 from app.schemas import ChatResponse, PendingAction
 
@@ -51,6 +51,9 @@ Accuracy (never broken, not even for a joke):
 - Call a tool before answering any question about balances, purchases, bills or subscriptions.
 - To check a purchase, call simulate_purchase. To fix a shortfall, call propose_transfer. If the user asks to
   fix things right after asking about a purchase, pass that purchase to propose_transfer.
+- For "who owes me" questions, call who_owes_me. To ask a contact for money or split a bill with them, call
+  request_money with the amounts exactly as the user said them; it works out each share. If it finds no such
+  contact, ask which of the listed contacts they mean. Never invent a contact or a share.
 - Lead with the answer and the real number. 2-3 short sentences, plain text, no markdown.
 - Never shame the user.
 
@@ -62,8 +65,8 @@ Tone follows the tool's "status" field (or the current status below if you haven
   talking. Calm, clear and reassuring: say when and by how much, then offer the fix. If a tool says
   already_below_floor_without_it, mention that dip too.
 - No jokes at all, ever, around money movement or security: transfer proposals, approvals, failed transfers,
-  login, or anything that looks like fraud. When you propose a transfer, say plainly what moves and that it
-  is waiting for the user's approval; never say money has moved.
+  login, or anything that looks like fraud. When you propose a transfer or a request, say plainly what
+  moves or who gets asked, and that it is waiting for the user's approval; never say it has happened.
 
 How sure you are:
 - Tool results carry "readiness" and a "confidence_note". If readiness is "confident", you may say so
@@ -148,7 +151,8 @@ def _run_gemini(
         for c in calls:
             tool_calls.append(c.name)
             if c.name in tools.WRITE_TOOLS and pending is not None:
-                result: dict[str, Any] = {"error": "A transfer is already awaiting approval for this message."}
+                # one approval card per reply: a second proposal would be created but never shown
+                result: dict[str, Any] = {"error": "An action is already awaiting approval for this message."}
             else:
                 result = tools.call(c.name, dict(c.arguments or {}), today, persona)
             outputs.append(result)
@@ -214,10 +218,93 @@ def _with_confidence(reply: str, result: dict[str, Any]) -> str:
     return f"{reply} {result['confidence_note']}"
 
 
+# "split dinner $60 with alex", "ask alex for $45", "request $20 from priya"
+P2P_ASK = re.compile(r"\bsplit\b|\bask [a-z]+ for\b|\brequest\b")
+P2P_OWED = re.compile(r"\bowe[sd]?\b|\bious?\b|\bpa(?:y|id) me back\b")
+# the names after "with / ask / from": "with alex and priya" → alex, priya
+NAMES = re.compile(r"\b(?:with|ask|from)\s+([a-z]+(?:(?:\s*,\s*|\s+and\s+)[a-z]+)*)")
+NOT_NAMES = {"me", "my", "the", "a", "an", "you", "them", "him", "her", "everyone", "us", "for", "and"}
+WAYS = re.compile(r"\b(\d+) ways\b")
+FOR_WHAT = re.compile(r"\bfor ([a-z][a-z' ]*?)\s*[.!?]*$")  # "for concert tickets" at the end, not "for $45"
+SPLIT_WHAT = re.compile(r"\bsplit (?:the |our |my )?(?:\$[\d,.]+ )?([a-z]+)")  # "split the $100 cab" → cab
+NOT_MEMOS = {"it", "this", "that", "with", "bill", "the", "our", "my"}
+
+
+def _names_in(text: str) -> list[str]:
+    """Who the user named, in order. Only names: checking them against real contacts is the tool's job."""
+    m = NAMES.search(text)
+    if not m:
+        return []
+    return [n for n in re.split(r"\s*,\s*|\s+and\s+", m.group(1)) if n not in NOT_NAMES]
+
+
+def _p2p_memo(text: str, split: bool) -> str | None:
+    m = FOR_WHAT.search(text)
+    if m:
+        return m.group(1).capitalize()
+    m = SPLIT_WHAT.search(text) if split else None
+    if m and m.group(1) not in NOT_MEMOS:
+        return f"{m.group(1).capitalize()} split"
+    return None
+
+
+def _route_p2p_request(text: str, amount: float | None, today: date, persona: str) -> ChatResponse:
+    """'Split dinner $60 with Alex' / 'ask Alex for $45': propose one request, never send it."""
+    names = _names_in(text)
+    split = "split" in text
+    ways = WAYS.search(text)
+    people = int(ways.group(1)) if ways else len(names) + 1
+    r = tools.request_money(
+        names[0] if names else "",
+        amount=None if split else amount,
+        total=amount if split else None,
+        people=max(people, 2) if split else None,
+        memo=_p2p_memo(text, split),
+        persona=persona,
+        today=today,
+    )
+    if not r["contact_found"]:
+        who = " and ".join(r["your_contacts"]) or "nobody yet"
+        asked = f"I don't see a contact named {r['asked_for'].title()}. " if r["asked_for"] else ""
+        return ChatResponse(reply=f"{asked}Who should I ask? Your contacts are {who}.", tool_calls=["request_money"])
+    if split:
+        reply = f"I can ask {r['contact']} for {r['request']}, their share of {r['total']} split {r['people']} ways."
+        if len(names) > 1:
+            reply += f' Say "ask {names[1].title()} for {r["request"]}" for the next share.'
+    else:
+        reply = f"I can ask {r['contact']} for {r['request']} for {r['memo']}."
+    reply += " Nothing is sent until you approve it."
+    return ChatResponse(reply=reply, tool_calls=["request_money"], pending_action=tools.PENDING[r["action_id"]])
+
+
+def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
+    r = tools.who_owes_me(persona=persona, today=today)
+    if r["open_count"]:
+        each = "; ".join(
+            f"{o['contact']} owes you {o['amount']} for {o['memo']} (open {o['days_open']} "
+            f"{'day' if o['days_open'] == 1 else 'days'})"
+            for o in r["open_requests"]
+        )
+        reply = f"{each}. That's {r['total_owed_to_you']} owed to you in total."
+    else:
+        reply = "Nobody owes you anything right now."
+    if r["recent_payments"]:
+        p = r["recent_payments"][0]
+        latest = f"{p['contact']} paid you" if p["direction"] == "paid you" else f"you paid {p['contact']}"
+        reply += f" Latest: {latest} {p['amount']} for {p['memo']} on {p['day']}."
+    return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
+
+
 def _route(text: str, today: date, persona: str) -> ChatResponse:
     amount = _amount_in(text)
     when_match = WHEN.search(text)
     when = when_match.group(1) if when_match else None
+
+    # P2P before the money checks: "ask alex for $45" names an amount but isn't a purchase or a fix
+    if P2P_ASK.search(text):
+        return _route_p2p_request(text, amount, today, persona)
+    if P2P_OWED.search(text):
+        return _route_who_owes_me(today, persona)
 
     if re.search(r"\b(fix|cover|top up|move money|transfer)\b", text):
         r = tools.propose_transfer(amount, when, persona=persona, today=today)

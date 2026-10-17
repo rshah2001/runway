@@ -4,8 +4,8 @@
 Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
                                      ├── Nessie client (read + write)
                                      ├── Ingest job ──► Tiger Data (Postgres + TimescaleDB)
-                                     │                   ├── transactions hypertable
-                                     │                   └── continuous aggregates (daily spend per category)
+                                     │                   ├── transactions + forecast_snapshots hypertables
+                                     │                   └── continuous aggregates (daily spend, forecast accuracy)
                                      ├── Forecast engine (deterministic + ML)
                                      └── Gemini agent
                                           tools: get_forecast, simulate_purchase, find_recurring,
@@ -46,6 +46,8 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 |---|---|---|
 | `transactions` | **hypertable** (7-day chunks, compressed after 180 days, segmented by customer) | every purchase, deposit, transfer and paid bill — signed amounts |
 | `daily_spend` | **continuous aggregate** (real-time, refreshed every 15 min) | per-day, per-category spend → Spending screen + forecast |
+| `forecast_snapshots` | **hypertable** (by `made_on`, 30-day chunks, compressed after 90 days, kept 400 days) | every day's forecast as the app showed it, next 30 days, with its band — later scored against the real balance |
+| `forecast_accuracy_daily` | **continuous aggregate** (real-time, refreshed hourly) | per persona, per day, for 1/7/14 days ahead: scored days, summed $ error, days inside the band → the report card |
 | `accounts` | table | opening balance + time; live balance = opening + transactions since |
 | `bills` | table | upcoming recurring bills — the forecast's scheduled outflows |
 | `personas`, `merchants` | tables | demo persona ids (+ age), merchant categories |
@@ -55,6 +57,34 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 `accounts_with_balances(conn, customer_id)`, `transactions(conn, customer_id, since, until)`,
 `bills(conn, customer_id)`, `daily_spend(conn, customer_id, start, end)`; get a connection with
 `with pool.connection() as conn:` and the customer with `repo.persona(conn, "maya")`.
+
+### The forecast's track record (Tiger Data)
+
+A **hypertable** is a Postgres table that TimescaleDB splits into time chunks behind the scenes: a
+query for "this persona, these days" only opens the chunks for those days, old chunks are compressed
+into a columnstore, and expired ones are dropped whole by a retention policy instead of row by row.
+A **continuous aggregate** is a materialized `GROUP BY time_bucket(...)` view that TimescaleDB keeps
+up to date incrementally: a refresh policy recomputes only the buckets whose rows changed, and
+real-time mode adds the newest, not-yet-materialized rows at query time.
+
+Runway uses both to keep itself honest about its forecasts:
+
+1. **Save.** Once a day per persona, the background pass (`app/forecast_history.py`, after the Nessie
+   sync) saves the forecast `GET /forecast` shows — same engine, same 30-day horizon, with its p5–p90
+   band and the engine version — into `forecast_snapshots`, one row per day ahead. The first forecast
+   of the day wins (`ON CONFLICT DO NOTHING`): a later one would already know part of the day.
+2. **Score.** Each day it works out the real end-of-day checking balance for the last 35 days (from
+   the live balance and the transactions hypertable, as the replay does) and writes `actual`,
+   `abs_error` and `in_band` onto every saved forecast for those days — rescoring if a late purchase
+   changed the past.
+3. **Aggregate.** `forecast_accuracy_daily` sums those scores per persona, day and lead (1, 7, 14).
+   It stores sums and counts, not averages, so any window combines exactly. It reads only
+   `forecast_snapshots`: a continuous aggregate can join a plain table, but it wouldn't notice changes
+   there and would keep stale scores, so the actual balance lives on the snapshot row instead.
+4. **Report.** `GET /forecast`'s `readiness` (whose `rolling_error` the agent quotes as its track record) uses the saved 7-day-ahead
+   forecasts once 7 or more of the last 14 days are scored — `rolling_error_source: "saved"`, with
+   `band_coverage` — and says "The 7-day-ahead forecasts I saved were off by $X…". Until then it
+   replays the engine on past days (`"replay"`) and says "Replayed on your history, …".
 
 ## Stack
 

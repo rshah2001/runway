@@ -63,10 +63,10 @@ _BRIDGE = """SELECT b.*, lp.first_name AS lender_name, bp.first_name AS borrower
 def insert_bridge(conn: psycopg.Connection, b: Row) -> None:
     conn.execute(
         """INSERT INTO bridges (id, borrower_slug, lender_slug, amount, reason, status, mode, shortfall_date, due_date,
-                                approval_channel)
+                                approval_channel, borrower_floor)
            VALUES (%(id)s, %(borrower_slug)s, %(lender_slug)s, %(amount)s, %(reason)s, %(status)s, %(mode)s,
-                   %(shortfall_date)s, %(due_date)s, %(approval_channel)s)""",
-        b,
+                   %(shortfall_date)s, %(due_date)s, %(approval_channel)s, %(borrower_floor)s)""",
+        {"borrower_floor": None, **b},
     )
 
 
