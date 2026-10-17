@@ -12,6 +12,7 @@ export type Me = {
   customer_id: string;
   first_name: string;
   accounts: Account[];
+  safe_floor: number; // what this person keeps in checking (default 300)
 };
 
 export type ForecastPoint = {

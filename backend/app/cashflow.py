@@ -30,6 +30,7 @@ class Projection:
     next_payday: date | None
     paycheck: Decimal | None
     events: list[ForecastEvent] = field(default_factory=list)  # what moves the balance
+    floor: Decimal = Decimal("300")  # what this person keeps in checking (app/prefs.py)
 
     def low(self, start: date, end: date) -> tuple[date, Decimal] | None:
         """Lowest end-of-day balance in [start, end)."""
@@ -72,6 +73,7 @@ def projection_for(
         next_payday=payday,
         paycheck=paycheck,
         events=f.events,
+        floor=Decimal(str(schedule.safe_floor)),
     )
 
 

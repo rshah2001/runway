@@ -96,7 +96,10 @@ def rebuild() -> None:
     for spec in PERSONAS:
         if spec.slug in DEMO_PERSONAS:
             seed_persona(nessie, spec, merchant_ids, reset=True)
+    from app import prefs
+
     with pool.connection() as conn:
+        prefs.reset(DEMO_PERSONAS, conn)  # everyone back to the default cushion
         for lender, borrower, amount in SAFETY_LIMITS:
             if lender in DEMO_PERSONAS and borrower in DEMO_PERSONAS:
                 safety_repo.set_limit(conn, lender, borrower, amount, True)

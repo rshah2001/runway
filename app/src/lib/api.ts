@@ -35,6 +35,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   personas: () => request<Persona[]>('/personas'),
+  // what you keep in checking: every "am I okay?" is measured against it (only for yourself)
+  setSafeFloor: (amount: number, persona = currentPersona()) =>
+    request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
   forecast: (days = 30, persona = currentPersona()) => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
   simulate: (amount: number, date: string, label = 'Purchase', persona = currentPersona()) =>

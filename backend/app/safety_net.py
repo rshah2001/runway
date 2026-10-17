@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from app import auth0_ciba
+from app import auth0_ciba, prefs
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
 from app.db import pool, repo, safety_repo
@@ -32,7 +32,7 @@ from app.nessie.moves import TransferNotMade, move_money
 
 log = logging.getLogger(__name__)
 
-SAFE_FLOOR = Decimal("300")  # same floor as the forecast engine
+SAFE_FLOOR = Decimal("300")  # the default floor; each person can set their own (app/prefs.py)
 ROUND_TO = 10  # bridges are whole tens: a $92.18 gap becomes a $100 bridge
 MAX_BRIDGE = Decimal("1000")
 MAX_DAYS_TO_PAYDAY = 31  # "it comes back" means by the next payday, and that must be soon
@@ -79,9 +79,14 @@ def _money(x: Decimal) -> str:
 
 
 def decide(
-    b: Projection, helpers: list[Helper], today: date, *, has_open_bridge: bool = False, floor: Decimal = SAFE_FLOOR
+    b: Projection, helpers: list[Helper], today: date, *, has_open_bridge: bool = False, floor: Decimal | None = None
 ) -> Decision:
-    """What the agent should do for borrower `b` today. Pure — no I/O."""
+    """What the agent should do for borrower `b` today. Pure — no I/O.
+
+    Everyone is measured against their own floor (what they keep in checking): the borrower's says
+    whether there's a dip and how much it takes; each helper's says whether helping keeps *them* safe.
+    `floor` overrides the borrower's (tests)."""
+    floor = b.floor if floor is None else floor
     name = b.first_name
     if has_open_bridge:
         return Decision(b.slug, "already_covered", f"{name} already has a bridge in progress.")
@@ -110,7 +115,7 @@ def decide(
         if not h.enabled or h.is_borrowing:
             continue
         h_low = h.projection.low(today, b.next_payday + timedelta(days=1))
-        if h_low is not None and h_low[1] - need >= floor:  # helping must keep the helper safe too
+        if h_low is not None and h_low[1] - need >= h.projection.floor:  # helping keeps the helper above *their* floor
             safe.append((h, h_low[1]))
     if not safe:
         return Decision(b.slug, "no_safe_helper", f"{gap}. Nobody in the family can cover it safely.", need, **base)
@@ -401,7 +406,8 @@ def repay_due(today: date | None = None) -> list[dict]:
     for b in due:
         with pool.connection() as conn:
             borrower = repo.persona(conn, b["borrower_slug"])
-            if _checking_balance(conn, borrower) - Decimal(b["amount"]) < SAFE_FLOOR:  # paycheck not in yet: wait
+            keep = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+            if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:  # paycheck not in yet: wait
                 if (today - b["due_date"]).days >= REPAY_GRACE_DAYS and b["status"] == "active":
                     safety_repo.transition(conn, b["id"], ("active",), "repay_failed")
                     _both(
@@ -428,9 +434,10 @@ def repay_now(bridge_id: str) -> dict:
         if b is None or b["status"] not in ("active", "repay_failed"):
             raise RepayRefused("That bridge isn't waiting to be paid back.")
         borrower = repo.persona(conn, b["borrower_slug"])
-        if _checking_balance(conn, borrower) - Decimal(b["amount"]) < SAFE_FLOOR:
+        keep = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+        if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:
             raise RepayRefused(
-                f"Paying back now would take you under {_money(SAFE_FLOOR)}. "
+                f"Paying back now would take you under {_money(keep)}, the amount you keep. "
                 f"It goes back automatically on payday, {_wmd(b['due_date'])}."
             )
     row = _pay_back(b, early=True)

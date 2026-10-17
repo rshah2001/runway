@@ -18,6 +18,8 @@ type State = {
   approval: ApprovalRequest | null;
   /** Family notes the user closed on Today (by event time), so they stay closed while the app is open. */
   dismissed: string[];
+  /** Bumped when the user changes a money preference (what they keep): screens re-fetch their forecast. */
+  prefsVersion: number;
 };
 
 /** What the approval sheet shows: the agent's proposal plus the facts Today read off the forecast. */
@@ -28,7 +30,7 @@ export type ApprovalRequest = {
   facts: [label: string, value: string][];
 };
 
-let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [] };
+let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [], prefsVersion: 0 };
 const listeners = new Set<() => void>();
 
 export function setStore(patch: Partial<State>) {

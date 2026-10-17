@@ -21,6 +21,7 @@ class Me(BaseModel):
     customer_id: str
     first_name: str
     accounts: list[Account]
+    safe_floor: float = 300.0  # what this person keeps in checking; every "am I okay?" uses it
 
 
 class ForecastPoint(BaseModel):
@@ -248,6 +249,11 @@ class SafetyDecision(BaseModel):
     due_date: date | None
     executed: bool  # False = dry run (real writes off) or nothing to do
     bridge: Bridge | None
+
+
+class SetSafeFloor(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in: you set your own
+    amount: float = Field(ge=0, le=5000)
 
 
 class SetLimit(BaseModel):

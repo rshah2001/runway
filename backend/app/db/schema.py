@@ -121,6 +121,15 @@ CREATE INDEX IF NOT EXISTS p2p_requests_persona ON p2p_requests (persona_slug, s
 
 # family safety net: lenders pre-authorize bridges up to a limit; the agent covers a forecast dip
 # automatically under the limit, asks for an Auth0 push approval over it, and repays on payday
+# what each person wants to keep in checking (app/prefs.py); no row = the default cushion
+MONEY_PREFS = """
+CREATE TABLE IF NOT EXISTS money_preferences (
+    slug        text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
+    safe_floor  numeric(12, 2) NOT NULL CHECK (safe_floor >= 0 AND safe_floor <= 5000),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+"""
+
 SAFETY_NET = """
 CREATE TABLE IF NOT EXISTS safety_limits (
     lender_slug    text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
@@ -285,7 +294,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, SAFETY_NET, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         _compress_once(conn, "transactions", COMPRESSION)
         try:  # the track record is informational: if its DDL fails, everything else still works

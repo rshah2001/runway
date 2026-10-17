@@ -42,6 +42,7 @@ from app.schemas import (
     SafetyLimit,
     SafetyNetSummary,
     SetLimit,
+    SetSafeFloor,
     SimulateRequest,
     Spending,
 )
@@ -134,11 +135,34 @@ def personas() -> list[Persona]:
 
 @app.get("/me", response_model=Me)
 def me(user: OptionalUser, persona: str = PERSONA) -> Me:
+    from app import prefs
+
     persona = persona_for(user, persona)
     try:
-        return data.me(persona)
+        return data.me(persona).model_copy(update={"safe_floor": prefs.floor(persona)})
     except data.PersonaNotFound:
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
+
+
+@app.put("/me/safe-floor", response_model=Me)
+def set_safe_floor(req: SetSafeFloor, user: OptionalUser) -> Me:
+    """Set how much you keep in checking. Only for yourself: signed in, the request's persona is
+    ignored; with sign-in configured, an anonymous caller gets 401 (it changes when money moves)."""
+    from app import prefs
+
+    if user is not None:
+        persona = persona_for(user, "")
+    elif auth_config() is not None:
+        raise HTTPException(401, "Sign in to change this.", headers={"WWW-Authenticate": "Bearer"})
+    else:  # sign-in off (CI, offline demo): only the listed demo people
+        persona = req.persona
+        if persona not in {p.slug for p in data.personas()}:  # nothing is saved for someone who doesn't exist
+            raise HTTPException(404, f"Unknown persona '{persona}'")
+    try:
+        prefs.set_floor(persona, req.amount)
+    except prefs.FloorOutOfRange as e:
+        raise HTTPException(422, str(e)) from None
+    return me(user, persona)
 
 
 @app.get("/spending", response_model=Spending)

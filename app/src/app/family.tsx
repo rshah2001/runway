@@ -16,6 +16,7 @@ import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useStore } from '@/lib/store';
 import { money, monthDay, plain, weekdayDate } from '@/lib/format';
 import type { Bridge, P2PSummary, SafetyEvent, SafetyLimit, SafetyNetSummary } from '@/lib/types';
 
@@ -29,7 +30,7 @@ const OPEN: Bridge['status'][] = ['funding', 'active', 'repaying', 'repay_failed
 export default function FamilyScreen() {
   const sn = useLoad(() => api.safetyNet());
   const p2p = useLoad(() => api.p2p());
-  const fc = useLoad(() => api.forecast(30));
+  const fc = useLoad(() => api.forecast(30), String(useStore().prefsVersion));
   const reload = () => { sn.reload(); p2p.reload(); fc.reload(); };
 
   const d = sn.data;
