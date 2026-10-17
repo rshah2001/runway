@@ -32,6 +32,16 @@ query param on every request. Keep the key in `.env` (`NESSIE_API_KEY`), never i
 | Empty lists sometimes come back as `404 "No X found"` | Client turns them into `[]` |
 | ~0.3 s per call | Seed writes in parallel (8 workers): all 3 personas in ~15 s |
 
+## Peer-to-peer (built on top of Nessie)
+
+Capital One's challenge calls out peer-to-peer transactions, but current Nessie transfers have no
+recipient. So Runway models P2P itself, with every money movement still a real Nessie record:
+- each contact (Alex, Riley, Emma, …) is a **real Nessie customer** with a checking account
+- a payment = a **transfer** on the sender's account + a **deposit** on the receiver's
+  (`app/nessie/moves.py`; the transfer is deleted again if the deposit fails)
+- requests / IOUs ("Alex owes you $45") live in Tiger Data — Nessie has no request object — and are
+  settled with a real P2P move; settling is an atomic open → settling → paid update, so never twice
+
 ## Seeding and syncing
 
 ```bash
@@ -46,10 +56,10 @@ dataset. The server re-seeds all three every night at 5 am Eastern, so "today" i
 
 ## Demo personas (live)
 
-| Persona | Story | Today's balances (checking / savings / card owed) |
-|---|---|---|
-| **Maya** — UF junior, campus job | Rent lands before payday → dips under the $300 floor → the main demo | $680 / $1,150 / $286.40 |
-| **Jordan** — grad student, stipend | 8 subscriptions, $136.39/mo → subscription detective | $1,240 / $400 / $512.80 |
-| **Sam** — new grad, first salary | Healthy runway → the "safe to spend" green state | $3,820 / $6,500 / $340.25 |
+| Persona | Age | Story | Balances (checking / savings / card owed) | Peer-to-peer |
+|---|---|---|---|---|
+| **Maya** | 20 | UF junior on a campus job — rent lands before payday, dips under the $300 floor | $680 / $1,150 / $286.40 | splits with roommate Alex + friend Priya; **Alex owes $45** (concert tickets) |
+| **Jordan** | 40 | Parent of two — 8 family subscriptions, ~$164/mo | $2,450 / $3,200 / $1,284.60 | partner Riley sends half of daycare; **Riley owes $86.40**; pays the soccer coach |
+| **Sam** | 60 | Pre-retiree, pension on the way — healthy runway | $6,200 / $48,000 / $612.35 | sends daughter Emma $150/mo + grandson Leo an allowance |
 
 Definitions: `backend/seed/personas.py`. History is generated deterministically by `backend/seed/plan.py`.

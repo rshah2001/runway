@@ -50,3 +50,26 @@ def test_jordan_has_subscription_creep() -> None:
         if MERCHANTS.get(op.merchant or "", ("",))[0] == "Subscriptions"
     }
     assert len(subs) >= 8
+
+
+def test_personas_are_20_40_and_60() -> None:
+    assert [(p.slug, p.age) for p in PERSONAS] == [("maya", 20), ("jordan", 40), ("sam", 60)]
+
+
+@pytest.mark.parametrize("spec", PERSONAS, ids=lambda p: p.slug)
+def test_p2p_history_only_involves_the_personas_own_contacts(spec) -> None:
+    keys = {c.key for c in spec.contacts}
+    p2p = [op for op in build_plan(spec, TODAY) if op.kind == "p2p"]
+    assert p2p, "every persona has some peer-to-peer history"
+    assert all(op.contact in keys and op.direction in ("in", "out") and op.amount > 0 for op in p2p)
+    assert all(r.contact in keys and r.amount > 0 for r in spec.requests)
+
+
+def test_adding_p2p_does_not_reshuffle_purchases() -> None:
+    """P2P uses its own random stream, so purchase history (and the backtest) stays stable."""
+    from dataclasses import replace
+
+    maya = BY_SLUG["maya"]
+    without = [op for op in build_plan(replace(maya, p2p=[]), TODAY) if op.kind == "purchase"]
+    with_p2p = [op for op in build_plan(maya, TODAY) if op.kind == "purchase"]
+    assert without == with_p2p

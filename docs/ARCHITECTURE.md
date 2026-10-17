@@ -33,6 +33,10 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 | GET | `/recurring` | `[{merchant, amount, interval_days, next_date}]` |
 | GET | `/personas` | demo personas (`maya`, `jordan`, `sam`) |
 | GET | `/spending?month=YYYY-MM&persona=maya` | category totals, daily spend (continuous aggregate), transactions |
+| GET | `/p2p?persona=maya` | contacts (with what they owe you), P2P payment history, requests |
+| POST | `/p2p/send` `{persona, contact_id, amount, memo}` | pay a contact — real Nessie transfer + deposit on both sides |
+| POST | `/p2p/requests` `{persona, contact_id, amount, memo}` | ask a contact for money (no money moves) |
+| POST | `/p2p/requests/{id}/settle` | the contact pays: real money in; atomic, can't be settled twice |
 | POST | `/agent/chat` `{message}` | `{reply, tool_calls, pending_action?}` |
 | POST | `/actions/{id}/approve` | executes the Nessie call, returns the new forecast |
 
@@ -44,7 +48,8 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 | `daily_spend` | **continuous aggregate** (real-time, refreshed every 15 min) | per-day, per-category spend → Spending screen + forecast |
 | `accounts` | table | opening balance + time; live balance = opening + transactions since |
 | `bills` | table | upcoming recurring bills — the forecast's scheduled outflows |
-| `personas`, `merchants` | tables | demo persona ids, merchant categories |
+| `personas`, `merchants` | tables | demo persona ids (+ age), merchant categories |
+| `contacts`, `p2p_payments`, `p2p_requests` | tables | peer-to-peer: each contact is a real Nessie customer; every payment keeps both Nessie record ids |
 
 **For the forecast engine and agent** (`backend/app/db/repo.py` — no SQL needed):
 `accounts_with_balances(conn, customer_id)`, `transactions(conn, customer_id, since, until)`,

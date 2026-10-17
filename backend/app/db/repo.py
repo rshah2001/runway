@@ -24,10 +24,12 @@ def persona(conn: psycopg.Connection, slug: str) -> Row | None:
 
 def save_persona(conn: psycopg.Connection, p: Row) -> None:
     conn.execute(
-        """INSERT INTO personas (slug, first_name, story, customer_id, checking_id, savings_id, credit_id)
-           VALUES (%(slug)s, %(first_name)s, %(story)s, %(customer_id)s, %(checking_id)s, %(savings_id)s, %(credit_id)s)
+        """INSERT INTO personas (slug, first_name, age, story, customer_id, checking_id, savings_id, credit_id)
+           VALUES (%(slug)s, %(first_name)s, %(age)s, %(story)s, %(customer_id)s, %(checking_id)s, %(savings_id)s,
+                   %(credit_id)s)
            ON CONFLICT (slug) DO UPDATE SET
-             first_name = EXCLUDED.first_name, story = EXCLUDED.story, customer_id = EXCLUDED.customer_id,
+             first_name = EXCLUDED.first_name, age = EXCLUDED.age, story = EXCLUDED.story,
+             customer_id = EXCLUDED.customer_id,
              checking_id = EXCLUDED.checking_id, savings_id = EXCLUDED.savings_id,
              credit_id = EXCLUDED.credit_id, seeded_at = now()""",
         p,
@@ -139,3 +141,83 @@ def daily_spend(conn: psycopg.Connection, customer_id: str, start: date, end: da
            WHERE customer_id = %s AND day >= %s AND day < %s ORDER BY day, category""",
         (customer_id, start, end),
     ).fetchall()
+
+
+# ---------- peer-to-peer ----------
+def contacts(conn: psycopg.Connection, slug: str) -> list[Row]:
+    return conn.execute("SELECT * FROM contacts WHERE persona_slug = %s ORDER BY id", (slug,)).fetchall()
+
+
+def contact(conn: psycopg.Connection, contact_id: str) -> Row | None:
+    return conn.execute("SELECT * FROM contacts WHERE id = %s", (contact_id,)).fetchone()
+
+
+def upsert_contact(conn: psycopg.Connection, c: Row) -> None:
+    conn.execute(
+        """INSERT INTO contacts (id, persona_slug, first_name, last_name, relation, customer_id, checking_id)
+           VALUES (%(id)s, %(persona_slug)s, %(first_name)s, %(last_name)s, %(relation)s, %(customer_id)s,
+                   %(checking_id)s)
+           ON CONFLICT (id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
+             relation = EXCLUDED.relation, checking_id = EXCLUDED.checking_id""",
+        c,
+    )
+
+
+def forget_p2p(conn: psycopg.Connection, slug: str) -> None:
+    """Drop a persona's payments and requests (contacts are kept: their Nessie customers can't be deleted)."""
+    conn.execute("DELETE FROM p2p_requests WHERE persona_slug = %s", (slug,))
+    conn.execute("DELETE FROM p2p_payments WHERE persona_slug = %s", (slug,))
+
+
+def insert_p2p_payment(conn: psycopg.Connection, p: Row) -> None:
+    conn.execute(
+        """INSERT INTO p2p_payments (id, persona_slug, contact_id, direction, amount, memo, ts, sender_nessie_id,
+                                     receiver_nessie_id)
+           VALUES (%(id)s, %(persona_slug)s, %(contact_id)s, %(direction)s, %(amount)s, %(memo)s, %(ts)s,
+                   %(sender_nessie_id)s, %(receiver_nessie_id)s)
+           ON CONFLICT (id) DO NOTHING""",
+        p,
+    )
+
+
+def p2p_payments(conn: psycopg.Connection, slug: str, limit: int = 50) -> list[Row]:
+    return conn.execute(
+        """SELECT p.*, c.first_name AS contact_name FROM p2p_payments p JOIN contacts c ON c.id = p.contact_id
+           WHERE p.persona_slug = %s ORDER BY p.ts DESC, p.id LIMIT %s""",
+        (slug, limit),
+    ).fetchall()
+
+
+def insert_request(conn: psycopg.Connection, r: Row) -> None:
+    conn.execute(
+        """INSERT INTO p2p_requests (id, persona_slug, contact_id, amount, memo, status, created_at)
+           VALUES (%(id)s, %(persona_slug)s, %(contact_id)s, %(amount)s, %(memo)s, 'open', %(created_at)s)""",
+        r,
+    )
+
+
+def requests(conn: psycopg.Connection, slug: str) -> list[Row]:
+    return conn.execute(
+        """SELECT r.*, c.first_name AS contact_name FROM p2p_requests r JOIN contacts c ON c.id = r.contact_id
+           WHERE r.persona_slug = %s
+           ORDER BY (r.status = 'open') DESC, r.created_at DESC""",
+        (slug,),
+    ).fetchall()
+
+
+def claim_request(conn: psycopg.Connection, request_id: str) -> Row | None:
+    """Atomically move an open request to 'settling'. Returns None if it wasn't open — so two
+    simultaneous settles can never both move money."""
+    return conn.execute(
+        "UPDATE p2p_requests SET status = 'settling' WHERE id = %s AND status = 'open' RETURNING *", (request_id,)
+    ).fetchone()
+
+
+def finish_request(conn: psycopg.Connection, request_id: str, status: str, payment_id: str | None = None) -> Row:
+    return conn.execute(
+        """UPDATE p2p_requests SET status = %s, payment_id = %s,
+             settled_at = CASE WHEN %s = 'paid' THEN now() ELSE settled_at END
+           WHERE id = %s
+           RETURNING *, (SELECT first_name FROM contacts WHERE id = contact_id) AS contact_name""",
+        (status, payment_id, status, request_id),
+    ).fetchone()
