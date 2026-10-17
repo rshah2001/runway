@@ -89,3 +89,9 @@ def test_cors_only_allows_app_origins() -> None:
     blocked = client.get("/health", headers={"Origin": "https://evil.example"})
     assert allowed.headers.get("access-control-allow-origin") == "http://localhost:8081"
     assert "access-control-allow-origin" not in blocked.headers
+
+
+def test_live_transfers_are_off_by_default() -> None:
+    from app.config import get_settings
+
+    assert get_settings().live_transfers is False  # real money moves only after Auth0 lands

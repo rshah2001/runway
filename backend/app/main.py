@@ -5,6 +5,7 @@ Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -103,23 +104,32 @@ def agent_chat(req: ChatRequest) -> ChatResponse:
     return agent.chat(req.message)
 
 
+_approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
+
+
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
 def approve(action_id: str) -> PendingAction:
     # TODO(auth): require the Auth0 user (Depends) and check action.owner_id == user.id before
-    # anything else, and take the persona from the user instead of the default.
-    action = agent.PENDING.get(action_id)
-    if action is None:
-        raise HTTPException(404, "No such pending action")
-    if action.status != "awaiting_approval":
-        raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
-    if action.kind != "transfer" or not action.amount or action.amount <= 0:
-        raise HTTPException(422, "Only positive transfers can be approved right now")
-    action.status = "approved"
+    # anything else, and take the persona from the user. Only then set LIVE_TRANSFERS=1 —
+    # until that flag is on, approving never writes to Nessie (see data.move_savings_to_checking).
+    with _approve_lock:
+        action = agent.PENDING.get(action_id)
+        if action is None:
+            raise HTTPException(404, "No such pending action")
+        if action.status != "awaiting_approval":
+            raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
+        if action.kind != "transfer" or not action.amount or action.amount <= 0:
+            raise HTTPException(422, "Only positive transfers can be approved right now")
+        action.status = "approved"  # claimed: a concurrent approve now gets 409
     try:
         data.move_savings_to_checking(action.amount, action.description)
+    except data.TransferNotMade as e:
+        action.status = "awaiting_approval"  # nothing moved, so a retry is safe
+        log.warning("transfer not made: %s", e)
+        raise HTTPException(503, "The bank didn't accept the transfer — nothing moved, try again") from e
     except Exception as e:
-        action.status = "awaiting_approval"  # nothing moved; let the user retry
-        log.exception("transfer failed")
-        raise HTTPException(503, "The bank didn't accept the transfer — try again") from e
+        action.status = "failed"  # outcome unknown: never let it be approved twice
+        log.exception("transfer needs reconciliation")
+        raise HTTPException(502, "The transfer may be incomplete — we're checking with the bank") from e
     action.status = "executed"
     return action

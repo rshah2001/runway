@@ -42,7 +42,7 @@ export type PendingAction = {
   kind: 'transfer' | 'reschedule_bill';
   description: string;
   amount: number | null;
-  status: 'awaiting_approval' | 'approved' | 'declined' | 'executed';
+  status: 'awaiting_approval' | 'approved' | 'declined' | 'executed' | 'failed'; // failed = check with the bank, never retry
 };
 
 export type ChatResponse = {

@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.db import pool, repo
 from app.ingest import sync_customer
 from app.nessie import demo
-from app.nessie.client import NessieClient
+from app.nessie.client import NessieClient, NessieError
 from app.schemas import Account, CategorySpend, DailySpend, Me, Persona, Spending, SpendingTransaction
 
 log = logging.getLogger(__name__)
@@ -114,24 +114,54 @@ def spending(month: str, slug: str = DEFAULT_PERSONA) -> Spending:
         return demo.spending(month)
 
 
+class TransferNotMade(RuntimeError):
+    """Nothing was written to Nessie (or it was fully undone): safe to let the user retry."""
+
+
+class TransferNeedsReconciliation(RuntimeError):
+    """Money may have partially moved. Never retry automatically — a human must check Nessie."""
+
+
 def move_savings_to_checking(amount: float, description: str, slug: str = DEFAULT_PERSONA) -> str:
-    """Really move money in Nessie: a transfer out of savings plus a deposit into checking
-    (Nessie transfers have no destination), then re-ingest so balances update immediately."""
-    if not get_settings().live:
+    """Move money in Nessie: a transfer out of savings plus a deposit into checking (Nessie
+    transfers have no destination), then re-ingest so balances update immediately.
+
+    Real Nessie writes happen only in live mode with LIVE_TRANSFERS=1 — and that switch must stay
+    off until the approve route checks the Auth0 user, or anyone could move a persona's money.
+    """
+    s = get_settings()
+    if not (s.live and s.live_transfers):
         return demo.create_transfer("demo-sav", "demo-chk", amount, description)
     nessie = NessieClient.from_settings()
     today = datetime.now(LOCAL_TZ).date()
     with pool.connection() as conn:
         p = _persona(conn, slug)
+    try:
         transfer = nessie.create_transfer(p["savings_id"], amount, today, description)
-        transfer_id = transfer.get("_id") or transfer.get("id", "")
+    except Exception as e:
+        # a write that timed out may still have landed; only a clear rejection means nothing moved
+        if isinstance(e, NessieError) and 400 <= e.status < 500:
+            raise TransferNotMade(str(e)) from e
+        raise TransferNeedsReconciliation(f"transfer outcome unknown: {e}") from e
+    transfer_id = transfer.get("_id") or transfer.get("id", "")
+    try:
+        nessie.create_deposit(p["checking_id"], amount, today, f"From savings: {description}")
+    except Exception as deposit_error:
         try:
-            nessie.create_deposit(p["checking_id"], amount, today, f"From savings: {description}")
-        except Exception:
-            nessie.delete_transfer(transfer_id)  # undo the outgoing half so a retry can't double-move money
-            raise
-        sync_customer(conn, nessie, p["customer_id"])
-        conn.commit()
+            nessie.delete_transfer(transfer_id)  # undo the outgoing half
+        except Exception as undo_error:
+            raise TransferNeedsReconciliation(
+                f"deposit failed and transfer {transfer_id} could not be undone: {undo_error}"
+            ) from deposit_error
+        raise TransferNotMade(f"deposit failed; transfer {transfer_id} undone: {deposit_error}") from deposit_error
+
+    # money has moved — from here on, failures only delay the balance refresh
+    try:
+        with pool.connection() as conn:
+            sync_customer(conn, nessie, p["customer_id"])
+            conn.commit()
+    except Exception:
+        log.exception("transfer %s done, but re-sync failed; balances catch up on the next ingest", transfer_id)
     return transfer_id
 
 

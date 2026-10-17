@@ -21,6 +21,7 @@ class Settings:
     nessie_base_url: str
     database_url: str
     force_mock: bool
+    live_transfers: bool  # real Nessie writes on "Fix it" — keep off until approve checks the Auth0 user
 
     @property
     def live(self) -> bool:
@@ -34,4 +35,5 @@ def get_settings() -> Settings:
         nessie_base_url=os.getenv("NESSIE_BASE_URL", "https://api.nessieisreal.com").rstrip("/"),
         database_url=os.getenv("DATABASE_URL", ""),
         force_mock=os.getenv("RUNWAY_FORCE_MOCK") == "1",
+        live_transfers=os.getenv("LIVE_TRANSFERS") == "1",
     )

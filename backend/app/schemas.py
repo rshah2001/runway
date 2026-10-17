@@ -60,7 +60,7 @@ class PendingAction(BaseModel):
     kind: Literal["transfer", "reschedule_bill"]
     description: str
     amount: float | None = None
-    status: Literal["awaiting_approval", "approved", "declined", "executed"] = "awaiting_approval"
+    status: Literal["awaiting_approval", "approved", "declined", "executed", "failed"] = "awaiting_approval"
 
 
 class ChatRequest(BaseModel):

@@ -51,17 +51,28 @@ class NessieClient:
         return cls(s.nessie_api_key, s.nessie_base_url)
 
     def _request(self, method: str, path: str, json: JSON | None = None) -> Any:
-        """Send a request, retrying transient failures; unwrap `objectCreated` on creates."""
+        """Send a request; unwrap `objectCreated` on creates.
+
+        Reads retry any transient failure. Writes retry only when Nessie certainly did NOT process
+        the request (connection refused, 429) — a timeout or 5xx may have been applied, and
+        retrying a POST without an idempotency key could create a second purchase or transfer.
+        """
+        safe = method == "GET"
         for attempt in range(self._retries + 1):
+            last = attempt == self._retries
             try:
                 r = self._http.request(method, path, json=json)
-            except httpx.TransportError as e:
-                if attempt == self._retries:
+            except httpx.ConnectError as e:  # never reached Nessie: safe to retry anything
+                if last:
+                    raise NessieError(method, path, 0, str(e)) from e
+            except httpx.TransportError as e:  # sent, outcome unknown
+                if last or not safe:
                     raise NessieError(method, path, 0, str(e)) from e
             else:
-                if r.status_code not in RETRY_STATUS:
+                retryable = r.status_code == 429 or (safe and r.status_code in RETRY_STATUS)
+                if not retryable:
                     break
-                if attempt == self._retries:
+                if last:
                     raise NessieError(method, path, r.status_code, r.text)
             time.sleep(0.5 * 2**attempt)
 

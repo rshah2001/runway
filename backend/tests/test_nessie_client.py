@@ -69,3 +69,24 @@ def test_cents_round_trip_is_exact(dollars: float) -> None:
     cents = to_cents(dollars)
     assert isinstance(cents, int)
     assert from_cents(cents) == Decimal(str(dollars)).quantize(Decimal("0.01"))
+
+
+def test_writes_are_not_retried_on_server_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 5xx on a POST may already have been applied — retrying could create a second transfer."""
+    monkeypatch.setattr("app.nessie.client.time.sleep", lambda _: None)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.method)
+        return httpx.Response(503)
+
+    with pytest.raises(NessieError):
+        make_client(handler).create_transfer("sav", 100, date(2026, 10, 17), "Fix it")
+    assert calls == ["POST"]
+
+
+def test_writes_are_retried_when_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
+    """429 means Nessie refused before processing, so a retry cannot double-apply."""
+    monkeypatch.setattr("app.nessie.client.time.sleep", lambda _: None)
+    calls = iter([httpx.Response(429), httpx.Response(201, json={"objectCreated": {"_id": "t1"}})])
+    assert make_client(lambda r: next(calls)).create_transfer("sav", 100, date(2026, 10, 17), "Fix it") == {"_id": "t1"}
