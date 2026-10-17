@@ -412,6 +412,18 @@ def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
 
 
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
+APPROVABLE_KINDS = ("transfer", "p2p_request")
+
+
+def _execute(action_id: str, action: PendingAction) -> None:
+    """Carry out an approved action through the same data function its own route uses."""
+    # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
+    persona = agent.persona_of(action_id)
+    if action.kind == "p2p_request":
+        contact_id, memo = agent.p2p_details(action_id) or ("", "")
+        data.p2p_request(persona, contact_id, action.amount or 0, memo)  # as POST /p2p/requests: nothing moves
+        return
+    data.move_savings_to_checking(action.amount or 0, action.description, persona)
 
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
@@ -424,12 +436,14 @@ def approve(action_id: str, user: OptionalUser) -> PendingAction:
             raise HTTPException(404, "No such pending action")
         if action.status != "awaiting_approval":
             raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
-        if action.kind != "transfer" or not action.amount or action.amount <= 0:
-            raise HTTPException(422, "Only positive transfers can be approved right now")
+        if action.kind not in APPROVABLE_KINDS or not action.amount or action.amount <= 0:
+            raise HTTPException(422, "Only positive transfers and requests can be approved right now")
         action.status = "approved"  # claimed: a concurrent approve now gets 409
     try:
-        # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
-        data.move_savings_to_checking(action.amount, action.description, agent.persona_of(action_id))
+        _execute(action_id, action)
+    except (data.PersonaNotFound, data.ContactNotFound) as e:
+        action.status = "failed"  # the contact or persona is gone: retrying can't help
+        raise HTTPException(404, "Unknown persona or contact") from e
     except data.TransferNotMade as e:
         action.status = "awaiting_approval"  # nothing moved, so a retry is safe
         log.warning("transfer not made: %s", e)
