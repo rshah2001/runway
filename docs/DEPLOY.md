@@ -34,6 +34,16 @@ GitHub push to main ─► CI green ─► rsync to /opt/runway ─► docker co
 4. **Deploy** — `gh workflow run CI/CD` (or push to `main`). Then open `http://<SERVER_IP>` (web app)
    and `http://<SERVER_IP>/api/docs` (live API docs).
 
+## What runs on the server automatically
+
+| What | When | Where to look |
+|---|---|---|
+| **Background sync** Nessie → Tiger Data | every 5 min (`SYNC_INTERVAL_SECONDS`, `0` = off) | `"sync"` in `/api/health` |
+| **Nightly reseed** of Maya / Jordan / Sam | 09:00 UTC (5 am Eastern), installed by every deploy | `/opt/runway/reseed.log` |
+| Continuous-aggregate refresh + compression | Tiger Data policies (15 min / 12 h) | Tiger Cloud console → Jobs |
+
+Reseed by hand: `ssh root@<SERVER_IP> 'cd /opt/runway/deploy && docker compose --env-file ../.env exec -T api python -m seed --reset maya'`
+
 ## Server secrets
 
 Secrets live only in `/opt/runway/.env` on the server — never in git or in GitHub variables:

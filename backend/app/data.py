@@ -174,4 +174,7 @@ def health() -> dict:
             status["database"] = "ok"
         except Exception as e:
             status["database"] = f"error: {type(e).__name__}"
+        from app.sync_loop import STATUS as sync_status  # imported here to keep demo mode lean
+
+        status["sync"] = dict(sync_status)
     return status
