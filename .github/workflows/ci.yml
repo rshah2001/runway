@@ -106,7 +106,15 @@ jobs:
         env:
           AUTH0_CIBA_CLIENT_SECRET: ${{ secrets.AUTH0_CIBA_CLIENT_SECRET }}  # masked in logs
         run: |
-          ssh "deploy@$HOST" "cd /opt/runway/deploy && AUTH0_PERSONAS='$AUTH0_PERSONAS' LIVE_TRANSFERS='$LIVE_TRANSFERS' AUTH0_DOMAIN='$AUTH0_DOMAIN' AUTH0_AUDIENCE='$AUTH0_AUDIENCE' AUTH0_CIBA_CLIENT_ID='$AUTH0_CIBA_CLIENT_ID' AUTH0_CIBA_CLIENT_SECRET='$AUTH0_CIBA_CLIENT_SECRET' AUTH0_CIBA_USERS='$AUTH0_CIBA_USERS' docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f"
+          # the CIBA secret goes over ssh stdin into the server's private .env (mode 600) — never into
+          # a command line, where the server's process list could show it
+          if [ -n "$AUTH0_CIBA_CLIENT_SECRET" ]; then
+            printf 'AUTH0_CIBA_CLIENT_SECRET=%s\n' "$AUTH0_CIBA_CLIENT_SECRET" | ssh "deploy@$HOST" \
+              'set -e; umask 077; f=/opt/runway/.env; test -r "$f"; { grep -v "^AUTH0_CIBA_CLIENT_SECRET=" "$f" || [ $? -eq 1 ]; cat; } > "$f.new"; test "$(wc -l < "$f.new")" -gt 1; mv "$f.new" "$f"'
+            # set -e + the checks: an unreadable .env, a grep error, or a result holding only the secret
+            # stops here, so the server's other settings can never be overwritten
+          fi
+          ssh "deploy@$HOST" "cd /opt/runway/deploy && AUTH0_PERSONAS='$AUTH0_PERSONAS' LIVE_TRANSFERS='$LIVE_TRANSFERS' AUTH0_DOMAIN='$AUTH0_DOMAIN' AUTH0_AUDIENCE='$AUTH0_AUDIENCE' AUTH0_CIBA_CLIENT_ID='$AUTH0_CIBA_CLIENT_ID' AUTH0_CIBA_USERS='$AUTH0_CIBA_USERS' docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f"
       - name: Schedule nightly reseed
         # rebuild the demo personas at 09:00 UTC (5 am Eastern) so the history always ends "yesterday";
         # runs inside the API container, where the keys already are — no secrets in GitHub
