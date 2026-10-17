@@ -47,7 +47,7 @@ const describe = (es: ForecastEvent[]) => es.map((e) => `${e.label} ${e.amount >
 
 export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; takeoff: number }) {
   const store = useStore();
-  const me = useLoad(() => api.me());
+  const me = useLoad(() => api.me(), String(store.prefsVersion));
   const family = useLoad(() => api.safetyNet());
   const [spend, setSpend] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);

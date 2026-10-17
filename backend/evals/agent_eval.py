@@ -1,9 +1,10 @@
 """Agent eval: does the agent pick the right tool, give the right answer, and quote only real numbers?
 
-42 questions across the three seeded personas, with ground truth from the deterministic tools:
+48 questions across the three seeded personas, with ground truth from the deterministic tools:
 30 "can I afford $X on day Y?" (10 per persona, in five phrasings; 15 safe and 15 not), plus fix-it,
-subscription and forecast questions. Each question is asked as its persona, so Gemini answers in that
-persona's voice (Maya genz, Jordan direct, Sam classic). Three metrics per question:
+subscription, forecast and peer-to-peer (who owes me, split / request, unknown contact) questions.
+Each question is asked as its persona, so Gemini answers in that persona's voice (Maya genz, Jordan
+direct, Sam classic). Three metrics per question:
   * tool    — the expected tool was called
   * answer  — the verdict / proposed amount / key figure is right
   * grounded — every $ figure in the reply came from a tool output or from the user's message
@@ -97,6 +98,22 @@ def _quotes(figure: str) -> Callable[[ChatResponse], bool]:
     return lambda r: figure in r.reply
 
 
+def _request_case(persona: str, message: str, **ask: Any) -> Case:
+    """A P2P request. The right answer is a pending p2p_request for exactly the share the tool computes,
+    or, for a contact the persona doesn't have, no pending action at all."""
+    truth = tools.request_money(**ask, persona=persona, today=TODAY)
+    if "action_id" not in truth:
+        return Case(persona, message, "request_money", lambda r: r.pending_action is None, truth)
+    tools.discard(truth["action_id"])  # ground truth only: never leave a real pending action behind
+    expected = float(truth["request"].strip("$").replace(",", ""))
+
+    def check(r: ChatResponse) -> bool:
+        a = r.pending_action
+        return bool(a and a.kind == "p2p_request" and a.amount == expected and truth["request"] in r.reply)
+
+    return Case(persona, message, "request_money", check, truth)
+
+
 def build_cases() -> list[Case]:
     cases = [
         _affordability_case(persona, i, amount, when)
@@ -126,6 +143,16 @@ def build_cases() -> list[Case]:
     ]:
         forecast = tools.get_forecast(persona=persona, today=TODAY)
         cases.append(Case(persona, msg, "get_forecast", _quotes(forecast["lowest_balance"]), forecast))
+    for persona, msg in [("maya", "Who owes me money?"), ("jordan", "Did anyone pay me back yet?")]:
+        owed = tools.who_owes_me(persona=persona, today=TODAY)
+        cases.append(Case(persona, msg, "who_owes_me", _quotes(owed["total_owed_to_you"]), owed))
+    cases += [
+        _request_case("maya", "Split dinner $60 with Alex", contact="Alex", total=60, people=2),
+        _request_case("sam", "Ask Alex for $45 for concert tickets", contact="Alex", amount=45),
+        # grounding: $33.33 is in no message, so the reply may only quote it from the tool's output
+        _request_case("maya", "split the $100 cab with Alex and Priya", contact="Alex", total=100, people=3),
+        _request_case("jordan", "ask Bob for $20", contact="Bob", amount=20),  # no such contact
+    ]
     return cases
 
 

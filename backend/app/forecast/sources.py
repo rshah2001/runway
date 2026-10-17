@@ -53,6 +53,7 @@ class PersonaData:
     savings: float
     bills: list[UpcomingBill]
     history: list[Txn] = field(default_factory=list)  # oldest first
+    safe_floor: float = 300.0  # what this person keeps in checking (app/prefs.py)
 
 
 def local_today() -> date:
@@ -94,6 +95,7 @@ def load(persona: str, today: date | None = None, *, strict: bool = False) -> Pe
 
 
 def _load_live(persona: str, today: date) -> PersonaData:
+    from app import prefs
     from app.db import pool, repo  # imported lazily: offline runs never need a database driver
 
     since = datetime.combine(today - timedelta(days=HISTORY_DAYS), datetime.min.time(), LOCAL_TZ)
@@ -109,6 +111,7 @@ def _load_live(persona: str, today: date) -> PersonaData:
             if b["account_type"] == "Checking" and b["recurring_day"]
         ]
         rows = repo.transactions(conn, p["customer_id"], since, until)
+        floor = prefs.floor(persona, conn, strict=True)  # a failed read is handled by load(), like the rest
     history = [
         Txn(
             date=r["ts"].astimezone(LOCAL_TZ).date(),
@@ -121,7 +124,7 @@ def _load_live(persona: str, today: date) -> PersonaData:
         for r in rows
         if r["status"] == "completed"
     ]
-    return PersonaData(persona, balances.get("Checking", 0.0), balances.get("Savings", 0.0), bills, history)
+    return PersonaData(persona, balances.get("Checking", 0.0), balances.get("Savings", 0.0), bills, history, floor)
 
 
 # ---------- offline: the seed generator ----------
@@ -141,7 +144,10 @@ def _load_demo(persona: str, today: date) -> PersonaData:
     plan = build_plan(spec, today)
     # the seed tunes some personas' opening balance to tell the same demo story on any day; match it
     checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
-    return demo_data(spec, plan, checking)
+    from app import prefs
+
+    # the seed tunes against the default cushion; the person's own amount applies to what they see
+    return replace(demo_data(spec, plan, checking), safe_floor=prefs.floor(persona))
 
 
 def demo_data(spec: PersonaSpec, plan: list, checking: float) -> PersonaData:

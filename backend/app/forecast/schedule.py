@@ -152,4 +152,5 @@ def build(data: PersonaData, today: date, fit=fit_flat) -> Schedule:
         spend=spend,
         readiness=ready,
         daily_spend=daily_totals(outflows, start, end),
+        safe_floor=data.safe_floor,  # what this person keeps (app/prefs.py)
     )

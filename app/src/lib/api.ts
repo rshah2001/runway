@@ -9,6 +9,7 @@ import type {
   SafetyDecision,
   SafetyLimit,
   SafetyNetSummary,
+  DemoStatus,
   PendingAction,
   Persona,
   Recurring,
@@ -34,6 +35,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   personas: () => request<Persona[]>('/personas'),
+  // what you keep in checking: every "am I okay?" is measured against it (only for yourself)
+  setSafeFloor: (amount: number, persona = currentPersona()) =>
+    request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
   forecast: (days = 30, persona = currentPersona()) => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
   simulate: (amount: number, date: string, label = 'Purchase', persona = currentPersona()) =>
@@ -57,6 +61,11 @@ export const api = {
     request<SafetyDecision[]>(`/safety-net/run${persona ? `?persona=${persona}` : ''}`, { method: 'POST' }),
   approveBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/approve`, { method: 'POST' }),
   declineBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/decline`, { method: 'POST' }),
+  // the borrower pays a bridge back early (409 with a plain reason if it isn't safe or isn't out)
+  repayBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/repay`, { method: 'POST' }),
+  // demo controls: signed-in demo accounts only (Maya, Jordan, Sam)
+  demoReset: () => request<DemoStatus>('/demo/reset', { method: 'POST' }),
+  demoStatus: () => request<DemoStatus>('/demo/status'),
   // the agent answers with this persona's numbers, in the voice for their age
   chat: (message: string, persona = currentPersona()) =>
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),

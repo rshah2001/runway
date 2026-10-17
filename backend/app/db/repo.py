@@ -221,3 +221,22 @@ def finish_request(conn: psycopg.Connection, request_id: str, status: str, payme
            RETURNING *, (SELECT first_name FROM contacts WHERE id = contact_id) AS contact_name""",
         (status, payment_id, status, request_id),
     ).fetchone()
+
+
+# ---------- money preferences ----------
+def safe_floor(conn: psycopg.Connection, slug: str) -> float | None:
+    """The amount this person keeps in checking, or None if they never set one."""
+    row = conn.execute("SELECT safe_floor FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
+    return float(row["safe_floor"]) if row else None
+
+
+def set_safe_floor(conn: psycopg.Connection, slug: str, amount: float) -> None:
+    conn.execute(
+        """INSERT INTO money_preferences (slug, safe_floor) VALUES (%s, %s)
+           ON CONFLICT (slug) DO UPDATE SET safe_floor = EXCLUDED.safe_floor, updated_at = now()""",
+        (slug, amount),
+    )
+
+
+def clear_safe_floors(conn: psycopg.Connection, slugs: list[str]) -> None:
+    conn.execute("DELETE FROM money_preferences WHERE slug = ANY(%s)", (slugs,))

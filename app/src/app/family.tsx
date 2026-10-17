@@ -3,6 +3,8 @@
 // who owes you, and what happened lately. Every number comes from GET /safety-net and GET /p2p;
 // this screen only picks the words. Only the lender can change their own limit; a request sent to the
 // lender's phone (Auth0 push) can only be approved there.
+// Also here: asking the family for help before a dip, paying a bridge back early, settling and sending
+// money between friends, and — for the three demo accounts — resetting the demo.
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -13,8 +15,10 @@ import { LoadState, Page, PressableScale } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
+import { useStore } from '@/lib/store';
 import { money, monthDay, plain, weekdayDate } from '@/lib/format';
-import type { Bridge, SafetyEvent, SafetyLimit } from '@/lib/types';
+import type { Bridge, P2PSummary, SafetyEvent, SafetyLimit, SafetyNetSummary } from '@/lib/types';
 
 /** The backend accepts $0–$1,000; steps of $50 keep the stepper to a few taps. */
 const LIMIT_STEP = 50;
@@ -26,7 +30,8 @@ const OPEN: Bridge['status'][] = ['funding', 'active', 'repaying', 'repay_failed
 export default function FamilyScreen() {
   const sn = useLoad(() => api.safetyNet());
   const p2p = useLoad(() => api.p2p());
-  const reload = () => { sn.reload(); p2p.reload(); };
+  const fc = useLoad(() => api.forecast(30), String(useStore().prefsVersion));
+  const reload = () => { sn.reload(); p2p.reload(); fc.reload(); };
 
   const d = sn.data;
   const lender = !!d?.limits_i_set.length;
@@ -38,6 +43,8 @@ export default function FamilyScreen() {
         : 'People who agreed to cover you until payday. Nobody has to ask.'} />
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sn.error} onRetry={reload} /></View> : (
         <>
+          <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />
+
           {d.approvals_waiting.length > 0 && (
             <>
               <SectionLabel>Needs your answer</SectionLabel>
@@ -58,7 +65,9 @@ export default function FamilyScreen() {
                         : asked ? `Asked for ${money(asked.amount, 0)} · waiting for ${l.lender_name}`
                         : out ? `${money(out.amount, 0)} with you now · goes back ${weekdayDate(out.due_date)}`
                         : `Up to ${money(l.limit, 0)}`}
-                      right={<Amount>{money(l.remaining, 0)} left</Amount>} />
+                      right={out && (out.status === 'active' || out.status === 'repay_failed')
+                        ? <PayBack b={out} onDone={reload} />
+                        : <Amount>{money(l.remaining, 0)} left</Amount>} />
                   );
                 })}
               </List>
@@ -78,7 +87,8 @@ export default function FamilyScreen() {
             </>
           )}
 
-          <OwesYou p2p={p2p.data} onAsked={p2p.reload} />
+          <OwesYou p2p={p2p.data} onAsked={reload} />
+          <SendMoney p2p={p2p.data} onSent={reload} />
 
           {d.events.length > 0 && (
             <>
@@ -90,7 +100,190 @@ export default function FamilyScreen() {
           )}
         </>
       )}
+      <DemoReset onDone={reload} />
     </Page>
+  );
+}
+
+/** The server's own words for a refused money action (a 409 says why), or a plain fallback. */
+function reason(e: unknown, fallback = 'That didn’t go through. Please try again.'): string {
+  const m = e instanceof Error ? e.message : '';
+  return m.match(/"detail":"([^"]+)"/)?.[1] ?? fallback;
+}
+
+/** A pill button that asks once ("Pay $100?") before it acts. Feedback on press-down via PressableScale. */
+function TwoTap({ label, confirm, onPress, light = true }: { label: string; confirm: string; onPress: () => Promise<void>; light?: boolean }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function tap() {
+    if (!armed) return setArmed(true);
+    setBusy(true);
+    try {
+      await onPress();
+    } finally {
+      setBusy(false);
+      setArmed(false);
+    }
+  }
+  return (
+    <View style={s.owe}>
+      {armed && !busy && (
+        <PressableScale onPress={() => setArmed(false)} accessibilityRole="button" style={[s.askBtn, s.ghostBtn]}>
+          <Text style={[s.askBtnText, { color: C.text2 }]}>Cancel</Text>
+        </PressableScale>
+      )}
+      <PressableScale onPress={tap} disabled={busy} accessibilityRole="button" style={[s.askBtn, !light && s.ghostBtn, busy && { opacity: 0.7 }]}>
+        <Text style={[s.askBtnText, !light && { color: C.text }]}>{busy ? '…' : armed ? confirm : label}</Text>
+      </PressableScale>
+    </View>
+  );
+}
+
+/**
+ * Before a dip, with nobody covering it yet: one tap asks the family. Under a lender's limit it's
+ * covered at once; over it, the lender is asked (on their phone, with Auth0 push) and it shows here.
+ */
+function HelpCard({ d, floor, onDone }: { d: SafetyNetSummary; floor?: number; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const low = d.projected_low;
+  const inFlight = d.borrowed.some((b) => OPEN.includes(b.status) || b.status === 'pending_approval');
+  const canHelp = d.limits_for_me.some((l) => l.enabled && l.remaining > 0);
+  if (!low || floor === undefined || low.balance >= floor || inFlight || !canHelp) return null;
+  async function ask() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const [decision] = await api.runSafetyNet();
+      onDone();
+      if (decision && !decision.executed) setNote(decision.reason);
+    } catch (e) {
+      setNote(reason(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <View style={[s.ask, { borderColor: `${C.red}55`, marginTop: 8 }]}>
+      <Text style={s.askTitle}>You dip to {money(low.balance, 0)} on {weekdayDate(low.date)}</Text>
+      <Text style={s.askBody}>That’s before payday, under the {money(floor, 0)} you keep. Your family agreed to cover gaps like this.</Text>
+      {note && <Text style={[s.askBody, { color: C.amber }]}>{plain(note)}</Text>}
+      <View style={s.askBtns}>
+        <PressableScale onPress={ask} disabled={busy} accessibilityRole="button" style={[s.btn, s.yes, busy && { opacity: 0.7 }]}>
+          <Text style={[s.btnText, { color: '#111' }]}>{busy ? 'Asking…' : 'Ask family to cover it'}</Text>
+        </PressableScale>
+      </View>
+    </View>
+  );
+}
+
+/** Pay a bridge back before payday — refused (with the reason) if it would take you under what you keep. */
+function PayBack({ b, onDone }: { b: Bridge; onDone: () => void }) {
+  const [note, setNote] = useState<string | null>(null);
+  return (
+    <View style={{ alignItems: 'flex-end', gap: 4, maxWidth: 220 }}>
+      <TwoTap label="Pay back" confirm={`Pay ${money(b.amount, 0)}?`} onPress={async () => {
+        setNote(null);
+        try {
+          await api.repayBridge(b.id);
+          onDone();
+        } catch (e) {
+          setNote(reason(e));
+        }
+      }} />
+      {note && <Text style={[s.fineText, { textAlign: 'right' }]}>{plain(note)}</Text>}
+    </View>
+  );
+}
+
+const SEND_AMOUNTS = [10, 20, 50];
+
+/** Send a friend money: pick who, pick how much, confirm. A real Nessie move (transfer + deposit). */
+function SendMoney({ p2p, onSent }: { p2p: P2PSummary | null; onSent: () => void }) {
+  const [to, setTo] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const contacts = p2p?.contacts ?? [];
+  if (!contacts.length) return null;
+  const who = contacts.find((c) => c.id === to);
+  return (
+    <>
+      <SectionLabel>Send money</SectionLabel>
+      <View style={[s.ask, { borderColor: '#2f363c' }]}>
+        <View style={s.chips}>
+          {contacts.map((c) => (
+            <Pick key={c.id} on={to === c.id} label={c.name} onPress={() => { setTo(c.id); setNote(null); }} />
+          ))}
+        </View>
+        <View style={[s.chips, { marginTop: 10 }]}>
+          {SEND_AMOUNTS.map((n) => (
+            <Pick key={n} on={amount === n} label={money(n, 0)} onPress={() => { setAmount(n); setNote(null); }} />
+          ))}
+        </View>
+        {note && <Text style={s.askBody}>{note}</Text>}
+        {who && amount ? (
+          <View style={[s.askBtns, { justifyContent: 'flex-start' }]}>
+            <TwoTap label={`Send ${who.name} ${money(amount, 0)}`} confirm="Tap again to send" onPress={async () => {
+              try {
+                await api.p2pSend(who.id, amount, 'Sent with Runway');
+                setNote(`Sent ${money(amount, 0)} to ${who.name}.`);
+                setAmount(null);
+                onSent();
+              } catch (e) {
+                setNote(reason(e));
+              }
+            }} />
+          </View>
+        ) : (
+          <Text style={s.fineText}>Pick a person and an amount.</Text>
+        )}
+      </View>
+    </>
+  );
+}
+
+function Pick({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
+  return (
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} style={[s.pick, on && s.pickOn]}>
+      <Text style={[s.askBtnText, { color: on ? '#111' : C.text }]}>{label}</Text>
+    </PressableScale>
+  );
+}
+
+const DEMO = ['maya', 'jordan', 'sam'];
+
+/** Demo accounts only: rebuild Maya, Jordan and Sam, and pause automatic help until it's shown live. */
+function DemoReset({ onDone }: { onDone: () => void }) {
+  const session = useSession();
+  const [state, setState] = useState<string | null>(null);
+  if (session.mode !== 'signed-in' || !DEMO.includes(session.persona)) return null;
+  async function reset() {
+    setState('Rebuilding Maya, Jordan and Sam… about a minute.');
+    try {
+      await api.demoReset();
+      for (let i = 0; i < 90; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const st = await api.demoStatus();
+        if (st.state === 'done') {
+          setState('The demo is fresh. Automatic help waits until someone taps “Ask family to cover it”.');
+          onDone();
+          return;
+        }
+        if (st.state === 'failed') {
+          setState(`The reset didn’t finish (${st.error ?? 'error'}). Try again.`);
+          return;
+        }
+      }
+      setState('Still rebuilding. Refresh in a minute.');
+    } catch (e) {
+      setState(reason(e, 'Couldn’t start the reset.'));
+    }
+  }
+  return (
+    <View style={{ alignItems: 'center', marginTop: 28, gap: 8 }}>
+      <TwoTap label="Reset demo" confirm="Reset all three demo accounts?" light={false} onPress={reset} />
+      {state && <Text style={[s.fineText, { textAlign: 'center' }]}>{state}</Text>}
+    </View>
   );
 }
 
@@ -204,12 +397,18 @@ function OwesYou({ p2p, onAsked }: { p2p: Awaited<ReturnType<typeof api.p2p>> | 
               right={
                 <View style={s.owe}>
                   <Amount tone="green">{money(c.owes_you, 0)}</Amount>
-                  {!open && (
+                  {!open ? (
                     <PressableScale onPress={() => ask(c.id, c.owes_you)} disabled={sending === c.id} accessibilityRole="button"
                       accessibilityLabel={`Ask ${c.name} for ${money(c.owes_you, 0)}`} style={s.askBtn}>
                       <Text style={s.askBtnText}>{sending === c.id ? '…' : 'Ask'}</Text>
                     </PressableScale>
-                  )}
+                  ) : open.status === 'open' ? (
+                    // the friend pays it: a real Nessie move from their account to yours
+                    <TwoTap label="Mark paid" confirm="They paid?" onPress={async () => {
+                      await api.p2pSettle(open.id);
+                      onAsked();
+                    }} />
+                  ) : null}
                 </View>
               } />
           );
@@ -251,4 +450,9 @@ const s = StyleSheet.create({
   owe: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   askBtn: { height: 32, paddingHorizontal: 14, borderRadius: 999, backgroundColor: '#fff', justifyContent: 'center' },
   askBtnText: { fontFamily: F.bodySemi, fontSize: 13, color: '#111' },
+  ghostBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#2f363c' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pick: { height: 36, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
+  pickOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  fineText: { fontFamily: F.body, fontSize: 13, lineHeight: 18, color: C.text2, marginTop: 8 },
 });

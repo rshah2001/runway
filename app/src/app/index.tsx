@@ -34,8 +34,9 @@ export default function TodayScreen() {
   // the interactive Today is the default; ?v=classic keeps the old rings screen, ?v=b / ?v=compare the runway option
   const v = param ?? 'a';
   const store = useStore();
-  const forecast = useLoad(() => api.forecast(30));
-  const me = useLoad(() => api.me());
+  const prefs = useStore().prefsVersion; // what you keep changed: re-fetch
+  const forecast = useLoad(() => api.forecast(30), String(prefs));
+  const me = useLoad(() => api.me(), String(prefs));
 
   // What the screen shows lags the store until Today is on screen, so an approval made on Ask
   // plays its takeoff here instead of finishing invisibly in the background.
