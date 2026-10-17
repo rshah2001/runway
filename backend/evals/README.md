@@ -12,10 +12,19 @@ python -m evals.forecast_backtest
 
 ## Agent eval
 
-42 questions across the three personas, ground truth from the deterministic tools: 30 "can I afford
-$X on day Y?" (10 per persona, five phrasings, 15 safe and 15 not), 6 "fix it", 3 subscription and
-3 forecast questions. Each question is asked as its persona, so Gemini answers in that persona's
-voice: Maya (20) genz, Jordan (40) direct, Sam (60) classic.
+48 questions across the three personas, ground truth from the deterministic tools: 30 "can I afford
+$X on day Y?" (10 per persona, five phrasings, 15 safe and 15 not), 6 "fix it", 3 subscription,
+3 forecast and 6 peer-to-peer questions. Each question is asked as its persona, so Gemini answers in
+that persona's voice: Maya (20) genz, Jordan (40) direct, Sam (60) classic.
+
+The peer-to-peer cases (`who_owes_me` and `request_money`):
+
+- "Who owes me money?" and "Did anyone pay me back yet?": the reply quotes the total owed, summed by the tool.
+- "Split dinner $60 with Alex" ($30.00) and "Ask Alex for $45 for concert tickets" ($45.00): a pending
+  `p2p_request` for exactly that amount, quoted in the reply.
+- "split the $100 cab with Alex and Priya": the grounding case. $33.33 is in no message, so the reply
+  can only quote it from the tool's output.
+- "ask Bob for $20": no such contact, so the right answer creates no pending action and asks which contact.
 
 - **Tool selection:** the expected tool was called.
 - **Answer accuracy:** the verdict, the proposed transfer amount (or no proposal when nothing needs
@@ -29,9 +38,10 @@ voice: Maya (20) genz, Jordan (40) direct, Sam (60) classic.
 | Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
 | Gemini — Sam (classic voice) | 13 | 100% | 92% | 100% | 0 |
 | **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **95%** | **100%** | 0 |
-| Rule-based router (offline baseline) | 42 | 100% | 100% | 100% | — |
+| Rule-based router (offline baseline) | 48 | 100% | 100% | 100% | — |
 
-Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
+The Gemini rows are from the 42 questions before the peer-to-peer cases were added; they haven't
+been rerun on those 6 yet. Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
 result), with runtime grounding enforced. Both misses were "can I afford it?" questions whose right
 answer was no. Sam's reply was a correct no worded "I would advise against purchasing…", which the
 grader didn't know; "advise against" is now a grader test. Jordan's question passed when rerun, so
