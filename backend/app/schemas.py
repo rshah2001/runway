@@ -25,7 +25,9 @@ class Me(BaseModel):
 
 class ForecastPoint(BaseModel):
     date: date
-    balance: float
+    balance: float  # expected end-of-day balance
+    balance_low: float | None = None  # p10: the cautious end, if everyday spending runs high
+    balance_high: float | None = None  # p90
 
 
 class ForecastEvent(BaseModel):
@@ -53,6 +55,7 @@ class Forecast(BaseModel):
     safe_floor: float
     events: list[ForecastEvent]
     readiness: Readiness | None = None  # None only for hand-built schedules (tests)
+    cautious_low: ForecastPoint | None = None  # the day with the lowest p10 balance: what to plan around
 
 
 class SimulateRequest(BaseModel):

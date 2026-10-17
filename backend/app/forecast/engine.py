@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 from typing import Literal
 
-from app.forecast import sources
+from app.forecast import band, sources
 from app.forecast.recurring import detect_recurring, next_after
 from app.forecast.schedule import Schedule, build
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Readiness, Recurring
@@ -143,9 +143,29 @@ def forecast(
     end = start + timedelta(days=days)
     hypothetical = [e for e in extra or [] if start <= e.date <= end]
     events = sorted(build_events(schedule, start, end) + hypothetical, key=lambda e: (e.date, -e.amount))
-    points = project(schedule.start_balance, events, start, days)
+    points = with_range(project(schedule.start_balance, events, start, days), schedule)
     low = min(points, key=lambda p: p.balance)  # earliest of equal lows: that's when you'd need to act
-    return Forecast(points=points, low=low, safe_floor=schedule.safe_floor, events=events, readiness=schedule.readiness)
+    cautious = min(points, key=lambda p: p.balance_low if p.balance_low is not None else p.balance)
+    return Forecast(
+        points=points,
+        low=low,
+        safe_floor=schedule.safe_floor,
+        events=events,
+        readiness=schedule.readiness,
+        cautious_low=cautious if schedule.daily_spend else None,
+    )
+
+
+def with_range(points: list[ForecastPoint], schedule: Schedule) -> list[ForecastPoint]:
+    """Each point with its p10–p90 balance from how much this person's everyday spending varies.
+    Point i has i + 1 days of spending in it (today's included), so it takes the spread for i + 1 days."""
+    if not schedule.daily_spend:
+        return points
+    spreads = band.spread(schedule.daily_spend, len(points))
+    return [
+        p.model_copy(update={"balance_low": round(p.balance - down, 2), "balance_high": round(p.balance + up, 2)})
+        for p, (down, up) in zip(points, spreads, strict=True)
+    ]
 
 
 def simulate_purchase(

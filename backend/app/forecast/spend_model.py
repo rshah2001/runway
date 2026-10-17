@@ -32,6 +32,15 @@ def _day_counts(start: date, end: date) -> list[int]:
     return counts
 
 
+def daily_totals(outflows: Outflows, start: date, end: date) -> tuple[float, ...]:
+    """Spending on each day of [start, end), zeros included: the raw material for the forecast's range."""
+    totals = [0.0] * max(0, (end - start).days)
+    for d, amount in outflows:
+        if start <= d < end:
+            totals[(d - start).days] += amount
+    return tuple(round(t, 2) for t in totals)
+
+
 def fit_weekday(outflows: Outflows, start: date, end: date) -> SpendProfile:
     """Mean spend for each weekday over [start, end) — catches habits like weekend shopping."""
     totals, counts = [0.0] * 7, _day_counts(start, end)

@@ -15,7 +15,7 @@ from typing import Literal
 from app.forecast import readiness
 from app.forecast.recurring import detect_recurring
 from app.forecast.sources import PersonaData, Txn
-from app.forecast.spend_model import Outflows, SpendProfile, fit_flat
+from app.forecast.spend_model import Outflows, SpendProfile, daily_totals, fit_flat
 from app.schemas import Readiness
 
 EventKind = Literal["paycheck", "bill", "subscription", "card_payment", "spending", "transfer", "other"]
@@ -53,6 +53,7 @@ class Schedule:
     regular: list[RegularFlow] = field(default_factory=list)
     spend: SpendProfile = SpendProfile((0.0,) * 7)
     readiness: Readiness | None = None  # how sure a forecast from this schedule is
+    daily_spend: tuple[float, ...] = ()  # each day's everyday spending in the learning window: the range
 
 
 def _checking_flow(t: Txn) -> bool:
@@ -102,11 +103,19 @@ def build(data: PersonaData, today: date, fit=fit_flat) -> Schedule:
     """A persona's schedule as of `today`, learned from the history before it."""
     regular = regular_flows(data.history, today)
     start, end = spend_window(data, today)
-    spend = fit(everyday_outflows(data.history, regular), start, end)
+    outflows = everyday_outflows(data.history, regular)
+    spend = fit(outflows, start, end)
     monthly = [
         MonthlyCharge(b.day, b.amount, b.label, "card_payment" if "credit card" in b.label.lower() else "bill")
         for b in data.bills
     ]
     paycheck = next(((f.label, f.amount, f.interval_days) for f in regular if f.kind == "paycheck"), None)
     ready = readiness.assess(data, today, spend_days=(end - start).days, paycheck=paycheck)
-    return Schedule(start_balance=data.checking, monthly=monthly, regular=regular, spend=spend, readiness=ready)
+    return Schedule(
+        start_balance=data.checking,
+        monthly=monthly,
+        regular=regular,
+        spend=spend,
+        readiness=ready,
+        daily_spend=daily_totals(outflows, start, end),
+    )
