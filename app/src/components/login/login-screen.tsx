@@ -2,12 +2,10 @@
  * The way in: sign in with Auth0 — the only way in, so every view of money belongs to its owner.
  *
  * One centred column above a hairline runway that runs off to the horizon (see airfield.tsx).
- * Motion happens once, on open: the horizon spreads, the runway draws toward it, the words settle,
- * the button arrives last. Nothing moves afterwards. With reduced motion everything starts in place.
+ * No motion beyond the button's press feedback.
  */
-import { type PropsWithChildren, useEffect, useState } from 'react';
-import { type StyleProp, StyleSheet, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import { useState } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -17,9 +15,6 @@ import { PressableScale, T, useWide } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { enterSignedIn, NotLinked, signIn } from '@/lib/account';
 import { isAuthConfigured } from '@/lib/auth';
-
-// the opening sequence, in ms from mount (the airfield keeps its own timings)
-const OPEN = { brand: 0, words: 350, button: 900 };
 
 export function LoginScreen() {
   const wide = useWide();
@@ -50,21 +45,21 @@ export function LoginScreen() {
     <View style={s.root}>
       <Backdrop />
       <View style={[s.column, { paddingTop: insets.top + 24, paddingHorizontal: wide ? 32 : 20 }]}>
-        <Settle delay={OPEN.brand} style={s.brand}>
+        <View style={s.brand}>
           <Swoosh size={22} />
           <Text style={s.wordmark}>Runway</Text>
-        </Settle>
+        </View>
 
-        <Settle delay={OPEN.words} style={s.words}>
+        <View style={s.words}>
           <Text style={[s.headline, wide && s.headlineWide]} accessibilityRole="header">
             See the day you’d run short, before it happens.
           </Text>
           <T tone="dim" style={[s.lede, wide && s.ledeWide]}>
             Runway forecasts your checking balance day by day and covers a dip before an overdraft fee lands.
           </T>
-        </Settle>
+        </View>
 
-        <Settle delay={OPEN.button} style={s.action}>
+        <View style={s.action}>
           {isAuthConfigured ? (
             <>
               <PressableScale onPress={onSignIn} disabled={busy} accessibilityRole="button" style={[s.button, !wide && s.buttonPhone, busy && { opacity: 0.6 }]}>
@@ -80,23 +75,11 @@ export function LoginScreen() {
               {error}
             </T>
           )}
-        </Settle>
+        </View>
       </View>
       <Airfield height={fieldHeight} />
     </View>
   );
-}
-
-/** Children that settle in once: a short fade and a 6px rise. */
-function Settle({ delay, children, style }: PropsWithChildren<{ delay: number; style?: StyleProp<ViewStyle> }>) {
-  const reduced = useReducedMotion();
-  const p = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => {
-    if (reduced) p.set(1);
-    else p.set(withDelay(delay, withTiming(1, { duration: 480, easing: Easing.bezier(0.23, 1, 0.32, 1) })));
-  }, [reduced, delay, p]);
-  const anim = useAnimatedStyle(() => ({ opacity: p.get(), transform: [{ translateY: (1 - p.get()) * 6 }] }));
-  return <Animated.View style={[style, anim]}>{children}</Animated.View>;
 }
 
 /** Night sky over the field: lighter at the top, darkest at the horizon. */
