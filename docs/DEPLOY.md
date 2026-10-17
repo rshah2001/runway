@@ -91,8 +91,8 @@ EXPO_PUBLIC_API_URL=https://sixsevenbucksleft.vip/api
    - Refresh Token Rotation: on
 2. **APIs → Runway API**: *Allow Offline Access* on; **Application Access**: allow the Runway app for users.
 3. **User Management → Users**: create Maya / Jordan / Sam demo logins; note each user id (`auth0|…`).
-4. **Server** (`/opt/runway/.env`): `AUTH0_PERSONAS=maya=auth0|…,jordan=auth0|…,sam=auth0|…`
-   (`AUTH0_DOMAIN` / `AUTH0_AUDIENCE` are already set).
+4. **GitHub repo variable** `AUTH0_PERSONAS=maya=auth0|…,jordan=auth0|…,sam=auth0|…` — the deploy
+   passes it to the API (done; or put the same line in `/opt/runway/.env`).
 5. **GitHub repo variables** (public identifiers): `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE` —
    the web build reads them as `EXPO_PUBLIC_AUTH0_*`.
 6. Sign in on the site as Maya and check `/api/me` returns Maya. **Only then** set `LIVE_TRANSFERS=1`
