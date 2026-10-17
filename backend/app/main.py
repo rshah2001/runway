@@ -28,6 +28,10 @@ from app.schemas import (
     ChatResponse,
     Forecast,
     Me,
+    P2PPayment,
+    P2PRequest,
+    P2PSend,
+    P2PSummary,
     PendingAction,
     Persona,
     Recurring,
@@ -95,6 +99,54 @@ def spending(
         return data.spending(month, persona)
     except data.PersonaNotFound:
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
+
+
+# ---------- peer-to-peer ----------
+# Real Nessie writes need LIVE_TRANSFERS=1 (off until these routes check the Auth0 user); while off,
+# writes return realistic results without persisting, so the app's P2P screens work end to end.
+P2P_FAILED = "The payment may be incomplete — we're checking with the bank"
+
+
+@app.get("/p2p", response_model=P2PSummary)
+def p2p(persona: str = PERSONA) -> P2PSummary:
+    try:
+        return data.p2p_summary(persona)
+    except data.PersonaNotFound:
+        raise HTTPException(404, f"Unknown persona '{persona}'") from None
+
+
+@app.post("/p2p/send", response_model=P2PPayment)
+def p2p_send(req: P2PSend) -> P2PPayment:
+    try:
+        return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo)
+    except (data.PersonaNotFound, data.ContactNotFound):
+        raise HTTPException(404, "Unknown persona or contact") from None
+    except data.TransferNotMade as e:
+        raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
+    except Exception as e:
+        log.exception("p2p send needs reconciliation")
+        raise HTTPException(502, P2P_FAILED) from e
+
+
+@app.post("/p2p/requests", response_model=P2PRequest)
+def p2p_request(req: P2PSend) -> P2PRequest:
+    try:
+        return data.p2p_request(req.persona, req.contact_id, req.amount, req.memo)
+    except (data.PersonaNotFound, data.ContactNotFound):
+        raise HTTPException(404, "Unknown persona or contact") from None
+
+
+@app.post("/p2p/requests/{request_id}/settle", response_model=P2PRequest)
+def p2p_settle(request_id: str) -> P2PRequest:
+    try:
+        return data.p2p_settle(request_id)
+    except data.RequestNotOpen:
+        raise HTTPException(409, "That request isn't open") from None
+    except data.TransferNotMade as e:
+        raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
+    except Exception as e:
+        log.exception("p2p settle needs reconciliation")
+        raise HTTPException(502, P2P_FAILED) from e
 
 
 @app.get("/forecast", response_model=Forecast)

@@ -3,21 +3,24 @@
     python -m seed                 # create any persona that doesn't exist yet (never duplicates)
     python -m seed --reset maya    # wipe Maya's accounts + history and rebuild them for today
 
-Nessie can't delete purchases, customers or merchants, so the seed is careful: personas and their
-Nessie ids are recorded in Tiger Data (`personas` table) and an existing persona is never re-created.
-A reset deletes the persona's accounts (which removes their purchases) and reuses the customer.
+Nessie can't delete purchases, customers or merchants, so the seed is careful: personas, their
+contacts and all Nessie ids are recorded in Tiger Data and an existing persona is never re-created.
+A reset deletes the persona's and its contacts' accounts (which removes their history) and reuses
+the customers.
 """
 
 import argparse
 import logging
+import secrets
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.db import pool, repo
 from app.db import schema as db_schema
-from app.ingest import start_of_day, sync_customer
+from app.ingest import start_of_day, sync_customer, ts_for
 from app.nessie.client import NessieClient
+from app.nessie.moves import move_money
 from seed.personas import MERCHANTS, PERSONAS, PersonaSpec
 from seed.plan import Op, build_plan
 
@@ -43,8 +46,66 @@ def ensure_merchants(nessie: NessieClient) -> dict[str, str]:
     return existing
 
 
-def execute(nessie: NessieClient, op: Op, accounts: dict[str, str], merchant_ids: dict[str, str]) -> None:
+CONTACT_OPENING_BALANCE = 500.00
+
+
+def ensure_contacts(nessie: NessieClient, conn, spec: PersonaSpec) -> dict[str, dict]:
+    """Contact key → contacts row. Each contact is a Nessie customer (created once, reused forever —
+    customers can't be deleted) with a fresh checking account for this seed."""
+    existing = {c["id"]: c for c in repo.contacts(conn, spec.slug)}
+    out = {}
+    for c in spec.contacts:
+        cid = f"{spec.slug}-{c.key}"
+        customer_id = existing[cid]["customer_id"] if cid in existing else None
+        if customer_id is None:
+            customer_id = nessie.create_customer(c.first_name, c.last_name, ADDRESS)["_id"]
+        checking_id = nessie.create_account(
+            customer_id, "Checking", f"{c.first_name}'s Checking", CONTACT_OPENING_BALANCE
+        )["_id"]
+        row = {
+            "id": cid,
+            "persona_slug": spec.slug,
+            "first_name": c.first_name,
+            "last_name": c.last_name,
+            "relation": c.relation,
+            "customer_id": customer_id,
+            "checking_id": checking_id,
+        }
+        repo.upsert_contact(conn, row)
+        out[c.key] = row
+    return out
+
+
+def execute(
+    nessie: NessieClient,
+    op: Op,
+    accounts: dict[str, str],
+    merchant_ids: dict[str, str],
+    contacts: dict[str, dict],
+    spec: PersonaSpec,
+) -> dict | None:
+    """Write one planned record to Nessie. Peer-to-peer ops return the p2p_payments row to store."""
     aid = accounts[op.account]
+    if op.kind == "p2p":
+        c = contacts[op.contact]
+        if op.direction == "out":
+            sender, receiver, payer = aid, c["checking_id"], spec.first_name
+        else:
+            sender, receiver, payer = c["checking_id"], aid, c["first_name"]
+        transfer_id, deposit_id = move_money(
+            nessie, sender, receiver, op.amount, op.on, op.description, f"From {payer}: {op.description}"
+        )
+        return {
+            "id": f"p2p-{secrets.token_hex(8)}",
+            "persona_slug": spec.slug,
+            "contact_id": c["id"],
+            "direction": op.direction,
+            "amount": op.amount,
+            "memo": op.description,
+            "ts": ts_for(op.on),
+            "sender_nessie_id": transfer_id,
+            "receiver_nessie_id": deposit_id,
+        }
     if op.kind == "purchase":
         nessie.create_purchase(aid, merchant_ids[op.merchant], op.amount, op.on, op.description)
     elif op.kind == "deposit":
@@ -53,6 +114,7 @@ def execute(nessie: NessieClient, op: Op, accounts: dict[str, str], merchant_ids
         nessie.create_bill(
             aid, op.payee, op.description, op.amount, status=op.bill_status, payment_date=op.on, day=op.day
         )
+    return None
 
 
 def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str, str], reset: bool) -> None:
@@ -70,6 +132,9 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
         if existing:
             for key in ("checking_id", "savings_id", "credit_id"):
                 nessie.delete_account(existing[key])
+            for c in repo.contacts(conn, spec.slug):
+                nessie.delete_account(c["checking_id"])  # the contact's side of the old P2P history
+            repo.forget_p2p(conn, spec.slug)
             repo.forget_customer(conn, existing["customer_id"])
             conn.commit()
             customer_id = existing["customer_id"]
@@ -89,6 +154,7 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
             {
                 "slug": spec.slug,
                 "first_name": spec.first_name,
+                "age": spec.age,
                 "story": spec.story,
                 "customer_id": customer_id,
                 "checking_id": accounts["checking"],
@@ -96,12 +162,27 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
                 "credit_id": accounts["credit"],
             },
         )
+        contacts = ensure_contacts(nessie, conn, spec)
         conn.commit()
 
         plan = build_plan(spec, today)
         log.info("%s: writing %d records to Nessie…", spec.slug, len(plan))
         with ThreadPoolExecutor(WORKERS) as ex:
-            list(ex.map(lambda op: execute(nessie, op, accounts, merchant_ids), plan))
+            results = list(ex.map(lambda op: execute(nessie, op, accounts, merchant_ids, contacts, spec), plan))
+        for payment in filter(None, results):
+            repo.insert_p2p_payment(conn, payment)
+        for r in spec.requests:  # open IOUs: app-level (Nessie has no requests); settled with a real P2P move
+            repo.insert_request(
+                conn,
+                {
+                    "id": f"req-{secrets.token_hex(8)}",
+                    "persona_slug": spec.slug,
+                    "contact_id": contacts[r.contact]["id"],
+                    "amount": r.amount,
+                    "memo": r.memo,
+                    "created_at": ts_for(today - timedelta(days=r.days_ago)),
+                },
+            )
 
         # today's balances are the opening balances; all seeded history is before today, so it
         # explains the balance without changing it

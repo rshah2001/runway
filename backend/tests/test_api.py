@@ -95,3 +95,45 @@ def test_live_transfers_are_off_by_default() -> None:
     from app.config import get_settings
 
     assert get_settings().live_transfers is False  # real money moves only after Auth0 lands
+
+
+def test_personas_have_ages() -> None:
+    assert [(p["slug"], p["age"]) for p in client.get("/personas").json()] == [
+        ("maya", 20),
+        ("jordan", 40),
+        ("sam", 60),
+    ]
+
+
+def test_p2p_summary_shape() -> None:
+    body = client.get("/p2p?persona=maya").json()
+    alex = next(c for c in body["contacts"] if c["name"] == "Alex")
+    assert alex["owes_you"] == 45.0
+    assert {p["direction"] for p in body["payments"]} <= {"in", "out"}
+    assert body["requests"][0]["status"] == "open"
+
+
+def test_p2p_send_and_request_in_demo_mode() -> None:
+    sent = client.post("/p2p/send", json={"contact_id": "maya-alex", "amount": 20, "memo": "Pizza"}).json()
+    assert sent["direction"] == "out" and sent["amount"] == 20 and sent["contact"] == "Alex"
+    req = client.post("/p2p/requests", json={"contact_id": "maya-priya", "amount": 12.5, "memo": "Coffee"}).json()
+    assert req["status"] == "open" and req["contact"] == "Priya"
+
+
+def test_settling_an_open_request_marks_it_paid() -> None:
+    assert client.post("/p2p/requests/demo-r1/settle").json()["status"] == "paid"
+    assert client.post("/p2p/requests/nope/settle").status_code == 409
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"contact_id": "maya-alex", "amount": 0, "memo": "x"},
+        {"contact_id": "maya-alex", "amount": 5000, "memo": "x"},  # over the per-payment cap
+        {"contact_id": "../etc", "amount": 5, "memo": "x"},
+        {"contact_id": "maya-alex", "amount": 5, "memo": ""},
+        {"persona": "Maya!", "contact_id": "maya-alex", "amount": 5, "memo": "x"},
+    ],
+)
+def test_p2p_send_validates_input(body: dict) -> None:
+    assert client.post("/p2p/send", json=body).status_code == 422

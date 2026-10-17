@@ -13,7 +13,7 @@ HISTORY_DAYS = 120  # ~4 months: months 1–3 to fit a model, month 4 to backtes
 
 @dataclass(frozen=True)
 class Op:
-    kind: str  # "purchase" | "deposit" | "bill"
+    kind: str  # "purchase" | "deposit" | "bill" | "p2p"
     account: str  # "checking" | "savings" | "credit"
     amount: float
     on: date
@@ -22,6 +22,8 @@ class Op:
     bill_status: str | None = None  # "completed" history or "recurring" upcoming
     payee: str | None = None
     day: int | None = None
+    contact: str | None = None  # p2p: Contact.key
+    direction: str | None = None  # p2p: "in" (contact → persona) or "out" (persona → contact)
 
 
 def _monthly(day: int, start: date, end: date) -> list[date]:
@@ -90,5 +92,21 @@ def build_plan(spec: PersonaSpec, today: date) -> list[Op]:
                 amount = round(h.low + rng.random() * (h.high - h.low), 2)
                 ops.append(Op("purchase", h.account, amount, d, h.merchant, merchant=h.merchant))
         d += timedelta(days=1)
+
+    # peer-to-peer: its own RNG so adding a split never reshuffles the purchase history
+    p2p_rng = random.Random(f"{spec.slug}-p2p-{today.isoformat()}")
+    for pat in spec.p2p:
+        if pat.day is not None:
+            days = _monthly(pat.day, start, today)
+            amounts = [pat.amount] * len(days)
+        else:
+            days, amounts, d = [], [], start
+            while d < today:
+                if p2p_rng.random() < pat.per_month / 30:
+                    days.append(d)
+                    amounts.append(round(pat.amount * (0.6 + 0.8 * p2p_rng.random()), 2))
+                d += timedelta(days=1)
+        for d, amount in zip(days, amounts, strict=True):
+            ops.append(Op("p2p", "checking", amount, d, pat.memo, contact=pat.contact, direction=pat.direction))
 
     return sorted(ops, key=lambda o: (o.on, o.kind, o.description))

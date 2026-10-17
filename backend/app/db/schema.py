@@ -72,6 +72,48 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """
 
+# peer-to-peer: Nessie has no P2P (transfers carry no payee), so Runway models it — every payment
+# is a real Nessie transfer on the sender's account + a deposit on the receiver's, both ids kept here
+P2P = """
+ALTER TABLE personas ADD COLUMN IF NOT EXISTS age int;
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id            text PRIMARY KEY,                -- "<persona>-<key>", e.g. "maya-alex"
+    persona_slug  text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    first_name    text NOT NULL,
+    last_name     text NOT NULL,
+    relation      text NOT NULL,
+    customer_id   text NOT NULL,                   -- a real Nessie customer…
+    checking_id   text NOT NULL                    -- …with a real Nessie checking account
+);
+
+CREATE TABLE IF NOT EXISTS p2p_payments (
+    id                  text PRIMARY KEY,
+    persona_slug        text NOT NULL,
+    contact_id          text NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
+    direction           text NOT NULL CHECK (direction IN ('in', 'out')),  -- in = contact paid the persona
+    amount              numeric(12, 2) NOT NULL CHECK (amount > 0),
+    memo                text NOT NULL,
+    ts                  timestamptz NOT NULL,
+    sender_nessie_id    text NOT NULL,             -- transfer on the sender's account
+    receiver_nessie_id  text NOT NULL              -- deposit on the receiver's account
+);
+CREATE INDEX IF NOT EXISTS p2p_payments_persona_ts ON p2p_payments (persona_slug, ts DESC);
+
+CREATE TABLE IF NOT EXISTS p2p_requests (
+    id            text PRIMARY KEY,
+    persona_slug  text NOT NULL,
+    contact_id    text NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
+    amount        numeric(12, 2) NOT NULL CHECK (amount > 0),  -- the contact owes the persona this
+    memo          text NOT NULL,
+    status        text NOT NULL CHECK (status IN ('open', 'settling', 'paid', 'declined', 'failed')),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    settled_at    timestamptz,
+    payment_id    text REFERENCES p2p_payments (id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS p2p_requests_persona ON p2p_requests (persona_slug, status);
+"""
+
 HYPERTABLE = """
 SELECT create_hypertable('transactions', by_range('ts', INTERVAL '7 days'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS transactions_customer_ts ON transactions (customer_id, ts DESC);
@@ -113,7 +155,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         enabled = conn.execute(
             "SELECT compression_enabled FROM timescaledb_information.hypertables WHERE hypertable_name = 'transactions'"

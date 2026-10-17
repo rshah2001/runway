@@ -41,9 +41,13 @@ Build, in order:
    first), a daily spend series for a chart, and the transaction list (newest first). Add a month
    picker. Subscriptions from api.recurring() with monthly + yearly totals; live balances from
    api.me(persona).
-5. Persona switcher: api.personas() returns maya / jordan / sam — a small picker (e.g. on Today)
-   lets the demo jump between the overdraft story, subscription creep and a healthy runway. Pass
-   the chosen slug to api.me / api.spending.
+5. Persona switcher: api.personas() returns Maya (20) / Jordan (40) / Sam (60) — a small picker
+   (e.g. on Today) lets the demo jump between the overdraft story, subscription creep and a healthy
+   runway. Pass the chosen slug to every api call.
+5b. Peer-to-peer (a "People" section or tab): api.p2p(persona) → contacts with "owes you", payment
+   history, open requests. Buttons: Pay (api.p2pSend), Request (api.p2pRequest), and on an open
+   request "Mark paid" (api.p2pSettle). Demo moment: "Alex owes you $45 for concert tickets" →
+   settle → Maya's checking goes up. Same 503 / 502 handling as the approval card.
 6. Login screen (app/src/app/login.tsx) that calls login() from app/src/lib/auth.ts.
 7. Polish: icons, splash, empty/loading/error states, animations. Must look great on web AND phone.
 
@@ -85,7 +89,9 @@ Build, in order:
    4 months of history each; months 1–3 vs 4 is your backtest split.
 2. Recurring detector: group purchases by merchant, find stable interval + amount → recurring().
 3. agent/chat.py: Gemini tool calling (get_forecast, simulate_purchase, find_recurring,
-   propose_transfer). Check the current Google Gen AI SDK docs, don't rely on memory. Cap message
+   propose_transfer, and peer-to-peer: list who owes the user money and propose a request — e.g.
+   "Alex owes you $45, want me to ask?"). P2P data: data.p2p_summary(persona); never call
+   p2p_send / p2p_settle directly from the model — propose, then the user approves. Check the current Google Gen AI SDK docs, don't rely on memory. Cap message
    length. Keep the PendingAction flow.
 4. evals/: (a) forecast backtest — fit on months 1–3 of seeded history, predict month 4, report
    MAE/MAPE; (b) agent eval — 30–50 "can I afford $X on day Y?" cases with ground truth from the

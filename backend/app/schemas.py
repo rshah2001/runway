@@ -7,7 +7,7 @@ Changing a model here changes the contract: do it in its own PR and update
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Account(BaseModel):
@@ -76,6 +76,7 @@ class ChatResponse(BaseModel):
 class Persona(BaseModel):
     slug: str
     first_name: str
+    age: int
     story: str
 
 
@@ -104,3 +105,47 @@ class Spending(BaseModel):
     categories: list[CategorySpend]  # biggest first
     daily: list[DailySpend]  # from the Tiger Data continuous aggregate in live mode
     transactions: list[SpendingTransaction]  # newest first
+
+
+# ---------- peer-to-peer ----------
+class Contact(BaseModel):
+    id: str
+    name: str
+    relation: str
+    owes_you: float  # total of their open requests
+
+
+class P2PPayment(BaseModel):
+    id: str
+    date: date
+    direction: Literal["in", "out"]  # in = the contact paid you
+    contact_id: str
+    contact: str
+    amount: float
+    memo: str
+
+
+class P2PRequest(BaseModel):
+    id: str
+    contact_id: str
+    contact: str
+    amount: float  # the contact owes you this
+    memo: str
+    status: Literal["open", "settling", "paid", "declined", "failed"]
+    created: date
+
+
+class P2PSummary(BaseModel):
+    contacts: list[Contact]
+    payments: list[P2PPayment]  # newest first
+    requests: list[P2PRequest]  # open first
+
+
+PERSONA_SLUG = r"^[a-z]{1,32}$"
+
+
+class P2PSend(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)
+    contact_id: str = Field(pattern=r"^[a-z]{1,32}-[a-z]{1,32}$")
+    amount: float = Field(gt=0, le=1000)  # demo cap per payment
+    memo: str = Field(min_length=1, max_length=80)

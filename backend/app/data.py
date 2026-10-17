@@ -6,15 +6,31 @@ either really happens in Nessie or the request fails.
 """
 
 import logging
+import secrets
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.db import pool, repo
-from app.ingest import sync_customer
+from app.ingest import sync_customer, ts_for
 from app.nessie import demo
-from app.nessie.client import NessieClient, NessieError
-from app.schemas import Account, CategorySpend, DailySpend, Me, Persona, Spending, SpendingTransaction
+from app.nessie.client import NessieClient
+from app.nessie.moves import TransferNeedsReconciliation, TransferNotMade, move_money
+from app.schemas import (
+    Account,
+    CategorySpend,
+    Contact,
+    DailySpend,
+    Me,
+    P2PPayment,
+    P2PRequest,
+    P2PSummary,
+    Persona,
+    Spending,
+    SpendingTransaction,
+)
+
+__all__ = ["TransferNeedsReconciliation", "TransferNotMade"]  # re-exported for the routes
 
 log = logging.getLogger(__name__)
 LOCAL_TZ = ZoneInfo("America/New_York")
@@ -34,7 +50,10 @@ def personas() -> list[Persona]:
         return demo.PERSONAS
     try:
         with pool.connection() as conn:
-            return [Persona(slug=p["slug"], first_name=p["first_name"], story=p["story"]) for p in repo.personas(conn)]
+            return [
+                Persona(slug=p["slug"], first_name=p["first_name"], age=p["age"] or 0, story=p["story"])
+                for p in repo.personas(conn)
+            ]
     except Exception:
         log.exception("personas: live read failed, serving demo data")
         return demo.PERSONAS
@@ -114,55 +133,191 @@ def spending(month: str, slug: str = DEFAULT_PERSONA) -> Spending:
         return demo.spending(month)
 
 
-class TransferNotMade(RuntimeError):
-    """Nothing was written to Nessie (or it was fully undone): safe to let the user retry."""
-
-
-class TransferNeedsReconciliation(RuntimeError):
-    """Money may have partially moved. Never retry automatically — a human must check Nessie."""
-
-
-def move_savings_to_checking(amount: float, description: str, slug: str = DEFAULT_PERSONA) -> str:
-    """Move money in Nessie: a transfer out of savings plus a deposit into checking (Nessie
-    transfers have no destination), then re-ingest so balances update immediately.
-
-    Real Nessie writes happen only in live mode with LIVE_TRANSFERS=1 — and that switch must stay
-    off until the approve route checks the Auth0 user, or anyone could move a persona's money.
-    """
+def _writes_enabled() -> bool:
+    """Real Nessie writes need live mode AND LIVE_TRANSFERS=1 — keep the switch off until the
+    routes check the Auth0 user, or anyone could move a persona's money."""
     s = get_settings()
-    if not (s.live and s.live_transfers):
-        return demo.create_transfer("demo-sav", "demo-chk", amount, description)
-    nessie = NessieClient.from_settings()
-    today = datetime.now(LOCAL_TZ).date()
-    with pool.connection() as conn:
-        p = _persona(conn, slug)
-    try:
-        transfer = nessie.create_transfer(p["savings_id"], amount, today, description)
-    except Exception as e:
-        # a write that timed out may still have landed; only a clear rejection means nothing moved
-        if isinstance(e, NessieError) and 400 <= e.status < 500:
-            raise TransferNotMade(str(e)) from e
-        raise TransferNeedsReconciliation(f"transfer outcome unknown: {e}") from e
-    transfer_id = transfer.get("_id") or transfer.get("id", "")
-    try:
-        nessie.create_deposit(p["checking_id"], amount, today, f"From savings: {description}")
-    except Exception as deposit_error:
-        try:
-            nessie.delete_transfer(transfer_id)  # undo the outgoing half
-        except Exception as undo_error:
-            raise TransferNeedsReconciliation(
-                f"deposit failed and transfer {transfer_id} could not be undone: {undo_error}"
-            ) from deposit_error
-        raise TransferNotMade(f"deposit failed; transfer {transfer_id} undone: {deposit_error}") from deposit_error
+    return s.live and s.live_transfers
 
+
+def _resync(nessie: NessieClient, customer_id: str) -> None:
     # money has moved — from here on, failures only delay the balance refresh
     try:
         with pool.connection() as conn:
-            sync_customer(conn, nessie, p["customer_id"])
+            sync_customer(conn, nessie, customer_id)
             conn.commit()
     except Exception:
-        log.exception("transfer %s done, but re-sync failed; balances catch up on the next ingest", transfer_id)
+        log.exception("money moved, but re-sync failed; balances catch up on the next background sync")
+
+
+def move_savings_to_checking(amount: float, description: str, slug: str = DEFAULT_PERSONA) -> str:
+    """ "Fix it": really move money from the persona's savings into checking."""
+    if not _writes_enabled():
+        return demo.create_transfer("demo-sav", "demo-chk", amount, description)
+    nessie = NessieClient.from_settings()
+    with pool.connection() as conn:
+        p = _persona(conn, slug)
+    today = datetime.now(LOCAL_TZ).date()
+    transfer_id, _ = move_money(
+        nessie, p["savings_id"], p["checking_id"], amount, today, description, f"From savings: {description}"
+    )
+    _resync(nessie, p["customer_id"])
     return transfer_id
+
+
+# ---------- peer-to-peer ----------
+class ContactNotFound(LookupError):
+    pass
+
+
+class RequestNotOpen(LookupError):
+    pass
+
+
+def _payment(row: dict) -> P2PPayment:
+    return P2PPayment(
+        id=row["id"],
+        date=row["ts"].astimezone(LOCAL_TZ).date(),
+        direction=row["direction"],
+        contact_id=row["contact_id"],
+        contact=row["contact_name"],
+        amount=float(row["amount"]),
+        memo=row["memo"],
+    )
+
+
+def _request(row: dict) -> P2PRequest:
+    return P2PRequest(
+        id=row["id"],
+        contact_id=row["contact_id"],
+        contact=row["contact_name"],
+        amount=float(row["amount"]),
+        memo=row["memo"],
+        status=row["status"],
+        created=row["created_at"].astimezone(LOCAL_TZ).date(),
+    )
+
+
+def p2p_summary(slug: str = DEFAULT_PERSONA) -> P2PSummary:
+    if not get_settings().live:
+        return demo.p2p_summary(slug)
+    try:
+        with pool.connection() as conn:
+            _persona(conn, slug)
+            requests = [_request(r) for r in repo.requests(conn, slug)]
+            owed: dict[str, float] = {}
+            for r in requests:
+                if r.status == "open":
+                    owed[r.contact_id] = round(owed.get(r.contact_id, 0) + r.amount, 2)
+            return P2PSummary(
+                contacts=[
+                    Contact(id=c["id"], name=c["first_name"], relation=c["relation"], owes_you=owed.get(c["id"], 0))
+                    for c in repo.contacts(conn, slug)
+                ],
+                payments=[_payment(p) for p in repo.p2p_payments(conn, slug)],
+                requests=requests,
+            )
+    except PersonaNotFound:
+        raise
+    except Exception:
+        log.exception("p2p: live read failed, serving demo data")
+        return demo.p2p_summary(slug)
+
+
+def _contact_for(conn, slug: str, contact_id: str) -> dict:
+    c = repo.contact(conn, contact_id)
+    if c is None or c["persona_slug"] != slug:  # a persona can only pay its own contacts
+        raise ContactNotFound(contact_id)
+    return c
+
+
+def _record_payment(nessie: NessieClient, p: dict, c: dict, direction: str, amount: float, memo: str) -> dict:
+    """Move the money in Nessie (both sides) and record it. `direction` is from the persona's view."""
+    today = datetime.now(LOCAL_TZ).date()
+    if direction == "out":
+        sender, receiver = p["checking_id"], c["checking_id"]
+        deposit_memo = f"From {p['first_name']}: {memo}"
+    else:
+        sender, receiver = c["checking_id"], p["checking_id"]
+        deposit_memo = f"From {c['first_name']}: {memo}"
+    transfer_id, deposit_id = move_money(nessie, sender, receiver, amount, today, memo, deposit_memo)
+    row = {
+        "id": f"p2p-{secrets.token_hex(8)}",
+        "persona_slug": p["slug"],
+        "contact_id": c["id"],
+        "direction": direction,
+        "amount": round(amount, 2),
+        "memo": memo,
+        "ts": ts_for(today),
+        "sender_nessie_id": transfer_id,
+        "receiver_nessie_id": deposit_id,
+    }
+    with pool.connection() as conn:
+        repo.insert_p2p_payment(conn, row)
+        conn.commit()
+    _resync(nessie, p["customer_id"])
+    return {**row, "contact_name": c["first_name"]}
+
+
+def p2p_send(slug: str, contact_id: str, amount: float, memo: str) -> P2PPayment:
+    """The persona pays a contact."""
+    if not _writes_enabled():
+        return demo.p2p_payment(contact_id, "out", amount, memo)
+    with pool.connection() as conn:
+        p, c = _persona(conn, slug), _contact_for(conn, slug, contact_id)
+    return _payment(_record_payment(NessieClient.from_settings(), p, c, "out", amount, memo))
+
+
+def p2p_request(slug: str, contact_id: str, amount: float, memo: str) -> P2PRequest:
+    """Ask a contact for money. No money moves until the request is settled."""
+    if not _writes_enabled():
+        return demo.p2p_request(contact_id, amount, memo)
+    with pool.connection() as conn:
+        _persona(conn, slug)
+        c = _contact_for(conn, slug, contact_id)
+        row = {
+            "id": f"req-{secrets.token_hex(8)}",
+            "persona_slug": slug,
+            "contact_id": c["id"],
+            "amount": round(amount, 2),
+            "memo": memo,
+            "created_at": datetime.now(LOCAL_TZ),
+        }
+        repo.insert_request(conn, row)
+        conn.commit()
+    return _request({**row, "status": "open", "contact_name": c["first_name"]})
+
+
+def p2p_settle(request_id: str) -> P2PRequest:
+    """The contact pays an open request: real money from their account into the persona's."""
+    if not _writes_enabled():
+        demo_req = next((r for r in demo.p2p_summary().requests if r.id == request_id), None)
+        if demo_req is None:
+            raise RequestNotOpen(request_id)
+        return demo_req.model_copy(update={"status": "paid"})
+    with pool.connection() as conn:
+        claimed = repo.claim_request(conn, request_id)  # atomic open → settling
+        conn.commit()
+        if claimed is None:
+            raise RequestNotOpen(request_id)
+        p = _persona(conn, claimed["persona_slug"])
+        c = repo.contact(conn, claimed["contact_id"])
+    try:
+        payment = _record_payment(NessieClient.from_settings(), p, c, "in", float(claimed["amount"]), claimed["memo"])
+    except TransferNotMade:
+        with pool.connection() as conn:
+            repo.finish_request(conn, request_id, "open")  # nothing moved: can be settled again
+            conn.commit()
+        raise
+    except Exception:
+        with pool.connection() as conn:
+            repo.finish_request(conn, request_id, "failed")  # outcome unknown: never settle twice
+            conn.commit()
+        raise
+    with pool.connection() as conn:
+        row = repo.finish_request(conn, request_id, "paid", payment["id"])
+        conn.commit()
+    return _request(row)
 
 
 def health() -> dict:

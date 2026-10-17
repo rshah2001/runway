@@ -51,7 +51,7 @@ export type ChatResponse = {
   pending_action: PendingAction | null;
 };
 
-export type Persona = { slug: string; first_name: string; story: string };
+export type Persona = { slug: string; first_name: string; age: number; story: string };
 
 export type CategorySpend = { category: string; spent: number; purchases: number };
 
@@ -71,4 +71,33 @@ export type Spending = {
   categories: CategorySpend[]; // biggest first
   daily: DailySpend[]; // from the Tiger Data continuous aggregate in live mode
   transactions: SpendingTransaction[]; // newest first
+};
+
+// ---------- peer-to-peer ----------
+export type Contact = { id: string; name: string; relation: string; owes_you: number };
+
+export type P2PPayment = {
+  id: string;
+  date: string;
+  direction: 'in' | 'out'; // in = the contact paid you
+  contact_id: string;
+  contact: string;
+  amount: number;
+  memo: string;
+};
+
+export type P2PRequest = {
+  id: string;
+  contact_id: string;
+  contact: string;
+  amount: number; // the contact owes you this
+  memo: string;
+  status: 'open' | 'settling' | 'paid' | 'declined' | 'failed';
+  created: string;
+};
+
+export type P2PSummary = {
+  contacts: Contact[];
+  payments: P2PPayment[]; // newest first
+  requests: P2PRequest[]; // open first
 };

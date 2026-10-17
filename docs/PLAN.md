@@ -11,7 +11,7 @@ that sees them coming.
 
 | Prize | How we qualify | Effort |
 |---|---|---|
-| **Capital One — Best Use of Nessie** ($250/person) | Nessie is the data source *and* the action layer (transfers, bills) | Core |
+| **Capital One — Best Use of Nessie** ($250/person) | Nessie is the data source *and* the action layer: accounts, merchants, bills **and peer-to-peer** (real transfers + deposits between real Nessie customers) | Core |
 | **Overall — Hack of the Year** | Real problem, live demo, technical depth | Core |
 | **AI track (Most Creative Use of AI)** | Tool-calling agent + forecasting model + evals + clean public README | Core |
 | **Best Use of Gemini** (MLH) | Gemini powers the agent | Free |
@@ -51,8 +51,10 @@ testable — which is exactly what our evals measure.
 2. "Can I go to the concert Friday? $180." → *"Not safely — you'd be $X short on the 5th when rent hits."*
 3. "Fix it." → agent proposes **move $100 from savings** → **Auth0 approval push on phone** → approve →
    real Nessie transfer → chart turns green.
-4. Subscription detective: "You pay for 3 streaming services — $37/mo."
-5. Close on eval numbers + architecture slide.
+4. Peer-to-peer: "Alex still owes you $45 for the concert tickets." → **Request** → Alex settles → a real Nessie
+   transfer between two customers lands in Maya's checking.
+5. Subscription detective (switch to Jordan, 40): "8 subscriptions, ~$164/mo."
+6. Close on eval numbers + architecture slide.
 
 ## Team split
 
