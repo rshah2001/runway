@@ -2,40 +2,44 @@
 
 **[sixsevenbucksleft.vip](https://sixsevenbucksleft.vip)** · *you're a VIP… with sixty-seven bucks left*
 
-**Banking apps tell you what already happened. Runway tells you the exact day you'll run short, and
-fixes it before it happens.** It forecasts your checking balance day by day from your Capital One
-(Nessie) accounts, warns you days ahead of an overdraft, and covers the dip from your own savings or
-from family who agreed to help, with real Nessie money, always within limits a person set.
+**Most banking apps tell you when you're running out of money. Runway makes sure you don't have to face
+that moment alone.** It forecasts your checking balance day by day from your Capital One (Nessie)
+accounts, sees a shortfall coming, and quietly arranges help from people who already agreed to help —
+**without anyone seeing anyone else's balance**, and only when helping is safe for the helper too.
 
-Built at **SwampHacks XII** for Capital One's **Best Use of Nessie** challenge.
+*Support without the spotlight.* Built at **SwampHacks XII** for Capital One's **Best Use of Nessie** challenge.
 
-> **The demo:** Maya (20) will dip under her $300 floor on Nov 5, when rent lands before payday. Nobody
-> has to ask: Runway sees the dip, checks that grandpa Sam (60) can help safely, and moves $100 within
-> the limit *he* set. When it's over his limit, **Sam's phone buzzes** (Auth0 push) and he approves.
-> On payday it goes back automatically: *"💸 You got your $100 back from Maya."* Maya can also ask the
-> assistant *"Can I go to the concert Friday? $180"* and get an honest answer with the real numbers.
+> **The demo:** Maya (20) will be **$135** short before payday. She doesn't ask anyone. Runway's
+> **Network Guardian** checks the people who agreed to help her: grandpa Sam authorized $150, but a loan
+> payment lands before Maya can repay, so his *safe* amount is **$90**; Jordan authorized $300, but his
+> mortgage is due that week, so **$0**; cousin Emma can give **$45**. Runway moves **Sam $90 + Emma $45**
+> as two real Nessie transfers. Sam sees *"$90 with Maya, expected back Fri"* — never her balance, her
+> spending, or that Emma helped too. On Maya's next **verified** payday it goes back automatically.
 
 ## What it does
 
-- **Today:** a day-by-day balance line for the next month, the day you'd dip, a range of how low it
-  could go, and how sure Runway is ("calibrating" → "learning" → "confident").
-- **Family safety net:** each person sets how much Runway may move from *them* to someone else without
-  asking; it must come back by the borrower's next payday, and helping must keep the helper safe too.
-- **Assistant (Gemini):** ask *"can I afford $X on Friday?"*, *"fix it"*, *"who owes me money?"*,
-  *"did anyone cover me?"*, *"what can I cut until payday?"*, or *"brief me on my week"*. It writes a
-  weekly money brief, splits what's coming into **needs** and **things that could wait until payday**
-  (with amounts), and explains the family safety net, all in a voice that fits you (by age). It
-  **proposes**; people **approve**, and it can never approve or change family money itself.
-- **Spending + peer-to-peer:** categories, subscriptions it detected, IOUs, and real transfers between
-  real Nessie customers.
+- **Today:** a day-by-day balance line for the next month, the day you'd dip, a cautious range, how sure
+  Runway is, and **Your safety net** — who's ready to cover you, or what's out right now.
+- **Circles + Quiet Support Agreements:** support between family *and* friends needs **both** people's
+  yes. The supporter sets a limit; the recipient opts in; either can stop at any time. Joining a circle
+  grants nothing — consent is per relationship, versioned and audited.
+- **Network Guardian:** sizes each supporter's *safe* contribution from their own cautious forecast over
+  the whole time the money is out, splits a need across several supporters, and re-checks everything under
+  database locks right before money moves. Repayment waits for a real paycheck and never causes a new dip.
+- **Assistant (Gemini):** *"can I afford $X on Friday?"*, *"fix it"*, *"who's covering me?"*, *"what can I
+  cut until payday?"*, *"brief me on my week"* — in a voice that fits you. It **proposes**; people
+  **approve**. Ask it about someone else's money and it tells you nobody in Runway can see that.
+- **Spending + peer-to-peer:** categories, detected subscriptions, IOUs, and real transfers between real
+  Nessie customers — each tap pays exactly once.
 
 ## How the AI works
 
 ```
 Nessie ──sync──► Tiger Data ──► forecast engine (deterministic) ──► tools ──► Gemini ──► reply
-                                      │                                        │
-                                      └──► safety net (acts within limits)     └─ any $ figure no tool
-                                                                                  produced → reply thrown away
+                                      │                              ▲          │
+                                      │                 privacy guard┘          └─ any $ figure no tool
+                                      ▼                                            produced → reply thrown away
+               Network Guardian (pure) ── consent + locks + journal ──► real Nessie transfers ──► reconcile
 ```
 
 **The LLM never does maths.** Gemini picks which tool to call and explains the result in plain words.
@@ -44,6 +48,17 @@ Every number (balances, dates, shortfalls, transfer amounts) comes from the dete
 returned is discarded and a rule-based answer is given instead (`backend/app/agent/chat.py`). Money only
 moves through a pending action the user approves; the persona always comes from the signed-in user,
 never from the model.
+
+**The Network Guardian** (`backend/app/guardian.py`, pure, no LLM): a supporter's safe capacity is
+`min(cautious p5 balance over the lending window − their own cushion, their limit for this person − what's
+out, their total cap − everything they've committed)`, rounded down; no automatic help unless their forecast
+is *confident*. `allocate()` covers a need with the fewest supporters, deterministically. Pinned on the real
+engine for every demo day in `tests/test_demo_scenario.py`.
+
+**Money integrity** (`backend/app/safety_net.py`, `app/reconcile.py`): every transfer is journaled before
+Nessie is called and tagged in both memos; an unclear outcome (timeout, 5xx) is **never retried** — it is
+reconciled by finding the tag in Nessie, and absence is never treated as "nothing moved". Per-person
+Postgres advisory locks + a unique index stop two passes from spending the same supporter twice.
 
 **The forecast engine** (`backend/app/forecast/`), learned per person from their own history:
 - **Paydays and fixed transfers** found by a recurring-transaction detector (steady cadence + steady
@@ -70,6 +85,8 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 | **Learning curve** (only 30 days of history) | error **$2,737 → $206** with provisional paydays |
 | **Range calibration** (cautious end beaten, target 5%) | **12–43% → 4–11%** on held-out IBM card users and a real UK account it never trained on |
 | **Tone** (Gen Z voice stays itself when money is tight or fine; rule-based checks on real Gemini replies) | **3/6 → 6/6** |
+| **Privacy** (13 attacks incl. prompt injection + 2 controls; fails on any of the other person's real figures) | **15/15** guard + router · **15/15** guard + Gemini · **15/15 Gemini with the guard OFF** |
+| **Demo scenario** (Guardian on the real engine, Oct 18–22) | Maya $135 → Sam $90 + Emma $45, Jordan $0, every day |
 
 ## Design choices and trade-offs
 
@@ -83,8 +100,15 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
   real Czech accounts (Berka). The cost: on our own personas the range is wider than they need.
 - **Honest about not knowing.** A forecast with a provisional payday or too little history never calls
   itself "confident", and readiness explains why in plain words.
-- **People stay in control of money.** The agent proposes; the user approves (Auth0). Under a family
-  limit the lender pre-authorised it; over it, the lender approves on their phone.
+- **Consent is two-sided and never inferred.** Old limits were migrated in with *no* consent; automatic help
+  needs the supporter's and the recipient's explicit yes (audited). Over a limit, the supporter approves —
+  in the app, or on their phone via Auth0 push (CIBA) when that's configured.
+- **Protect the protector.** A big balance today isn't safety: capacity comes from the supporter's cautious
+  forecast for the whole time the money is out, so a bill next week shrinks what Runway will move.
+- **Privacy at the server, not the screen.** A supporter's API responses never contain the recipient's
+  balance, spending, forecast or reason; tests call the real routes with real tokens to prove it.
+- **Never pretend a transfer worked.** Partial success is recorded as partial; unclear results wait for
+  reconciliation instead of a retry that could pay twice. A prototype on a sandbox — not production banking.
 - **Sandbox limits, said out loud.** In production, ownership comes from the bank's own login and each
   customer grants their own token. In Nessie, one API key lives only on the server and every money move
   checks the signed-in owner first. Only the data connector is bank-specific.
@@ -95,8 +119,8 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 |---|---|
 | **Capital One Nessie** | the bank: customers, accounts, merchants, purchases, deposits, bills, transfers; every money move is a real Nessie record ([`docs/NESSIE.md`](docs/NESSIE.md)) |
 | **Gemini** (`gemini-3.8-flash`) | the assistant: tool calling over the forecast engine |
-| **Auth0** | sign-in, owner-only money moves, and push approvals on the lender's phone (CIBA) |
-| **Tiger Data** (TimescaleDB) | transactions and saved forecasts as hypertables; continuous aggregates for daily spend and forecast accuracy |
+| **Auth0** | sign-in on web and phone, owner-only money moves; CIBA push approvals built (in-app approval when push isn't configured) |
+| **Tiger Data** (TimescaleDB) | transactions and saved forecasts as hypertables; continuous aggregates for daily spend and forecast accuracy; agreements, audit trail and the transfer journal |
 | **Vultr** | backend + database hosting, auto-deployed from `main` |
 | **GoDaddy** | the domain, [sixsevenbucksleft.vip](https://sixsevenbucksleft.vip) |
 | **Expo** (React Native) | one codebase for web, iOS and Android |

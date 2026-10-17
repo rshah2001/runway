@@ -1,72 +1,92 @@
-# Family safety net
+# The safety net: Circles, Quiet Support, Network Guardian
 
-> **An AI that acts on your behalf so you never have to ask for money.**
-> Each family member sets how much the agent may move from *them* to someone else without asking —
-> as long as it comes back by that person's next payday. Under the limit it just happens; over it,
-> the lender gets an Auth0 push on their phone. On payday the lender is repaid automatically and
-> sees *"💸 You got your $100 back from Maya."*
+> Runway predicts a shortfall, checks who has agreed to help and how much each can give **safely**,
+> moves real Nessie money, and brings it back after the next verified payday — without anyone seeing
+> anyone else's balance. *Support without the spotlight.*
 
-## How it decides (`backend/app/safety_net.py` → `decide()`, pure + unit-tested)
+**Prediction → Consent → Protection → Coordination → Transfer → Repayment → Accountability**
 
-1. **Spot the dip.** Project the borrower's checking balance to their next payday with **the same
-   forecast engine the chat and charts use** (`app/forecast`; `app/cashflow.py` only adds scheduled
-   bridge repayments and the next payday) — so the agent and the safety net never disagree on stage. If it drops under the **$300 safety floor**, the gap is rounded up to whole tens
-   (a $92 gap → a $100 bridge).
-2. **Find a safe helper.** Among family members with a limit for the borrower, keep only those whose
-   *own* projection stays above $300 after lending. Pick the one with the most runway.
-3. **Act.** Fits in what's left of their limit → **automatic** bridge (real Nessie money: transfer on
-   the lender + deposit on the borrower). Doesn't fit → **approval**: Auth0 push (in-app fallback).
-4. **Repay on payday.** On the due date the borrower pays the lender back — but only once the
-   paycheck has landed; if repaying would push them under $300 it waits.
+## 1. Consent — Quiet Support Agreements (`app/agreements.py`, `db/agreements_repo.py`)
 
-## Guardrails
+- One agreement per supporter → recipient. It is **active** only when the supporter said yes, the
+  recipient said yes, nobody revoked it, and the supporter's limit isn't paused.
+- The supporter sets their limit (setting it in the app is their authorization). The recipient opts in
+  from their own side. Either can stop at any time; help then waits for both to agree again. Stopping never
+  erases money already out — it still comes back.
+- Every change bumps a **version** and writes an audit row (`support_agreement_events`). A waiting
+  approval or transfer re-checks the version under lock: a change in between means nothing moves.
+- **Legacy limits are not consent.** Limits set before agreements existed were migrated in with no consent
+  stamps (audited `migrated_without_consent`); approval requests from before were declined. The demo
+  relationships get both consents through an auditable setup step (`demo_setup`).
+- A Circle is people you trust; joining one grants **nothing** financial.
 
-| Rule | Where |
-|---|---|
-| Only the **lender** sets or raises their limit (never the borrower, never the AI) | `PUT /safety-net/limits` → `authorize_money(user, lender)` |
-| Must come back **by the borrower's next payday**, within 31 days | `decide()` → `no_payday` |
-| Helping must keep the **helper** above the floor | `decide()` |
-| Repaying on payday must keep the **borrower** above the floor, or no bridge | `decide()` |
-| The limit counts **everything outstanding**, not each bridge | `safety_limits` + outstanding sum |
-| **One bridge at a time** per borrower; someone who owes money never lends (no chains) | `decide()` |
-| A **late** repayment freezes new bridges (`repay_failed`) and tells both people | `repay_due()` |
-| Covers **forecast gaps from bills and normal spending** — not a one-off purchase you're considering | only the cash-flow projection triggers it |
-| Never funds or repays **twice**: every money move first claims the bridge with an atomic status update | `safety_repo.transition()` |
-| Every move appears in **both** people's feed | `safety_events` |
-| Real money only with `LIVE_TRANSFERS=1`, and then only for a signed-in owner | otherwise `/safety-net/run` is a dry run |
+## 2. Protection — Network Guardian (`app/guardian.py`, pure, no LLM)
 
-## API
+For each consenting supporter, over the whole time the money would be out (today → recipient's payday + grace):
 
-| Method | Path | |
-|---|---|---|
-| GET | `/safety-net?persona=` | everything one person's screen needs (limits both ways, bridges lent / borrowed with due + repaid dates, approvals waiting, feed, projected low) |
-| PUT | `/safety-net/limits` `{lender, borrower, limit, enabled}` | the lender sets their auto limit ($0–$1,000) |
-| POST | `/safety-net/run?persona=` | check now (the server also runs it every 5 min); dry run while real transfers are off |
-| POST | `/safety-net/bridges/{id}/approve` · `/decline` | the lender answers an over-limit bridge |
+```
+cash room     = lowest cautious (p5) balance in that window − the supporter's own cushion
+pair room     = their limit for this person − what this person already owes them
+exposure room = their total cap across everyone − everything they've committed (incl. waiting approvals)
+capacity      = round down to $5 of max(0, min(cash, pair, exposure))
+```
 
-## Demo data
+No automatic capacity unless the supporter's forecast is **confident**. A supporter who is borrowing right
+now never lends (no chains). The recipient's need is rounded up to $5, and is refused if repaying it on
+payday would cause a new predicted shortfall in the week after.
 
-Default limits (set by the lenders): **Sam → Maya $100**, **Sam → Jordan $300**, **Jordan → Maya $50**.
-Maya's seeded balance is tuned **against the forecast engine** so her lowest point before payday is
-always **$208** → a **$100 bridge, exactly Sam's limit** (`demo_low_before_payday` in
-`seed/personas.py`; tested on 14 consecutive days). The chat says the same: "$208 on Thu Oct 22". For the over-limit moment, lower Sam's limit to $50 live, then run.
+**Allocation:** fewest supporters first (largest capacity first, ties by name, so the same inputs always
+give the same answer). If automatic room can't cover the whole need, one supporter whose own cushion allows
+it is asked to approve (in the app, or by Auth0 push when configured).
 
-## Auth0 push (CIBA) setup — Patil-Hemangi
+## 3. Coordination + transfer (`app/safety_net.py`, `app/reconcile.py`, `nessie/moves.py`)
 
-(The safety net already runs on your forecast engine — `app/cashflow.py` is a thin adapter — and
-`sources.demo_data()` was extracted from `_load_demo` so the seed tunes Maya on the same inputs.)
+- One decision → one **bridge per supporter share**, each with its own repayment obligation.
+- Under the borrower's and every supporter's **advisory lock**, each share is re-validated from fresh rows
+  (agreement + version, no chains, exposure, pair limit) right before anything moves.
+- Every move is written to `transfer_journal` in the same transaction as its claim, **before** Nessie is
+  called, and tagged `[rw:<key>]` in both memos (user memos can't forge a tag).
+- A clear rejection (4xx) means nothing moved. A timeout/5xx means **unknown**: the bridge goes to
+  `reconcile` and is never retried. The reconciler settles it only when Nessie shows exactly one tagged
+  transfer and one tagged deposit for the right amount; anything else waits for a person.
+- Partial success is recorded and reported as partial ("covered $90 of $135"), never as "covered".
 
-The backend client is done (`backend/app/auth0_ciba.py`, tested against a fake Auth0). It turns on
-when these are configured. **Check the current Auth0 docs for each step** — names move around:
+## 4. Repayment
 
-1. **Users**: create an Auth0 user for each lender (Sam, Jordan) and note their user ids (`auth0|…`).
-2. **Push MFA**: enable *Push notifications via Auth0 Guardian*; each lender installs **Auth0
-   Guardian** on their phone and enrolls (log in once and follow the enrollment prompt).
-3. **CIBA client**: create a *Regular Web Application* ("Runway Agent"), enable the **Client-Initiated
-   Backchannel Authentication (CIBA)** grant type, copy its client id + secret. Make sure CIBA is
-   enabled for the tenant (Auth0 for AI Agents → asynchronous authorization).
-4. **Server env** (`/opt/runway/.env`): `AUTH0_CIBA_CLIENT_ID`, `AUTH0_CIBA_CLIENT_SECRET`,
-   `AUTH0_CIBA_USERS=sam=auth0|…,jordan=auth0|…` — then redeploy. Over-limit bridges then push to the
-   lender's phone ("Approve 100 for Maya back Oct 23"); the background job polls Auth0 for the answer.
+Only when **all** hold: a real paycheck deposit has landed since the bridge was funded (Runway's own moves
+excluded); the balance stays at or above the recipient's cushion; and the forecast for the next week doesn't
+dip because of it. Otherwise it waits — shown as "expected after your next verified payday", never promised.
+A repayment retry happens only after an attempt that certainly moved nothing.
 
-Until then, over-limit bridges show an **in-app** approval card (`approval_channel: "in_app"`).
+## 5. Privacy (server-side)
+
+A supporter sees: who, their own limit, their own transfers and status, what's owed to them, and when it's
+expected back. They **never** see the recipient's balance, income, bills, purchases, categories, forecast,
+the reason, or other supporters. The recipient never sees a supporter's balance or capacity. Enforced in the
+API views (`safety_views.for_lender`, `support_summary`) and proven on the real routes with real tokens
+(`tests/test_privacy_network.py`). Notifications carry no dates or reasons. Ask Runway refuses questions
+about someone else's money before any model runs (`app/agent/privacy.py`; `evals/privacy_eval.py`).
+
+## Demo scenario (pinned in `tests/test_demo_scenario.py`)
+
+| Person | Role | Authorized | Why | Safe |
+|---|---|---|---|---|
+| Maya, 20 | short $135 before payday | — | rent before payday | — |
+| Sam, 60 | supporter | $150 | $1,450 loan payment inside the window | **$90** |
+| Jordan, 40 | supporter | $300 | $1,850 mortgage on the 24th, $1,500 family cushion | **$0** |
+| Emma, 32 | supporter | $45 | steady salary | **$45** |
+
+Reset: the demo accounts' **Reset demo** button (Circles) rebuilds all four and holds automatic help for an
+hour, so the cover happens live when someone taps **Cover it with my circle**.
+
+## Auth0 push approvals (optional)
+
+Built (`app/auth0_ciba.py`): over-limit approvals go to the supporter's phone when `AUTH0_CIBA_CLIENT_ID`,
+`AUTH0_CIBA_CLIENT_SECRET` and `AUTH0_CIBA_USERS` are set and the supporter enrolled in Auth0 Guardian.
+Without them, approvals happen in the app.
+
+## Limits (said out loud)
+
+A prototype on the Nessie sandbox: not production banking, no regulatory compliance, no guaranteed
+repayment, no credit underwriting. No partial repayment. A top-up after a partially funded decision waits
+for the next pass once the open bridges settle.
