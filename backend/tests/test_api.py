@@ -137,3 +137,38 @@ def test_settling_an_open_request_marks_it_paid() -> None:
 )
 def test_p2p_send_validates_input(body: dict) -> None:
     assert client.post("/p2p/send", json=body).status_code == 422
+
+
+def test_safety_net_shows_the_lender_when_the_money_comes_back() -> None:
+    sam = client.get("/safety-net?persona=sam").json()
+    assert any(b["status"] == "repaid" and b["repaid_on"] for b in sam["lent"])
+    assert any(b["status"] == "active" and b["due_date"] for b in sam["lent"])
+    assert any("got your" in e["message"] for e in sam["events"])
+    maya = client.get("/safety-net?persona=maya").json()
+    assert maya["borrowed"][0]["lender"] == "sam" and maya["projected_low"]["balance"] < 300
+
+
+def test_over_limit_bridge_waits_for_the_lenders_approval() -> None:
+    jordan = client.get("/safety-net?persona=jordan").json()
+    waiting = jordan["approvals_waiting"][0]
+    assert waiting["status"] == "pending_approval" and waiting["approval_channel"] == "auth0_push"
+    assert client.post(f"/safety-net/bridges/{waiting['id']}/approve").json()["status"] == "active"
+    assert client.post("/safety-net/bridges/nope/approve").status_code == 409
+
+
+def test_safety_net_run_reports_what_it_would_do() -> None:
+    d = client.post("/safety-net/run").json()[0]
+    assert d["action"] == "auto_bridge" and d["executed"] is False
+
+
+@pytest.mark.parametrize(
+    "body,status",
+    [
+        ({"lender": "sam", "borrower": "maya", "limit": 150}, 200),
+        ({"lender": "sam", "borrower": "sam", "limit": 50}, 422),  # no limits for yourself
+        ({"lender": "sam", "borrower": "maya", "limit": 5000}, 422),
+        ({"lender": "sam", "borrower": "nobody", "limit": 50}, 404),
+    ],
+)
+def test_lender_sets_limits(body: dict, status: int) -> None:
+    assert client.put("/safety-net/limits", json=body).status_code == status

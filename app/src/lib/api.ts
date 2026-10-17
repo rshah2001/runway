@@ -5,6 +5,10 @@ import type {
   P2PPayment,
   P2PRequest,
   P2PSummary,
+  Bridge,
+  SafetyDecision,
+  SafetyLimit,
+  SafetyNetSummary,
   PendingAction,
   Persona,
   Recurring,
@@ -41,6 +45,14 @@ export const api = {
   p2pRequest: (contactId: string, amount: number, memo: string, persona = 'maya') =>
     request<P2PRequest>('/p2p/requests', { method: 'POST', body: JSON.stringify({ persona, contact_id: contactId, amount, memo }) }),
   p2pSettle: (requestId: string) => request<P2PRequest>(`/p2p/requests/${requestId}/settle`, { method: 'POST' }),
+  // family safety net
+  safetyNet: (persona = 'maya') => request<SafetyNetSummary>(`/safety-net?persona=${persona}`),
+  setSafetyLimit: (lender: string, borrower: string, limit: number, enabled = true) =>
+    request<SafetyLimit>('/safety-net/limits', { method: 'PUT', body: JSON.stringify({ lender, borrower, limit, enabled }) }),
+  runSafetyNet: (persona?: string) =>
+    request<SafetyDecision[]>(`/safety-net/run${persona ? `?persona=${persona}` : ''}`, { method: 'POST' }),
+  approveBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/approve`, { method: 'POST' }),
+  declineBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/decline`, { method: 'POST' }),
   chat: (message: string) =>
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message }) }),
   approve: (actionId: string) => request<PendingAction>(`/actions/${actionId}/approve`, { method: 'POST' }),

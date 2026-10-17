@@ -4,7 +4,7 @@ Changing a model here changes the contract: do it in its own PR and update
 `app/src/lib/types.ts` in the same PR so web, iOS and Android stay in sync.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -149,3 +149,77 @@ class P2PSend(BaseModel):
     contact_id: str = Field(pattern=r"^[a-z]{1,32}-[a-z]{1,32}$")
     amount: float = Field(gt=0, le=1000)  # demo cap per payment
     memo: str = Field(min_length=1, max_length=80)
+
+
+# ---------- family safety net ----------
+class SafetyLimit(BaseModel):
+    lender: str
+    lender_name: str
+    borrower: str
+    borrower_name: str
+    limit: float  # moved without asking, if it comes back by the borrower's next payday
+    outstanding: float  # lent and not back yet
+    remaining: float
+    enabled: bool
+
+
+class Bridge(BaseModel):
+    id: str
+    borrower: str
+    borrower_name: str
+    lender: str
+    lender_name: str
+    amount: float
+    reason: str
+    status: Literal["pending_approval", "declined", "funding", "active", "repaying", "repaid", "repay_failed", "failed"]
+    mode: Literal["auto", "approval"]  # auto = under the lender's limit, no ask
+    approval_channel: Literal["auth0_push", "in_app"] | None
+    shortfall_date: date  # the day the borrower would have dipped
+    due_date: date  # repaid automatically on this payday
+    created: date
+    funded_on: date | None
+    repaid_on: date | None  # shown to the lender: "you got it back"
+
+
+class SafetyEvent(BaseModel):
+    at: datetime
+    kind: str
+    message: str
+    bridge_id: str | None
+
+
+class ProjectedLow(BaseModel):
+    date: date
+    balance: float
+
+
+class SafetyNetSummary(BaseModel):
+    persona: str
+    next_payday: date | None
+    projected_low: ProjectedLow | None  # lowest balance before next payday
+    limits_i_set: list[SafetyLimit]  # as a lender
+    limits_for_me: list[SafetyLimit]  # family members covering me
+    borrowed: list[Bridge]
+    lent: list[Bridge]  # incl. due_date / repaid_on — when the money comes back
+    approvals_waiting: list[Bridge]  # over-limit bridges waiting for MY approval
+    events: list[SafetyEvent]  # newest first
+
+
+class SafetyDecision(BaseModel):
+    borrower: str
+    action: Literal["none", "auto_bridge", "needs_approval", "no_safe_helper", "no_payday", "already_covered"]
+    reason: str
+    amount: float
+    lender: str | None
+    shortfall_date: date | None
+    low_balance: float | None
+    due_date: date | None
+    executed: bool  # False = dry run (real writes off) or nothing to do
+    bridge: Bridge | None
+
+
+class SetLimit(BaseModel):
+    lender: str = Field(pattern=PERSONA_SLUG)  # TODO(auth): must be the logged-in user
+    borrower: str = Field(pattern=PERSONA_SLUG)
+    limit: float = Field(ge=0, le=1000)
+    enabled: bool = True

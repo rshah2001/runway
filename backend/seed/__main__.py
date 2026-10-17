@@ -16,13 +16,13 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.db import pool, repo
+from app.db import pool, repo, safety_repo
 from app.db import schema as db_schema
 from app.ingest import start_of_day, sync_customer, ts_for
 from app.nessie.client import NessieClient
 from app.nessie.moves import move_money
-from seed.personas import MERCHANTS, PERSONAS, PersonaSpec
-from seed.plan import Op, build_plan
+from seed.personas import MERCHANTS, PERSONAS, SAFETY_LIMITS, PersonaSpec
+from seed.plan import Op, build_plan, demo_opening_balance
 
 log = logging.getLogger("seed")
 ADDRESS = {
@@ -135,6 +135,7 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
             for c in repo.contacts(conn, spec.slug):
                 nessie.delete_account(c["checking_id"])  # the contact's side of the old P2P history
             repo.forget_p2p(conn, spec.slug)
+            safety_repo.forget(conn, spec.slug)  # bridges point at the accounts being deleted
             repo.forget_customer(conn, existing["customer_id"])
             conn.commit()
             customer_id = existing["customer_id"]
@@ -142,8 +143,10 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
         else:
             customer_id = nessie.create_customer(spec.first_name, spec.last_name, ADDRESS)["_id"]
 
+        plan = build_plan(spec, today)
+        checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
         accounts = {
-            "checking": nessie.create_account(customer_id, "Checking", "Everyday Checking", spec.checking)["_id"],
+            "checking": nessie.create_account(customer_id, "Checking", "Everyday Checking", checking)["_id"],
             "savings": nessie.create_account(customer_id, "Savings", "Savings", spec.savings)["_id"],
             "credit": nessie.create_account(customer_id, "Credit Card", "Rewards credit card", spec.credit_owed)["_id"],
         }
@@ -165,7 +168,6 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
         contacts = ensure_contacts(nessie, conn, spec)
         conn.commit()
 
-        plan = build_plan(spec, today)
         log.info("%s: writing %d records to Nessie…", spec.slug, len(plan))
         with ThreadPoolExecutor(WORKERS) as ex:
             results = list(ex.map(lambda op: execute(nessie, op, accounts, merchant_ids, contacts, spec), plan))
@@ -205,6 +207,9 @@ def main() -> None:
     for spec in PERSONAS:
         seed_persona(nessie, spec, merchant_ids, reset=spec.slug in args.reset)
     with pool.connection() as conn:
+        for lender, borrower, amount in SAFETY_LIMITS:  # defaults; a lender's own change is never overwritten
+            safety_repo.seed_limit(conn, lender, borrower, amount)
+        conn.commit()
         db_schema.refresh_daily_spend(conn)
     log.info("done — %s", ", ".join(p.slug for p in PERSONAS))
     pool.close()

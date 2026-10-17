@@ -101,3 +101,70 @@ export type P2PSummary = {
   payments: P2PPayment[]; // newest first
   requests: P2PRequest[]; // open first
 };
+
+// ---------- family safety net ----------
+export type SafetyLimit = {
+  lender: string;
+  lender_name: string;
+  borrower: string;
+  borrower_name: string;
+  limit: number; // moved without asking, if it comes back by the borrower's next payday
+  outstanding: number; // lent and not back yet
+  remaining: number;
+  enabled: boolean;
+};
+
+export type BridgeStatus =
+  | 'pending_approval' // over the limit: waiting for the lender (Auth0 push or in-app)
+  | 'declined'
+  | 'funding'
+  | 'active' // money is with the borrower; comes back on due_date
+  | 'repaying'
+  | 'repaid' // show the lender: "you got it back" (repaid_on)
+  | 'repay_failed' // late — no new bridges until it's back
+  | 'failed';
+
+export type Bridge = {
+  id: string;
+  borrower: string;
+  borrower_name: string;
+  lender: string;
+  lender_name: string;
+  amount: number;
+  reason: string; // plain-English explanation from the engine
+  status: BridgeStatus;
+  mode: 'auto' | 'approval'; // auto = under the lender's limit, nobody had to ask
+  approval_channel: 'auth0_push' | 'in_app' | null;
+  shortfall_date: string; // the day the borrower would have dipped
+  due_date: string; // repaid automatically on this payday
+  created: string;
+  funded_on: string | null;
+  repaid_on: string | null;
+};
+
+export type SafetyEvent = { at: string; kind: string; message: string; bridge_id: string | null };
+
+export type SafetyNetSummary = {
+  persona: string;
+  next_payday: string | null;
+  projected_low: { date: string; balance: number } | null; // lowest balance before next payday
+  limits_i_set: SafetyLimit[]; // as a lender (editable)
+  limits_for_me: SafetyLimit[]; // family covering me
+  borrowed: Bridge[];
+  lent: Bridge[]; // with due_date / repaid_on — when the money comes back
+  approvals_waiting: Bridge[]; // over-limit bridges waiting for MY approval
+  events: SafetyEvent[]; // newest first
+};
+
+export type SafetyDecision = {
+  borrower: string;
+  action: 'none' | 'auto_bridge' | 'needs_approval' | 'no_safe_helper' | 'no_payday' | 'already_covered';
+  reason: string;
+  amount: number;
+  lender: string | null;
+  shortfall_date: string | null;
+  low_balance: number | null;
+  due_date: string | null;
+  executed: boolean; // false = dry run (real transfers off) or nothing to do
+  bridge: Bridge | null;
+};

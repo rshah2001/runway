@@ -20,6 +20,7 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 | See who owns which files + your starter prompt | [`docs/TEAM.md`](docs/TEAM.md) · [`docs/TEAM_PROMPTS.md`](docs/TEAM_PROMPTS.md) |
 | See the system design and API contract | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Work with Nessie | [`docs/NESSIE.md`](docs/NESSIE.md) |
+| Family safety net (headline feature) | [`docs/SAFETY_NET.md`](docs/SAFETY_NET.md) |
 | Deploy / CI-CD to Vultr | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 | Give your AI coding tool context | [`CLAUDE.md`](CLAUDE.md) |
 | See the working UI prototype | open [`prototype/index.html`](prototype/index.html) in a browser |

@@ -89,6 +89,9 @@ class PersonaSpec:
     contacts: list[Contact] = field(default_factory=list)
     p2p: list[P2PPattern] = field(default_factory=list)
     requests: list[OpenRequest] = field(default_factory=list)
+    # demo tuning: if set, today's checking balance is computed so the lowest point before the next
+    # payday is exactly this — the safety-net story is then the same whatever day you demo
+    demo_low_before_payday: float | None = None
 
 
 # name → (category, street, lat, lng) — fictional addresses around Gainesville, FL
@@ -166,6 +169,7 @@ PERSONAS: list[PersonaSpec] = [
             P2PPattern("priya", "in", 16.00, "Dinner split", per_month=2),
         ],
         requests=[OpenRequest("alex", 45.00, "Concert tickets 🎶", days_ago=4)],
+        demo_low_before_payday=208.00,  # → a $100 bridge, exactly Sam's auto limit
     ),
     PersonaSpec(
         slug="jordan",
@@ -254,4 +258,13 @@ PERSONAS: list[PersonaSpec] = [
             P2PPattern("leo", "out", 25.00, "Allowance", per_month=1),
         ],
     ),
+]
+
+
+# family safety net defaults — (lender, borrower, auto limit): what each LENDER lets the agent move
+# from them without asking, if it comes back by the borrower's next payday
+SAFETY_LIMITS: list[tuple[str, str, float]] = [
+    ("sam", "maya", 100.00),  # grandpa covers Maya's small gaps
+    ("sam", "jordan", 300.00),
+    ("jordan", "maya", 50.00),  # parent, smaller cushion
 ]
