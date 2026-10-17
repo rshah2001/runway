@@ -1,9 +1,9 @@
 """Agent eval: does the agent pick the right tool, give the right answer, and quote only real numbers?
 
-53 questions across the three seeded personas, with ground truth from the deterministic tools:
+55 questions across the three seeded personas, with ground truth from the deterministic tools:
 30 "can I afford $X on day Y?" (10 per persona, in five phrasings; 15 safe and 15 not), plus fix-it,
 subscription, forecast, peer-to-peer (who owes me, split / request, unknown contact) and family safety
-net questions (explained, never acted on), and weekly briefs.
+net questions (explained, never acted on), weekly briefs, and needs-vs-could-wait suggestions.
 Each question is asked as its persona, so Gemini answers in that persona's voice (Maya genz, Jordan
 direct, Sam classic). Three metrics per question:
   * tool    — the expected tool was called
@@ -166,6 +166,11 @@ def build_cases() -> list[Case]:
     for persona, msg in [("maya", "Brief me on my week ahead."), ("sam", "How's my week looking?")]:
         brief = tools.weekly_brief(persona=persona, today=TODAY)
         cases.append(Case(persona, msg, "weekly_brief", _quotes(brief["lowest_balance"]), brief))
+    # needs vs could-wait: a right answer names the biggest thing that could wait, and proposes nothing
+    for persona, msg in [("maya", "What can I cut back on until payday?"), ("jordan", "Any tips to spend less?")]:
+        tips = tools.budget_suggestions(persona=persona, today=TODAY)
+        top = tips["could_wait_until_payday"][0]["what"]
+        cases.append(Case(persona, msg, "budget_suggestions", _names_without_acting(top), tips))
     return cases
 
 

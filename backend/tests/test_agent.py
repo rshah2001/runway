@@ -448,3 +448,42 @@ def test_an_ungrounded_gemini_brief_is_replaced_by_the_rule_based_one() -> None:
     fake = FakeGemini(_calls(("weekly_brief", {})), _text("Great week! You'll have about $9,999 to spare."))
     r = agent.weekly_brief(persona="sam", client=fake, today=TODAY)
     assert "$9,999" not in r.reply and "$5,997.55" in r.reply
+
+
+# ---------- needs vs. could-wait until payday ----------
+
+
+def test_needs_and_could_wait_never_mix() -> None:
+    r = tools.budget_suggestions(persona="maya", today=TODAY)
+    essentials = {e["what"] for e in r["needs"]["usual_essentials"]}
+    waiting = {w["what"] for w in r["could_wait_until_payday"]}
+    assert essentials <= tools.NEED_CATEGORIES and not essentials & waiting
+    assert {"Rent", "Phone bill", "Credit card payment"} & {b["what"] for b in r["needs"]["bills_before_payday"]}
+    assert not waiting & {"Groceries", "Gas", "Health", "Rent"}  # never suggests skipping a need
+
+
+def test_could_wait_adds_up_and_only_counts_renewals_before_payday() -> None:
+    r = tools.budget_suggestions(persona="maya", today=TODAY)
+    total = sum(float(w["amount"].strip("$").replace(",", "")) for w in r["could_wait_until_payday"])
+    assert r["could_keep_in_your_pocket"] == tools.money(total)
+    assert r["until"] == "payday Fri Oct 23"
+    subs = [w for w in r["could_wait_until_payday"] if w["kind"] == "subscription"]
+    assert [s["what"] for s in subs] == ["iCloud+"]  # Spotify and Netflix renew after payday
+
+
+def test_suggestions_change_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    before = set(tools.PENDING)
+    r = agent.chat("what can I cut back on until payday?", persona="maya", today=TODAY)
+    assert r.tool_calls == ["budget_suggestions"] and r.pending_action is None and set(tools.PENDING) == before
+    assert "Shopping ($29.61)" in r.reply and "$64.41" in r.reply
+
+
+def test_a_tight_week_brief_names_what_could_wait_and_a_healthy_one_does_not() -> None:
+    assert len(tools.weekly_brief(persona="maya", today=TODAY)["could_wait_until_payday"]) == 2
+    assert "could_wait_until_payday" not in tools.weekly_brief(persona="sam", today=TODAY)
+
+
+def test_forecast_questions_with_tight_still_go_to_the_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert agent.chat("When do I get tight?", persona="sam", today=TODAY).tool_calls == ["get_forecast"]

@@ -475,6 +475,78 @@ def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
     }
 
 
+# ---------- needs vs. could-wait, until payday ----------
+
+# Which spending is a need is decided here, never by the model. Scheduled bills (rent, utilities,
+# insurance, phone, loans, the card payment) are always needs; for everyday purchases it goes by category.
+NEED_CATEGORIES = {"Groceries", "Gas", "Health", "Education", "Utilities", "Transport", "Childcare"}
+WAIT_CATEGORIES = {"Dining", "Entertainment", "Shopping", "Home", "Travel"}  # subscriptions are listed one by one
+SPEND_HISTORY_DAYS = 90
+NO_PAYDAY_DAYS = 14  # no payday learned yet: plan two weeks ahead
+
+
+def _until_payday(sched: Schedule, today: date) -> tuple[date, bool]:
+    """The next payday (exclusive end of the window), and whether it's a real learned one."""
+    paydays = [f.next_date for f in sched.regular if f.kind == "paycheck" and f.next_date > today]
+    return (min(paydays), True) if paydays else (today + timedelta(days=NO_PAYDAY_DAYS), False)
+
+
+def _usual_until(data: PersonaData, categories: set[str], today: date, days: int) -> list[tuple[str, float]]:
+    """What this person usually spends per category over `days`, from their last SPEND_HISTORY_DAYS."""
+    since = today - timedelta(days=SPEND_HISTORY_DAYS)
+    totals: dict[str, float] = {}
+    for t in data.history:
+        if t.kind == "purchase" and t.amount < 0 and since <= t.date < today and t.category in categories:
+            totals[t.category] = totals.get(t.category, 0.0) + -t.amount
+    usual = [(c, round(total / SPEND_HISTORY_DAYS * days, 2)) for c, total in totals.items()]
+    return sorted((u for u in usual if u[1] >= 1), key=lambda u: -u[1])
+
+
+def budget_suggestions(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """What's a need and what could wait until the next payday, with amounts, all computed here.
+
+    Needs: bills due before payday, plus usual spending on essentials (groceries, gas, health…).
+    Could wait: subscriptions renewing before payday (exact amounts), plus usual spending on dining,
+    entertainment, shopping and the like, estimated from the person's own last 90 days. Suggestions only:
+    nothing is paused or changed. Most everyday purchases go on the card, so holding off mostly shrinks
+    next month's card bill; it doesn't lift checking before payday, which is what a transfer is for."""
+    today = today or sources.local_today()
+    data, sched = _inputs(persona, today)
+    payday, learned = _until_payday(sched, today)
+    days = (payday - today).days
+    f = engine.forecast(days=max(days - 1, 0), start=today, schedule=sched)
+    bills = [
+        {"what": e.label, "amount": money(-e.amount), "day": day(e.date)}
+        for e in f.events
+        if e.amount < 0 and e.kind in ("bill", "card_payment")
+    ]
+    renewing = [s for s in detect_recurring(data.history, today) if s.next_date < payday]
+    usual_needs = _usual_until(data, NEED_CATEGORIES, today, days)
+    usual_wants = _usual_until(data, WAIT_CATEGORIES, today, days)
+    could_wait = [
+        *[
+            {"what": s.merchant, "amount": money(s.amount), "kind": "subscription", "day": day(s.next_date)}
+            for s in renewing
+        ],
+        *[{"what": c, "amount": money(a), "kind": "usual spending"} for c, a in usual_wants],
+    ]
+    could_wait.sort(key=lambda w: -float(w["amount"].strip("$").replace(",", "")))
+    total = sum(s.amount for s in renewing) + sum(a for _, a in usual_wants)
+    return {
+        **_low_summary(f),
+        "until": f"payday {day(payday)}" if learned else f"{day(payday)} (no payday learned yet)",
+        "days_until_payday": days,
+        "needs": {
+            "bills_before_payday": bills,
+            "usual_essentials": [{"what": c, "amount": money(a)} for c, a in usual_needs],
+        },
+        "could_wait_until_payday": could_wait,
+        "could_keep_in_your_pocket": money(total),
+        "note": "Suggestions only: nothing is paused or cancelled. Most of this is card spending, so holding off "
+        "shrinks next month's card bill; a transfer from savings is what covers a dip in checking before payday.",
+    }
+
+
 # ---------- weekly money brief ----------
 
 BRIEF_DAYS = 7
@@ -529,6 +601,12 @@ def weekly_brief(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = 
             for b in due
         ],
         "family_requests_waiting_for_you": len(s.approvals_waiting),
+        # money's tight: the brief can name a couple of things that could wait (suggestions only)
+        **(
+            {"could_wait_until_payday": budget_suggestions(persona=persona, today=today)["could_wait_until_payday"][:2]}
+            if engine.status(f.low.balance, f.safe_floor) != "healthy"
+            else {}
+        ),
     }
 
 
@@ -649,6 +727,14 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "budget_suggestions",
+        "description": "What's a need and what could wait until the next payday, with amounts: bills and "
+        "essentials vs subscriptions renewing and usual dining/entertainment/shopping. Use for 'what can I cut', "
+        "'how can I save', 'what are my necessities', 'tips for a tight month'. Suggestions only: changes nothing.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
         "name": "weekly_brief",
         "description": "Everything for a short brief on the user's coming week: the lowest point and whether it's "
         "safe, paychecks and bills coming, subscriptions renewing, spending this week vs last, and family "
@@ -664,6 +750,7 @@ READ_TOOLS = {
     "who_owes_me": who_owes_me,
     "explain_safety_net": explain_safety_net,
     "weekly_brief": weekly_brief,
+    "budget_suggestions": budget_suggestions,
 }
 WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
 

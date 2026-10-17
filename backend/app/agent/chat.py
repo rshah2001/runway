@@ -75,6 +75,14 @@ Family safety net:
 - You can't approve, decline, start or change anything in the safety net. If asked, say so and point to the
   Family screen, where the person whose money it is decides.
 
+Needs vs. could-wait:
+- For "what can I cut", "how can I save", "what are my necessities" or a tight-month question, call
+  budget_suggestions. Say briefly what the needs are, then name the 2-3 biggest things that could wait until
+  payday with their amounts, and what holding off would keep in their pocket. Frame them as choices, never
+  shame, and never suggest skipping a need. If there's a dip before payday, say a transfer from savings is what
+  covers it (holding off on card spending shrinks next month's bill instead).
+- If a tool includes could_wait_until_payday while money is tight, you may mention one of them in a sentence.
+
 Weekly brief:
 - For "brief me" or "how's my week", call weekly_brief and write 3-4 short sentences, most important first:
   the week's low point and whether it's safe, what's coming (paycheck, bills, renewals), and spending vs the
@@ -308,6 +316,25 @@ def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
 
 
+BUDGET = re.compile(
+    r"\b(cut|cut back|save money|saving|skip|budget|necessit\w*|essentials?|spend less|tips|can wait)\b"
+)
+
+
+def _route_budget(today: date, persona: str) -> ChatResponse:
+    r = tools.budget_suggestions(persona=persona, today=today)
+    wait = r["could_wait_until_payday"][:3]
+    if not wait:
+        return ChatResponse(
+            reply="Nothing big looks optional before payday; it's mostly bills and essentials.",
+            tool_calls=["budget_suggestions"],
+        )
+    items = ", ".join(f"{w['what']} ({w['amount']})" for w in wait)
+    reply = f"Until {r['until']}, your bills and essentials come first. Things that could wait: {items}."
+    reply += f" Holding off would keep about {r['could_keep_in_your_pocket']} in your pocket."
+    return ChatResponse(reply=reply, tool_calls=["budget_suggestions"])
+
+
 BRIEF = re.compile(r"\b(brief|my week|this week|week ahead|weekly|week look)")
 BRIEF_MESSAGE = "Brief me on my week ahead."
 
@@ -357,6 +384,8 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
         return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
     if BRIEF.search(text):
         return _route_brief(today, persona)
+    if BUDGET.search(text):
+        return _route_budget(today, persona)
     # before "fix": "did anyone cover me?" is about the safety net, "cover the shortfall" is a fix
     if SAFETY_NET.search(text):
         return _explain_safety_net(persona, today)
