@@ -13,13 +13,16 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Literal
 
-from app.forecast import band, report_card, sources
+from app.forecast import band, report_card, snapshots, sources
 from app.forecast import readiness as readiness_mod
 from app.forecast.recurring import detect_recurring, next_after
 from app.forecast.schedule import Schedule, build
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Readiness, Recurring
 
 DEFAULT_PERSONA = "maya"
+# stored with every saved forecast (forecast_snapshots.engine_version): bump it when the forecast
+# logic changes, so a track record can be told apart from one earned by an older engine
+ENGINE_VERSION = "2026.10.1"
 MAX_DAYS = 365
 TIGHT_MARGIN = 150.0  # a low point within this much of the floor counts as "tight"
 
@@ -45,15 +48,20 @@ def schedule_for(
     data = sources.load(persona, today)
     if history_days is not None:
         data = sources.recent(data, today, history_days)
-    return schedule_from(data, today)
+    return schedule_from(data, today, saved=history_days is None)
 
 
-def schedule_from(data: sources.PersonaData, today: date) -> Schedule:
-    """The schedule plus its report card: how its recent week-ahead forecasts did (see report_card)."""
+def schedule_from(data: sources.PersonaData, today: date, *, saved: bool = True) -> Schedule:
+    """The schedule plus its report card: how its recent week-ahead forecasts did. The card comes from
+    the forecasts Runway really saved and later checked when there are enough (see snapshots), else
+    from replaying the engine on past days (see report_card). `saved=False` always replays — for
+    history cut short on purpose, where the saved record would describe a different past."""
     sched = build(data, today)
     if sched.readiness is None:
         return sched
-    card = report_card.replay(data, today, build, forecast)
+    card = snapshots.saved_card(data.slug, today) if saved else None
+    if card is None:
+        card = report_card.replay(data, today, build, forecast)
     return replace(sched, readiness=readiness_mod.with_report_card(sched.readiness, card))
 
 
