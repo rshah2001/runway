@@ -1,22 +1,17 @@
 /**
- * The signed-in person's support circle, drawn: you in the middle, the people in your agreements
- * around you, one line per separately agreed relationship. Only YOUR relationships are ever drawn —
- * the API returns nothing else — so the map can't reveal who else someone supports, or anyone's money.
+ * Your support circle, in the iOS Contacts / Family Sharing idiom: you in the middle inside a thin
+ * status ring, the people in your agreements around you as soft monogram avatars, hairline connectors
+ * between you. A small badge on each avatar says where things stand (check = you've both agreed,
+ * dots = waiting for a yes); colour appears only where it means something. Money that is out right now
+ * sits on its connector in a small capsule.
  *
- * Lines: solid = both agreed (active) · dashed = waiting for a yes · faded = stopped or paused.
- * Green = this person can cover you · blue = you can cover them. An amount on a line is money that is
- * out right now. Tap a person to select them (the screen shows their details and actions below).
- *
- * Motion (apple-design): people grow into place on mount on the iOS sheet curve (no overshoot,
- * ≈0.45 s), staggered a little so the ring reads as forming around you; press feedback is
- * instant; the selected person grows slightly. Reduced motion: they simply appear.
+ * Only YOUR relationships are drawn — the API returns nothing else — so it can't reveal who else
+ * someone supports, or anyone's money. Tap a person to select them; the screen shows details below.
  */
-import { useEffect, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
-import Svg, { Line, Text as SvgText } from 'react-native-svg';
+import { useState } from 'react';
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
-import { PressableScale } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { money } from '@/lib/format';
 
@@ -29,16 +24,31 @@ export type CirclePerson = {
   status: 'active' | 'waiting' | 'off';
   /** money out right now on this relationship, if any */
   out?: number;
+  /** the supporter's cap for this relationship */
+  limit?: number | null;
 };
 
-// muted, dark-friendly tints: people are told apart without the map turning into confetti
-const TINTS = ['#2d6f86', '#6b6aa8', '#8f6aa8', '#8a6b45', '#2f7a68', '#7a4f5f', '#4f6f9a'];
-// the iOS sheet curve: fast out, soft landing, no overshoot (springs with duration+dampingRatio don't
-// settle on react-native-web, so a timed curve stands in)
-const SETTLE = { duration: 450, easing: Easing.bezier(0.32, 0.72, 0, 1) } as const;
-const NODE = 30; // radius of a person
-const CENTER = 50;
+// soft monogram gradients (light top → deeper bottom), muted so faces read as people, not buttons
+const MONO: [string, string][] = [
+  ['#5f8fa3', '#3d6577'],
+  ['#8a86c2', '#5f5b98'],
+  ['#b08ab8', '#80598a'],
+  ['#b39370', '#86684a'],
+  ['#6ba393', '#467a6b'],
+  ['#a3828f', '#765864'],
+];
+const HAIRLINE = 'rgba(255,255,255,0.14)';
+const AMBER = '#f5b74a';
+const AV = 30; // avatar radius
+const ME = 46; // your avatar radius
 
+const initial = (name: string) => name.trim().charAt(0).toUpperCase();
+
+function subLine(p: CirclePerson): string {
+  if (p.status === 'off') return 'Stopped';
+  if (p.status === 'waiting') return 'Waiting for a yes';
+  return p.role === 'supporter' ? (p.limit ? `Can cover ${money(p.limit, 0)}` : 'Can cover you') : 'You support';
+}
 
 export function CircleMap({ me, status, tone, people, selected, onSelect }: {
   me: string;
@@ -49,42 +59,82 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
   onSelect: (key: string | null) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const size = Math.min(width, 460);
-  const height = Math.max(300, size * 0.86);
+  const height = Math.min(Math.max(width * 0.72, 330), 400);
   const cx = width / 2;
-  const cy = height / 2;
-  const ring = Math.min(size / 2 - NODE - 14, height / 2 - NODE - 10);
+  const cy = height / 2 - 6;
+  const r = Math.min(width * 0.36, height * 0.34);
   const spots = people.map((p, i) => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(people.length, 1);
-    return { p, x: cx + ring * Math.cos(a), y: cy + ring * Math.sin(a) };
+    return { p, i, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
   });
 
   return (
-    <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={[s.wrap, { height }]}>
+    <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={[st.wrap, { height }]}>
       {width > 0 && (
         <>
           <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+            <Defs>
+              {MONO.map(([top, bottom], i) => (
+                <LinearGradient key={i} id={`mono${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={top} />
+                  <Stop offset="1" stopColor={bottom} />
+                </LinearGradient>
+              ))}
+              <LinearGradient id="me" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#3a4249" />
+                <Stop offset="1" stopColor="#262c31" />
+              </LinearGradient>
+            </Defs>
+
+            {/* hairline connectors, edge to edge */}
             {spots.map(({ p, x, y }) => {
-              const color = p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff';
-              const mx = (cx + x) / 2;
-              const my = (cy + y) / 2;
-              return [
-                <Line key={`l-${p.key}`} x1={cx} y1={cy} x2={x} y2={y} stroke={color}
-                  strokeOpacity={p.status === 'off' ? 0.35 : selected && selected !== p.key ? 0.35 : 0.85}
-                  strokeWidth={p.status === 'active' ? 2 : 1.5} strokeDasharray={p.status === 'active' ? undefined : '5 6'} />,
-                p.out ? (
-                  <SvgText key={`t-${p.key}`} x={mx + (x >= cx ? 10 : -10)} y={my + 4} fill={color} fontSize={13} fontWeight="700"
-                    textAnchor={x >= cx ? 'start' : 'end'}>
-                    {money(p.out, 0)}
-                  </SvgText>
-                ) : null,
-              ];
+              const d = Math.hypot(x - cx, y - cy) || 1;
+              const ux = (x - cx) / d;
+              const uy = (y - cy) / d;
+              const on = selected === p.key;
+              const color = on ? (p.role === 'supporter' ? C.green : '#7cb8ff') : HAIRLINE;
+              return (
+                <G key={`c-${p.key}`} opacity={selected && !on ? 0.4 : 1}>
+                  <Line x1={cx + ux * (ME + 8)} y1={cy + uy * (ME + 8)} x2={x - ux * (AV + 4)} y2={y - uy * (AV + 4)}
+                    stroke={color} strokeWidth={on ? 1.5 : 1} strokeDasharray={p.status === 'active' ? undefined : '3 4'} />
+                  {p.out ? <Capsule x={(cx + x) / 2} y={(cy + y) / 2} text={money(p.out, 0)} /> : null}
+                </G>
+              );
+            })}
+
+            {/* you, inside your status ring */}
+            <Circle cx={cx} cy={cy} r={ME + 6} stroke={tone} strokeOpacity={0.25} strokeWidth={4} fill="none" />
+            <Circle cx={cx} cy={cy} r={ME + 6} stroke={tone} strokeWidth={4} fill="none" strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * (ME + 6) * 0.82} 999`} transform={`rotate(-90 ${cx} ${cy})`} />
+            <Circle cx={cx} cy={cy} r={ME} fill="url(#me)" />
+            <SvgText x={cx} y={cy + 9} fill="#fff" fontSize={26} fontFamily={F.bodySemi} textAnchor="middle">{initial(me)}</SvgText>
+            <SvgText x={cx} y={cy + ME + 30} fill={C.text} fontSize={16} fontFamily={F.bodySemi} textAnchor="middle">{me}</SvgText>
+            <SvgText x={cx} y={cy + ME + 47} fill={tone} fontSize={13} fontFamily={F.bodyMedium} textAnchor="middle">{status}</SvgText>
+
+            {spots.map(({ p, i, x, y }) => {
+              const on = selected === p.key;
+              const k = on ? 1.08 : 1;
+              return (
+                <G key={`p-${p.key}`} opacity={selected && !on ? 0.45 : p.status === 'off' ? 0.6 : 1}>
+                  {on && <Circle cx={x} cy={y} r={AV * k + 4} stroke="#fff" strokeOpacity={0.9} strokeWidth={2} fill="none" />}
+                  <Circle cx={x} cy={y} r={AV * k} fill={`url(#mono${i % MONO.length})`} />
+                  <SvgText x={x} y={y + 7} fill="#fff" fontSize={20} fontFamily={F.bodySemi} textAnchor="middle">{initial(p.name)}</SvgText>
+                  <Badge x={x + AV * 0.72} y={y + AV * 0.72} status={p.status} />
+                  <SvgText x={x} y={y + AV + 20} fill={C.text} fontSize={14} fontFamily={F.bodySemi} textAnchor="middle">{p.name}</SvgText>
+                  <SvgText x={x} y={y + AV + 36} fill={C.text2} fontSize={12} fontFamily={F.body} textAnchor="middle">{subLine(p)}</SvgText>
+                </G>
+              );
             })}
           </Svg>
-          <Centre x={cx} y={cy} name={me} status={status} tone={tone} onPress={() => onSelect(null)} />
-          {spots.map(({ p, x, y }, i) => (
-            <Node key={p.key} p={p} x={x} y={y} index={i} on={selected === p.key}
-              dim={!!selected && selected !== p.key} onPress={() => onSelect(selected === p.key ? null : p.key)} />
+
+          {/* hit areas: real buttons for touch, keyboard and screen readers */}
+          <Pressable onPress={() => onSelect(null)} accessibilityRole="button" accessibilityLabel={`${me}, ${status}`}
+            style={[st.hit, { left: cx - ME - 8, top: cy - ME - 8, width: (ME + 8) * 2, height: (ME + 8) * 2 + 50 }]} />
+          {spots.map(({ p, x, y }) => (
+            <Pressable key={`h-${p.key}`} onPress={() => onSelect(selected === p.key ? null : p.key)}
+              accessibilityRole="button" accessibilityState={{ selected: selected === p.key }}
+              accessibilityLabel={`${p.name}: ${p.role === 'supporter' ? 'can cover you' : 'you support them'}, ${subLine(p)}`}
+              style={({ pressed }) => [st.hit, { left: x - 46, top: y - AV - 6, width: 92, height: AV * 2 + 50 }, pressed && st.pressed]} />
           ))}
         </>
       )}
@@ -92,81 +142,42 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
   );
 }
 
-function Centre({ x, y, name, status, tone, onPress }: { x: number; y: number; name: string; status: string; tone: string; onPress: () => void }) {
+/** The small status badge on an avatar: green check (agreed), amber dots (waiting), grey dash (stopped). */
+function Badge({ x, y, status }: { x: number; y: number; status: CirclePerson['status'] }) {
+  const fill = status === 'active' ? C.green : status === 'waiting' ? AMBER : C.text3;
   return (
-    <View style={[s.abs, { left: x - CENTER, top: y - CENTER }]}>
-      <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
-        style={[s.centre, { borderColor: tone }]}>
-        <Text style={s.centreName} numberOfLines={1}>{name}</Text>
-        <Text style={[s.centreStatus, { color: tone }]} numberOfLines={1}>{status}</Text>
-      </PressableScale>
-    </View>
+    <G>
+      <Circle cx={x} cy={y} r={9} fill={fill} stroke={C.card} strokeWidth={2.5} />
+      {status === 'active' && (
+        <Path d={`M${x - 3.6},${y + 0.2} L${x - 1},${y + 2.8} L${x + 3.8},${y - 2.6}`} stroke="#0d1a12" strokeWidth={1.8}
+          fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+      {status === 'waiting' && [-3, 0, 3].map((dx) => <Circle key={dx} cx={x + dx} cy={y} r={1.1} fill="#2a1d05" />)}
+      {status === 'off' && <Line x1={x - 3.5} y1={y} x2={x + 3.5} y2={y} stroke="#111" strokeWidth={1.8} strokeLinecap="round" />}
+    </G>
   );
 }
 
-function Node({ p, x, y, index, on, dim, onPress }: {
-  p: CirclePerson; x: number; y: number; index: number; on: boolean; dim: boolean; onPress: () => void;
-}) {
-  const reduced = useReducedMotion();
-  const t = useSharedValue(reduced ? 1 : 0); // 0 hidden … 1 in place
-  const grow = useSharedValue(1);
-  useEffect(() => {
-    t.set(reduced ? 1 : withDelay(70 * index, withTiming(1, SETTLE)));
-  }, [t, reduced, index]);
-  useEffect(() => {
-    grow.set(reduced ? 1 : withTiming(on ? 1.12 : 1, { duration: 250, easing: SETTLE.easing }));
-  }, [grow, on, reduced]);
-  // only scale + opacity animate (no position): positions come from layout, so a resize can't strand them
-  // visible from the first frame: the motion only adds a slight grow-in, so a throttled tab (or
-  // stalled animation frames) can never leave someone missing from the map
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: (0.82 + 0.18 * t.get()) * grow.get() }] }));
-  const role = p.role === 'supporter' ? 'can cover you' : 'you can cover them';
+/** Money out right now, on its connector: a small capsule over the line. */
+function Capsule({ x, y, text }: { x: number; y: number; text: string }) {
+  const w = 10 + text.length * 7.5;
   return (
-    <View style={[s.abs, { left: x - NODE, top: y - NODE, opacity: dim ? 0.55 : 1 }]}>
-      <Animated.View style={style}>
-        <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }}
-          accessibilityLabel={`${p.name}, ${role}, ${p.status === 'active' ? 'agreed' : p.status === 'waiting' ? 'waiting for a yes' : 'stopped'}`}
-          style={[s.node, { backgroundColor: TINTS[index % TINTS.length] }, on && s.nodeOn, p.status === 'off' && { opacity: 0.6 }]}>
-          <Text style={s.nodeName} numberOfLines={1}>{p.name}</Text>
-        </PressableScale>
-      </Animated.View>
-    </View>
+    <G>
+      <Rect x={x - w / 2} y={y - 11} width={w} height={22} rx={11} fill={C.card2} stroke={HAIRLINE} strokeWidth={1} />
+      <SvgText x={x} y={y + 4.5} fill={C.text} fontSize={12} fontFamily={F.bodySemi} textAnchor="middle">{text}</SvgText>
+    </G>
   );
 }
 
 export function CircleLegend() {
   return (
-    <View style={s.legend}>
-      <Key color={C.green} label="Can cover you" />
-      <Key color="#7cb8ff" label="You can cover them" />
-      <Key color={C.text2} dashed label="Waiting for a yes" />
-    </View>
+    <Text style={st.legend}>Tap someone to see what you’ve agreed. Nobody here can see your balance.</Text>
   );
 }
 
-function Key({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  return (
-    <View style={s.key}>
-      <View style={[s.swatch, { borderColor: color, borderStyle: dashed ? 'dashed' : 'solid' }]} />
-      <Text style={s.keyText}>{label}</Text>
-    </View>
-  );
-}
-
-const s = StyleSheet.create({
+const st = StyleSheet.create({
   wrap: { width: '100%', marginTop: 4 },
-  abs: { position: 'absolute' },
-  centre: {
-    width: CENTER * 2, height: CENTER * 2, borderRadius: CENTER, borderWidth: 3, backgroundColor: C.card2,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
-  },
-  centreName: { fontFamily: F.bodySemi, fontSize: 20, letterSpacing: -0.3, color: C.text },
-  centreStatus: { fontFamily: F.bodySemi, fontSize: 13, marginTop: 2 },
-  node: { width: NODE * 2, height: NODE * 2, borderRadius: NODE, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  nodeOn: { borderWidth: 2, borderColor: '#fff' },
-  nodeName: { fontFamily: F.bodySemi, fontSize: 13, color: '#fff' },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14, marginTop: 6 },
-  key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatch: { width: 18, height: 0, borderTopWidth: 2 },
-  keyText: { fontFamily: F.body, fontSize: 12, color: C.text2 },
+  hit: { position: 'absolute', borderRadius: 24 },
+  pressed: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  legend: { fontFamily: F.body, fontSize: 12, lineHeight: 17, color: C.text2, textAlign: 'center', marginTop: 2 },
 });

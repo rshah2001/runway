@@ -96,8 +96,8 @@ function circlePeople(d: SafetyNetSummary, sup: SupportSummary): CirclePerson[] 
   const outFrom = (slug: string) => d.borrowed.filter((b) => b.lender === slug && OPEN.includes(b.status)).reduce((t, b) => t + b.amount, 0);
   const outTo = (slug: string) => d.lent.filter((b) => b.borrower === slug && OPEN.includes(b.status)).reduce((t, b) => t + b.amount, 0);
   return [
-    ...sup.supporters.map((a) => ({ key: `s-${a.supporter}`, name: a.supporter_name, role: 'supporter' as const, status: status(a), out: outFrom(a.supporter) || undefined })),
-    ...sup.supporting.map((a) => ({ key: `r-${a.recipient}`, name: a.recipient_name, role: 'supported' as const, status: status(a), out: outTo(a.recipient) || undefined })),
+    ...sup.supporters.map((a) => ({ key: `s-${a.supporter}`, name: a.supporter_name, role: 'supporter' as const, status: status(a), out: outFrom(a.supporter) || undefined, limit: a.limit })),
+    ...sup.supporting.map((a) => ({ key: `r-${a.recipient}`, name: a.recipient_name, role: 'supported' as const, status: status(a), out: outTo(a.recipient) || undefined, limit: a.limit })),
   ];
 }
 
@@ -141,9 +141,7 @@ function MyCircle({ me, d, sup, picked, onPick, onReview, onDone }: {
           </View>
           {owed ? <PayBack b={owed} onDone={onDone} /> : <Pill label={agreement.i_agreed ? 'Manage' : 'Review'} onPress={() => onReview(agreement)} />}
         </View>
-      ) : (
-        <Text style={[s.fineText, { textAlign: 'center' }]}>Each line is a separately agreed support relationship — never access to anyone’s money. Tap a person.</Text>
-      )}
+      ) : null}
     </View>
   );
 }
