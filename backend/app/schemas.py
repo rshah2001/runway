@@ -47,6 +47,8 @@ class Readiness(BaseModel):
     spend_days: int  # days the everyday spending rate was learned from
     progress: float  # 0–1 toward "confident"
     reasons: list[str]  # plain English, safe to show as-is
+    rolling_error: float | None = None  # $: how far off its week-ahead forecasts were, on average, lately
+    rolling_error_days: int = 0  # how many recent days that average covers
 
 
 class Forecast(BaseModel):

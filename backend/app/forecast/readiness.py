@@ -17,6 +17,7 @@ income in it shouldn't call itself sure. Every figure in `reasons` comes from he
 from datetime import date
 
 from app.forecast.recurring import MIN_CHARGES
+from app.forecast.report_card import ReportCard
 from app.forecast.sources import PersonaData
 from app.schemas import Readiness
 
@@ -93,4 +94,22 @@ def assess(
         spend_days=spend_days,
         progress=progress,
         reasons=reasons,
+    )
+
+
+def with_report_card(ready: Readiness, card: ReportCard | None) -> Readiness:
+    """Readiness plus how its recent forecasts actually did. Informational: a dollar error means
+    different things for different balances, so it doesn't change the status."""
+    if card is None:
+        return ready
+    reason = (
+        f"My {card.lead_days}-day-ahead forecasts were off by ${card.mean_abs_error:,.2f} on average "
+        f"over the last {card.days_checked} days."
+    )
+    return ready.model_copy(
+        update={
+            "rolling_error": card.mean_abs_error,
+            "rolling_error_days": card.days_checked,
+            "reasons": [*ready.reasons, reason],
+        }
     )

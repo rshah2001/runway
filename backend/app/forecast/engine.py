@@ -9,10 +9,12 @@ keep their original signatures; `persona` is a new keyword argument that default
 import calendar
 from collections import defaultdict
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Literal
 
-from app.forecast import band, sources
+from app.forecast import band, report_card, sources
+from app.forecast import readiness as readiness_mod
 from app.forecast.recurring import detect_recurring, next_after
 from app.forecast.schedule import Schedule, build
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Readiness, Recurring
@@ -43,7 +45,16 @@ def schedule_for(
     data = sources.load(persona, today)
     if history_days is not None:
         data = sources.recent(data, today, history_days)
-    return build(data, today)
+    return schedule_from(data, today)
+
+
+def schedule_from(data: sources.PersonaData, today: date) -> Schedule:
+    """The schedule plus its report card: how its recent week-ahead forecasts did (see report_card)."""
+    sched = build(data, today)
+    if sched.readiness is None:
+        return sched
+    card = report_card.replay(data, today, build, forecast)
+    return replace(sched, readiness=readiness_mod.with_report_card(sched.readiness, card))
 
 
 def readiness(
