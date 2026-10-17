@@ -21,8 +21,11 @@ Built at **SwampHacks XII** for Capital One's **Best Use of Nessie** challenge.
   could go, and how sure Runway is ("calibrating" → "learning" → "confident").
 - **Family safety net:** each person sets how much Runway may move from *them* to someone else without
   asking; it must come back by the borrower's next payday, and helping must keep the helper safe too.
-- **Assistant:** ask *"can I afford $X on Friday?"*, *"fix it"*, *"who owes me money?"*. It answers in
-  a voice that fits you (by age), and it **proposes**; people **approve**.
+- **Assistant (Gemini):** ask *"can I afford $X on Friday?"*, *"fix it"*, *"who owes me money?"*,
+  *"did anyone cover me?"*, *"what can I cut until payday?"*, or *"brief me on my week"*. It writes a
+  weekly money brief, splits what's coming into **needs** and **things that could wait until payday**
+  (with amounts), and explains the family safety net, all in a voice that fits you (by age). It
+  **proposes**; people **approve**, and it can never approve or change family money itself.
 - **Spending + peer-to-peer:** categories, subscriptions it detected, IOUs, and real transfers between
   real Nessie customers.
 
@@ -62,7 +65,7 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 | What | Result |
 |---|---|
 | **Agent** (Gemini, 42 "can I afford / fix it / subscriptions / forecast" questions across 3 voices) | **100%** tool selection · **95%** correct answers · **100%** of $ figures traceable to the engine |
-| **Agent, offline baseline** (48 questions incl. peer-to-peer) | 100% / 100% / 100% |
+| **Agent, offline baseline** (55 questions incl. peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
 | **Forecast backtest** (learn months 1–3, predict month 4, 18 folds) | daily balance error **$138**: −66% vs ignoring everyday spending, −16% vs repeating last month |
 | **Learning curve** (only 30 days of history) | error **$2,737 → $206** with provisional paydays |
 | **Range calibration** (cautious end beaten, target 5%) | **12–43% → 4–11%** on held-out IBM card users and a real UK account it never trained on |
