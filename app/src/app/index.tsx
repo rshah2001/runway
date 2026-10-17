@@ -4,6 +4,7 @@ import { useRouter, useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { AccountButton } from '@/components/login/account-button';
 import { ApprovalCard } from '@/components/rw/approval-card';
 import { Swoosh } from '@/components/rw/icons';
 import { Ring } from '@/components/rw/ring';
@@ -88,7 +89,7 @@ export default function TodayScreen() {
     <Page onRefresh={() => { forecast.reload(); me.reload(); }} refreshing={forecast.loading && !!forecast.data}>
       {!wide && (
         <View style={s.top}>
-          <View style={s.circ}><Caps size={15}>M</Caps></View>
+          <AccountButton />
           <View style={s.day}><Caps tone="dim" size={14}>‹</Caps><Caps size={14} style={{ letterSpacing: 2 }}>Today</Caps><Caps tone="dim" size={14}>›</Caps></View>
           <View style={s.circ}><Caps size={15}>···</Caps></View>
         </View>

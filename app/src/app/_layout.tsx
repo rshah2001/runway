@@ -7,7 +7,10 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
+import { LoginScreen } from '@/components/login/login-screen';
 import { C } from '@/constants/runway';
+import { bootSession } from '@/lib/account';
+import { useSession } from '@/lib/session';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,6 +23,11 @@ export default function RootLayout() {
     BarlowCondensed_500Medium, BarlowCondensed_600SemiBold, BarlowCondensed_700Bold,
   });
 
+  const session = useSession();
+  useEffect(() => {
+    bootSession(); // resume an Auth0 session or this tab's demo choice; otherwise the login screen
+  }, []);
+
   // Keep the splash up until fonts are ready so text never flashes in a fallback face.
   useEffect(() => {
     if (loaded || error) SplashScreen.hideAsync();
@@ -31,7 +39,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style="light" />
-      <AppTabs />
+      {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <LoginScreen /> : <AppTabs />}
     </ThemeProvider>
   );
 }
