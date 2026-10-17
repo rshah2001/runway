@@ -100,3 +100,42 @@ def detect_recurring(history: list[Txn], today: date, include: Callable[[Txn], b
             next_date = next_after(next_date, period, day_of_month)
         found.append(Recurring(merchant=last.label, amount=abs(last.amount), interval_days=period, next_date=next_date))
     return sorted(found, key=lambda r: r.next_date)
+
+
+def provisional(history: list[Txn], today: date, include: Callable[[Txn], bool]) -> list[Recurring]:
+    """Series with exactly two matching charges: too few for `detect_recurring` (which needs MIN_CHARGES
+    on a steady slot) but enough to expect a third. Used for income only, so a new user's forecast has
+    their paycheck in it after two paydays instead of three; readiness marks it as provisional.
+
+    Strict, since two points always fit some interval: same label, amounts within AMOUNT_TOLERANCE, a
+    gap that matches a cadence within its tolerance (monthly: the same day of the month), and the second
+    one recent enough that the series is still running."""
+    by_label: dict[str, list[Txn]] = defaultdict(list)
+    for t in history:
+        if include(t):
+            by_label[t.label.strip().lower()].append(t)
+    found: list[Recurring] = []
+    for series in by_label.values():
+        if len(series) != 2:
+            continue
+        first, second = sorted(series, key=lambda t: t.date)
+        if not _steady_amount([abs(first.amount), abs(second.amount)]):
+            continue
+        gap = (second.date - first.date).days
+        cadence = next(
+            (c for c, (period, tol) in CADENCES.items() if c != "monthly" and abs(gap - period) <= tol), None
+        )
+        if cadence is None and 25 <= gap <= 35 and abs(first.date.day - second.date.day) <= CADENCES["monthly"][1]:
+            cadence = "monthly"
+        if cadence is None:
+            continue
+        period, tolerance = CADENCES[cadence]
+        if (today - second.date).days > period * 1.5 + tolerance:
+            continue  # the next one is overdue: don't count on it
+        next_date = next_after(second.date, period, second.date.day)
+        while next_date < today:
+            next_date = next_after(next_date, period, second.date.day)
+        found.append(
+            Recurring(merchant=second.label, amount=abs(second.amount), interval_days=period, next_date=next_date)
+        )
+    return sorted(found, key=lambda r: r.next_date)
