@@ -1,140 +1,230 @@
-/** A quiet, focused entry point. Account access first; demo choices on request. */
+/**
+ * The way in. Two paths, in order of importance: sign in with Auth0, or look around as one of the
+ * three demo customers (Maya 20, Jordan 40, Sam 60) — the same data, no account needed.
+ *
+ * The one memorable moment: the hero is Maya's real runway, drawn from the live forecast, and
+ * choosing a way in plays the plane's takeoff before the app opens. Motion answers the person's
+ * action; with reduced motion the app opens immediately.
+ */
 import { useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
-import { Icon, Swoosh } from '@/components/rw/icons';
-import { F } from '@/constants/runway';
+import { Swoosh } from '@/components/rw/icons';
+import { RunwayStrip } from '@/components/rw/runway-strip';
+import { Btn, Card, Page, PressableScale, T, useWide } from '@/components/rw/ui';
+import { C, F, RADIUS } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
-import { enterAsGuest, enterSignedIn, NotLinked, signIn } from '@/lib/account';
+import { enterAsGuest, enterSignedIn, NotLinked, type Profile, signIn } from '@/lib/account';
 import { api } from '@/lib/api';
 import { isAuthConfigured } from '@/lib/auth';
+import { monthDay } from '@/lib/format';
+import { isClear, runwayDays } from '@/lib/runway';
 import type { Persona } from '@/lib/types';
 
-const INK = '#202522';
-const SECONDARY = '#737a75';
+const TAKEOFF_MS = 1500; // the strip's takeoff: 380ms delay + 1100ms climb
 
 export function LoginScreen() {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const [showDemos, setShowDemos] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const wide = useWide();
+  const reduced = useReducedMotion();
+  const people = useLoad(() => api.personas());
+  const [takeoffKey, setTakeoffKey] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null); // 'signin' or a persona slug
   const [error, setError] = useState<string | null>(null);
 
+  /** Play the takeoff, then let the app replace this screen. */
+  function takeOff(enter: () => void) {
+    setTakeoffKey((k) => k + 1);
+    setTimeout(enter, reduced ? 0 : TAKEOFF_MS);
+  }
+
   async function onSignIn() {
-    setBusy(true);
+    setBusy('signin');
     setError(null);
     try {
       const profile = await signIn();
-      if (profile) enterSignedIn(profile);
-      else setBusy(false);
+      if (!profile) {
+        setBusy(null); // closed the Auth0 window: nothing to say
+        return;
+      }
+      takeOff(() => enterSignedIn(profile));
     } catch (e) {
-      setBusy(false);
-      setError(e instanceof NotLinked ? e.message : 'Sign-in didn’t finish. Please try again.');
+      setBusy(null);
+      setError(e instanceof NotLinked ? e.message : 'Sign-in didn’t finish. Check your connection and try again.');
     }
   }
 
+  function onGuest(p: Persona) {
+    setBusy(p.slug);
+    setError(null);
+    const profile: Profile = { persona: p.slug, name: p.first_name };
+    takeOff(() => enterAsGuest(profile));
+  }
+
+  const ordered = [...(people.data ?? [])].sort((a, b) => a.age - b.age);
+
+  const hero = (
+    <View style={[s.hero, wide && s.heroWide]}>
+      <View style={s.brand}>
+        <Swoosh size={26} />
+        <Text style={s.wordmark}>Runway</Text>
+      </View>
+      <Text style={[s.headline, wide && s.headlineWide]} accessibilityRole="header">
+        See the day you’d run short, before it happens.
+      </Text>
+      <T tone="dim" style={s.lede}>
+        Runway forecasts your checking balance day by day, and covers a dip with your own savings or
+        family who agreed to help — before an overdraft fee ever lands.
+      </T>
+      <HeroRunway takeoffKey={takeoffKey} />
+    </View>
+  );
+
+  const panel = (
+    <View style={[s.panel, wide && s.panelWide]}>
+      <Card style={s.signInCard}>
+        <Text style={s.panelTitle}>Sign in</Text>
+        {isAuthConfigured ? (
+          <>
+            <T tone="dim" style={s.small}>Your forecast, your money, only you. Auth0 handles your password; Runway never sees it.</T>
+            <Btn label={busy === 'signin' ? 'Opening Auth0…' : 'Continue with Auth0'} onPress={onSignIn} disabled={busy !== null} style={s.primary} />
+          </>
+        ) : (
+          <T tone="dim" style={s.small}>Sign-in isn’t switched on yet. Look around as a demo customer below.</T>
+        )}
+        {error && (
+          <T tone="red" style={s.small} accessibilityLiveRegion="polite">
+            {error}
+          </T>
+        )}
+      </Card>
+
+      <Text style={s.or}>Or look around as one of our demo customers</Text>
+      {people.error ? (
+        <T tone="dim" style={s.small}>Can’t reach Runway right now. Check your connection and refresh.</T>
+      ) : !people.data ? (
+        <ActivityIndicator color={C.text2} style={{ marginVertical: 18 }} />
+      ) : (
+        <View style={s.people}>
+          {ordered.map((p) => (
+            <PersonRow key={p.slug} p={p} busy={busy} wide={wide} onPress={() => onGuest(p)} />
+          ))}
+        </View>
+      )}
+      <T tone="faint" style={s.footnote}>
+        Demo customers are fictional. Their balances and history come from Capital One’s Nessie API.
+      </T>
+    </View>
+  );
+
   return (
-    <View style={s.page}>
-      <ScrollView contentContainerStyle={[s.scroll, { paddingTop: Platform.OS === 'web' ? 0 : insets.top, paddingBottom: insets.bottom }]}>
-        <View style={s.header}>
-          <View style={s.brand}><Swoosh size={24} color={INK} /><Text style={s.wordmark}>runway</Text></View>
-        </View>
+    <Page>
+      <View style={[s.wrap, wide && s.wrapWide]}>
+        {hero}
+        {panel}
+      </View>
+    </Page>
+  );
+}
 
-        <View style={s.main}>
-          <View style={s.content}>
-            <View style={s.mark} accessible={false}><Swoosh size={43} color={INK} /></View>
-            <Text accessibilityRole="header" style={[s.headline, width < 440 && s.headlineSmall]}>Your money.{ '\n' }A clearer tomorrow.</Text>
-            <Text style={s.description}>Know what’s ahead.{ '\n' }Feel good about what’s next.</Text>
-            <View style={s.actions}>
-              <Pressable onPress={onSignIn} disabled={busy || !isAuthConfigured} accessibilityRole="button" accessibilityState={{ disabled: busy || !isAuthConfigured, busy }}
-                style={({ hovered, pressed }) => [s.primary, hovered && s.primaryHover, pressed && s.pressed, (busy || !isAuthConfigured) && s.disabled]}>
-                {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Sign in to Runway</Text>}
-              </Pressable>
-              {!isAuthConfigured && <Text style={s.previewNote}>Sign-in is unavailable in this local preview.</Text>}
-              {error && <Text style={s.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
-              <Pressable onPress={() => setShowDemos(!showDemos)} disabled={busy} accessibilityRole="button" accessibilityState={{ expanded: showDemos, disabled: busy }}
-                style={({ hovered, pressed }) => [s.secondary, hovered && s.secondaryHover, pressed && s.pressed]}>
-                <Text style={s.secondaryText}>{showDemos ? 'Close demo accounts' : 'Explore a demo'}</Text>
-                <Text style={s.arrow}>{showDemos ? '−' : '→'}</Text>
-              </Pressable>
-              {showDemos && <DemoAccounts disabled={busy} />}
-            </View>
-            {isAuthConfigured && <View style={s.security}><Icon name="shield" size={13} color={SECONDARY} /><Text style={s.securityText}>Secure sign-in with Auth0</Text></View>}
-          </View>
-        </View>
-
-        <View style={s.footer}><Text style={s.footerText}>A little foresight goes a long way.</Text></View>
-      </ScrollView>
+/** Maya's real runway right now — the product, shown instead of described. */
+function HeroRunway({ takeoffKey }: { takeoffKey: number }) {
+  const f = useLoad(() => api.forecast(30, 'maya'));
+  if (!f.data) return <View style={s.stripSpace} />;
+  const days = runwayDays(f.data), horizon = f.data.points.length - 1;
+  return (
+    <View style={s.stripCard}>
+      <T tone="dim" style={s.stripCaption}>
+        {isClear(f.data) ? 'Maya is covered all month' : `Maya runs short in ${days} days — Runway can see it coming`}
+      </T>
+      <RunwayStrip
+        days={days}
+        horizon={horizon}
+        endLabel={days < horizon ? monthDay(f.data.points[days].date) : ''}
+        lastLabel={monthDay(f.data.points[horizon].date)}
+        takeoffKey={takeoffKey}
+      />
     </View>
   );
 }
 
-function DemoAccounts({ disabled }: { disabled: boolean }) {
-  const people = useLoad(() => api.personas());
-  const ordered = [...(people.data ?? [])].sort((a, b) => a.age - b.age);
-  function enter(p: Persona) {
-    enterAsGuest({ persona: p.slug, name: p.first_name });
-  }
+/** One demo customer, with their live status from the forecast. */
+function PersonRow({ p, busy, wide, onPress }: { p: Persona; busy: string | null; wide: boolean; onPress: () => void }) {
+  const f = useLoad(() => api.forecast(30, p.slug), p.slug);
+  const status = f.data
+    ? isClear(f.data)
+      ? { text: 'Covered all month', color: C.green }
+      : { text: `Runs short ${monthDay(f.data.points[runwayDays(f.data)].date)}`, color: C.red }
+    : null;
+  const choosing = busy === p.slug;
   return (
-    <View style={s.demos}>
-      <Text style={s.demoIntro}>A look inside. No account needed.</Text>
-      {people.error ? (
-        <View style={s.loadState}>
-          <Text style={s.demoIntro} accessibilityLiveRegion="polite">Demo accounts couldn’t load.</Text>
-          <Pressable onPress={people.reload} disabled={people.loading} accessibilityRole="button" style={s.secondary}><Text style={s.secondaryText}>{people.loading ? 'Loading…' : 'Try again'}</Text></Pressable>
-        </View>
-      ) : !people.data ? (
-        <ActivityIndicator color={INK} style={s.loadState} accessibilityLabel="Loading demo accounts" />
-      ) : ordered.length === 0 ? <Text style={s.demoIntro}>No demo accounts are available yet.</Text> : ordered.map((p) => (
-        <Pressable key={p.slug} onPress={() => enter(p)} disabled={disabled} accessibilityRole="button" accessibilityLabel={`Explore as ${p.first_name}, age ${p.age}. ${p.story}`} accessibilityState={{ disabled }}
-          style={({ hovered, pressed }) => [s.person, hovered && s.personHover, pressed && s.pressed]}>
-          <View style={s.personCopy}><Text style={s.personName}>{p.first_name}<Text style={s.personAge}> · {p.age}</Text></Text><Text style={s.personStory}>{p.story}</Text></View>
-          <Text style={s.personArrow}>→</Text>
-        </Pressable>
-      ))}
-      <Text style={s.demoFootnote}>Demo accounts use fictional customer data.</Text>
+    <PressableScale
+      onPress={onPress}
+      disabled={busy !== null}
+      accessibilityRole="button"
+      accessibilityLabel={`Look around as ${p.first_name}, ${p.age}. ${p.story}`}
+      style={[s.person, choosing && s.personChosen, busy !== null && !choosing && { opacity: 0.5 }]}>
+      <View style={s.age}>
+        <Text style={s.ageNum}>{p.age}</Text>
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={s.personName}>{p.first_name}</Text>
+        <T tone="dim" style={s.small} numberOfLines={2}>{p.story}</T>
+        {/* phones: the status sits under the story so the story isn't squeezed */}
+        {status && !wide && <StatusPill {...status} />}
+      </View>
+      {status && wide && <StatusPill {...status} />}
+    </PressableScale>
+  );
+}
+
+function StatusPill({ text, color }: { text: string; color: string }) {
+  return (
+    <View style={[s.status, { borderColor: `${color}66` }]}>
+      <View style={[s.dot, { backgroundColor: color }]} />
+      <Text style={[s.statusText, { color }]}>{text}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fafbf9' },
-  scroll: { flexGrow: 1 },
-  header: { width: '100%', maxWidth: 1440, alignSelf: 'center', paddingHorizontal: 32, paddingVertical: 29 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  wordmark: { fontFamily: F.bodySemi, color: INK, fontSize: 25, letterSpacing: -0.9 },
-  main: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingTop: 42, paddingBottom: 72 },
-  content: { width: '100%', maxWidth: 420, alignItems: 'center' },
-  mark: { width: 78, height: 78, borderRadius: 24, backgroundColor: '#edf1ec', alignItems: 'center', justifyContent: 'center', marginBottom: 34 },
-  headline: { fontFamily: F.bodySemi, fontSize: 43, lineHeight: 49, letterSpacing: -1.7, color: INK, textAlign: 'center' },
-  headlineSmall: { fontSize: 34, lineHeight: 40, letterSpacing: -1.3 },
-  description: { fontFamily: F.body, fontSize: 17, lineHeight: 25, color: SECONDARY, textAlign: 'center', marginTop: 20 },
-  actions: { width: '100%', maxWidth: 320, marginTop: 38 },
-  primary: { minHeight: 52, backgroundColor: INK, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  primaryHover: { backgroundColor: '#39423c' },
-  primaryText: { fontFamily: F.bodyMedium, fontSize: 16, color: '#fff' },
-  disabled: { opacity: 0.45 },
-  pressed: { opacity: 0.7 },
-  secondary: { minHeight: 48, paddingHorizontal: 14, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 10 },
-  secondaryHover: { backgroundColor: '#eff2ed' },
-  secondaryText: { fontFamily: F.bodyMedium, color: INK, fontSize: 14 },
-  arrow: { color: INK, fontSize: 18 },
-  previewNote: { fontFamily: F.body, color: SECONDARY, fontSize: 12, textAlign: 'center', marginTop: 10 },
-  error: { fontFamily: F.body, color: '#a3302e', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 14 },
-  security: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 28 },
-  securityText: { fontFamily: F.body, color: SECONDARY, fontSize: 11 },
-  demos: { borderTopWidth: 1, borderTopColor: '#dfe4de', marginTop: 16, paddingTop: 22 },
-  demoIntro: { fontFamily: F.body, fontSize: 12, lineHeight: 18, color: SECONDARY, textAlign: 'center', marginBottom: 14 },
-  loadState: { paddingVertical: 20 },
-  person: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 10 },
-  personHover: { backgroundColor: '#edf1eb' },
-  personCopy: { flex: 1 },
-  personName: { fontFamily: F.bodySemi, fontSize: 15, color: INK },
-  personAge: { fontFamily: F.body, color: SECONDARY },
-  personStory: { fontFamily: F.body, fontSize: 12, lineHeight: 17, color: SECONDARY, marginTop: 4 },
-  personArrow: { color: SECONDARY, fontSize: 19 },
-  demoFootnote: { fontFamily: F.body, fontSize: 10, color: SECONDARY, textAlign: 'center', marginTop: 16 },
-  footer: { alignItems: 'center', paddingBottom: 25, paddingHorizontal: 24 },
-  footerText: { fontFamily: F.body, color: '#848b85', fontSize: 11 },
+  wrap: { gap: 28, paddingVertical: 12, paddingHorizontal: 8 },
+  wrapWide: { flexDirection: 'row', alignItems: 'center', gap: 56, minHeight: 640, paddingVertical: 40 },
+
+  hero: { gap: 16 },
+  heroWide: { flex: 1.15 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  wordmark: { fontFamily: F.condBold, fontSize: 24, color: C.text, letterSpacing: 4, textTransform: 'uppercase' },
+  // large display type: tight leading, negative tracking
+  headline: { fontFamily: F.condBold, fontSize: 42, lineHeight: 43, letterSpacing: -0.6, color: C.text, marginTop: 8 },
+  headlineWide: { fontSize: 64, lineHeight: 62, letterSpacing: -1.2 },
+  lede: { fontSize: 17, lineHeight: 25, maxWidth: 520 },
+  stripCard: { marginTop: 10, paddingVertical: 14, paddingHorizontal: 14, backgroundColor: C.card, borderRadius: RADIUS, borderWidth: 1, borderColor: C.line },
+  stripCaption: { fontSize: 14, marginBottom: 6 },
+  stripSpace: { height: 128 },
+
+  panel: { gap: 14 },
+  panelWide: { flex: 1, maxWidth: 460 },
+  signInCard: { gap: 12, padding: 22 },
+  panelTitle: { fontFamily: F.condBold, fontSize: 28, color: C.text, letterSpacing: -0.2 },
+  small: { fontSize: 14, lineHeight: 20 },
+  primary: { alignSelf: 'stretch', marginTop: 4 },
+  or: { fontFamily: F.bodyMedium, fontSize: 15, color: C.text2, marginTop: 10, marginLeft: 4 },
+
+  people: { gap: 10 },
+  person: {
+    flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14,
+    backgroundColor: C.card, borderRadius: RADIUS, borderWidth: 1, borderColor: C.line,
+  },
+  personChosen: { borderColor: C.text2, backgroundColor: C.card2 },
+  age: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  ageNum: { fontFamily: F.condBold, fontSize: 20, color: C.text },
+  personName: { fontFamily: F.bodySemi, fontSize: 17, color: C.text },
+  status: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: 4,
+    borderWidth: 1, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 9,
+  },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontFamily: F.bodyMedium, fontSize: 12.5 },
+  footnote: { fontSize: 12.5, lineHeight: 18, marginTop: 6, marginLeft: 4 },
 });
