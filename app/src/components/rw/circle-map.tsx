@@ -61,7 +61,7 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
   const [width, setWidth] = useState(0);
   const height = Math.min(Math.max(width * 0.72, 330), 400);
   const cx = width / 2;
-  const cy = height / 2 - 6;
+  const cy = height / 2 + 4;
   const r = Math.min(width * 0.36, height * 0.34);
   const spots = people.map((p, i) => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(people.length, 1);
@@ -97,7 +97,8 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
                 <G key={`c-${p.key}`} opacity={selected && !on ? 0.4 : 1}>
                   <Line x1={cx + ux * (ME + 8)} y1={cy + uy * (ME + 8)} x2={x - ux * (AV + 4)} y2={y - uy * (AV + 4)}
                     stroke={color} strokeWidth={on ? 1.5 : 1} strokeDasharray={p.status === 'active' ? undefined : '3 4'} />
-                  {p.out ? <Capsule x={(cx + x) / 2} y={(cy + y) / 2} text={money(p.out, 0)} /> : null}
+                  {/* closer to you than to them, so it never meets their name */}
+                  {p.out ? <Capsule x={cx + (x - cx) * 0.42} y={cy + (y - cy) * 0.42} text={money(p.out, 0)} /> : null}
                 </G>
               );
             })}
@@ -120,8 +121,9 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
                   <Circle cx={x} cy={y} r={AV * k} fill={`url(#mono${i % MONO.length})`} />
                   <SvgText x={x} y={y + 7} fill="#fff" fontSize={20} fontFamily={F.bodySemi} textAnchor="middle">{initial(p.name)}</SvgText>
                   <Badge x={x + AV * 0.72} y={y + AV * 0.72} status={p.status} />
-                  <SvgText x={x} y={y + AV + 20} fill={C.text} fontSize={14} fontFamily={F.bodySemi} textAnchor="middle">{p.name}</SvgText>
-                  <SvgText x={x} y={y + AV + 36} fill={C.text2} fontSize={12} fontFamily={F.body} textAnchor="middle">{subLine(p)}</SvgText>
+                  {/* people above you are labelled above their avatar, so labels never sit on a connector */}
+                  <SvgText x={x} y={y < cy - 1 ? y - AV - 24 : y + AV + 20} fill={C.text} fontSize={14} fontFamily={F.bodySemi} textAnchor="middle">{p.name}</SvgText>
+                  <SvgText x={x} y={y < cy - 1 ? y - AV - 9 : y + AV + 36} fill={C.text2} fontSize={12} fontFamily={F.body} textAnchor="middle">{subLine(p)}</SvgText>
                 </G>
               );
             })}
@@ -134,7 +136,7 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
             <Pressable key={`h-${p.key}`} onPress={() => onSelect(selected === p.key ? null : p.key)}
               accessibilityRole="button" accessibilityState={{ selected: selected === p.key }}
               accessibilityLabel={`${p.name}: ${p.role === 'supporter' ? 'can cover you' : 'you support them'}, ${subLine(p)}`}
-              style={({ pressed }) => [st.hit, { left: x - 46, top: y - AV - 6, width: 92, height: AV * 2 + 50 }, pressed && st.pressed]} />
+              style={({ pressed }) => [st.hit, { left: x - 46, top: y < cy - 1 ? y - AV - 44 : y - AV - 6, width: 92, height: AV * 2 + 50 }, pressed && st.pressed]} />
           ))}
         </>
       )}
