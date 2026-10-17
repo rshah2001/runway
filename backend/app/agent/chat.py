@@ -49,7 +49,7 @@ def chat(message: str, *, client: Any = None, today: date | None = None) -> Chat
     today = today or date.today()
     message = message.strip()
     if not message:
-        return ChatResponse(reply='Ask me "can I afford $180 on Friday?" or say "fix it".')
+        return ChatResponse(reply='Ask me "can I afford $X on Friday?" or say "fix it".')
     if len(message) > MAX_MESSAGE_CHARS:
         return ChatResponse(reply=f"That's a long message — please keep it under {MAX_MESSAGE_CHARS} characters.")
 
@@ -176,5 +176,5 @@ def _route(text: str, today: date) -> ChatResponse:
 
     r = tools.get_forecast(today=today)
     reply = f"Your tightest day in the next 30 days is {r['lowest_day']} at {r['lowest_balance']}. "
-    reply += 'Ask "can I afford $180 Friday?" or say "fix it".'
+    reply += 'Ask "can I afford $X on Friday?" or say "fix it".'
     return ChatResponse(reply=reply, tool_calls=["get_forecast"])

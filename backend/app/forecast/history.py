@@ -1,11 +1,12 @@
 """Seeded transaction history for the fictional demo persona — owner: Patil-Hemangi.
 
 Stands in for the transactions Nessie + Tiger Data will provide. It is generated from the same
-`Schedule` the forecast uses plus random card purchases (port of `seedTxns` in prototype/index.html),
+`Schedule` the forecast uses plus random card purchases (the merchants of `seedTxns` in prototype/index.html),
 so the recurring detector and the forecast backtest have realistic, reproducible input.
 """
 
 import calendar
+import random
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
@@ -38,15 +39,11 @@ CARD_MERCHANTS = [
 ]
 
 
-class _ParkMiller:
-    """The prototype's tiny LCG, so the history is identical on every machine and run."""
-
-    def __init__(self, seed: int = 7) -> None:
-        self.state = seed
-
-    def __call__(self) -> float:
-        self.state = (self.state * 16807) % 2147483647
-        return self.state / 2147483647
+def _day_rng(seed: int, d: date) -> random.Random:
+    """Randomness that depends only on (seed, day), so a given day's purchases are the same however
+    the history window is cut — required for backtest folds to see different, consistent data.
+    String seeds are hashed with SHA-512 by `random`, so this is reproducible on every machine."""
+    return random.Random(f"{seed}:{d.isoformat()}")
 
 
 def _months_back(d: date, months: int) -> date:
@@ -56,7 +53,6 @@ def _months_back(d: date, months: int) -> date:
 
 def demo_history(end: date, months: int = 4, schedule: Schedule = MAYA, seed: int = 7) -> list[Transaction]:
     """Every transaction in the `months` before `end` (exclusive), oldest first."""
-    rnd = _ParkMiller(seed)
     pay = schedule.paycheck
     # paydays are anchored to the forecast's next payday, so history and forecast share one rhythm
     next_payday = end + timedelta(days=(pay.weekday - end.weekday()) % 7 or 7)
@@ -73,9 +69,10 @@ def demo_history(end: date, months: int = 4, schedule: Schedule = MAYA, seed: in
                 )
         if (next_payday - d).days % pay.every_days == 0:
             out.append(Transaction(d, pay.label, -pay.amount, "Income", "deposit"))
+        rng = _day_rng(seed, d)
         for category, merchant, lo, hi, per_week in CARD_MERCHANTS:
-            if rnd() < per_week / 7:
-                out.append(Transaction(d, merchant, round(lo + rnd() * (hi - lo), 2), category, "purchase"))
+            if rng.random() < per_week / 7:
+                out.append(Transaction(d, merchant, round(rng.uniform(lo, hi), 2), category, "purchase"))
         for card in schedule.cards:
             if d.day == min(card.pay_day, last_day):
                 out.append(Transaction(d, f"{card.label} payment", 250.00, "Payment", "transfer"))
