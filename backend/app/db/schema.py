@@ -162,6 +162,9 @@ CREATE TABLE IF NOT EXISTS bridges (
 );
 CREATE INDEX IF NOT EXISTS bridges_borrower ON bridges (borrower_slug, status);
 CREATE INDEX IF NOT EXISTS bridges_lender ON bridges (lender_slug, status);
+-- the borrower's floor when the bridge was made: repayment uses min(then, now), so raising it later
+-- can't stall paying the family back (added after the table existed, hence ALTER … IF NOT EXISTS)
+ALTER TABLE bridges ADD COLUMN IF NOT EXISTS borrower_floor numeric(12, 2);
 
 CREATE TABLE IF NOT EXISTS safety_events (
     id            bigserial PRIMARY KEY,

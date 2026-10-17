@@ -64,6 +64,7 @@ class Decision:
     shortfall_date: date | None = None
     low_balance: Decimal | None = None
     due_date: date | None = None
+    floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
 
 
 def _md(d: date) -> str:
@@ -100,7 +101,7 @@ def decide(
         return Decision(b.slug, "none", f"{name} stays above {_money(floor)} until payday.")
     short_day, short_bal = low
     need = Decimal(math.ceil((floor - short_bal) / ROUND_TO) * ROUND_TO)
-    base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday)
+    base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday, floor=floor)
     gap = f"{name} would drop to {_money(short_bal)} on {_md(short_day)}, before payday on {_md(b.next_payday)}"
 
     if need > MAX_BRIDGE:
@@ -293,6 +294,7 @@ def act(decision: Decision) -> dict | None:
                 "shortfall_date": decision.shortfall_date,
                 "due_date": decision.due_date,
                 "approval_channel": None,
+                "borrower_floor": decision.floor,
             },
         )
         b = safety_repo.bridge(conn, bridge_id)
@@ -341,6 +343,15 @@ def _checking_balance(conn, persona: dict) -> Decimal:
         for a in repo.accounts_with_balances(conn, persona["customer_id"])
         if a["id"] == persona["checking_id"]
     )
+
+
+def _repay_floor(conn, b: dict) -> Decimal:
+    """What repaying a bridge must leave the borrower with: the LOWER of their floor when they were
+    helped and their floor now. Raising it after being helped can't stall paying the family back;
+    lowering it lets the money go back sooner."""
+    now = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+    then = b.get("borrower_floor")
+    return now if then is None else min(now, Decimal(str(then)))
 
 
 def _pay_back(b: dict, *, early: bool) -> dict | None:
@@ -406,7 +417,7 @@ def repay_due(today: date | None = None) -> list[dict]:
     for b in due:
         with pool.connection() as conn:
             borrower = repo.persona(conn, b["borrower_slug"])
-            keep = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+            keep = _repay_floor(conn, b)
             if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:  # paycheck not in yet: wait
                 if (today - b["due_date"]).days >= REPAY_GRACE_DAYS and b["status"] == "active":
                     safety_repo.transition(conn, b["id"], ("active",), "repay_failed")
@@ -434,7 +445,7 @@ def repay_now(bridge_id: str) -> dict:
         if b is None or b["status"] not in ("active", "repay_failed"):
             raise RepayRefused("That bridge isn't waiting to be paid back.")
         borrower = repo.persona(conn, b["borrower_slug"])
-        keep = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+        keep = _repay_floor(conn, b)
         if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:
             raise RepayRefused(
                 f"Paying back now would take you under {_money(keep)}, the amount you keep. "

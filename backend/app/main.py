@@ -158,6 +158,9 @@ def set_safe_floor(req: SetSafeFloor, user: OptionalUser) -> Me:
         persona = req.persona
         if persona not in {p.slug for p in data.personas()}:  # nothing is saved for someone who doesn't exist
             raise HTTPException(404, f"Unknown persona '{persona}'")
+        # the floor decides when family money moves, so it follows the money rule: with real
+        # transfers on, an anonymous caller never changes it
+        authorize_money(None, persona)
     try:
         prefs.set_floor(persona, req.amount)
     except prefs.FloorOutOfRange as e:

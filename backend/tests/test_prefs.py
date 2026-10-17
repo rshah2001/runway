@@ -87,3 +87,30 @@ def test_reset_puts_everyone_back_to_the_default() -> None:
     prefs.set_floor("maya", 75)
     prefs.reset(["maya"])
     assert prefs.floor("maya") == prefs.DEFAULT_FLOOR
+
+
+# ---------- review fixes: the floor can't be used against the family ----------
+def test_a_decision_remembers_the_borrowers_floor() -> None:
+    d = decide(replace(proj("maya", 208), floor=D(250)), [helper("sam", 5000, 100)], TODAY)
+    assert d.action == "auto_bridge" and d.floor == D(250)
+
+
+def test_raising_your_floor_after_being_helped_cant_stall_repayment() -> None:
+    from app.safety_net import _repay_floor
+
+    bridge = {"borrower_slug": "maya", "borrower_floor": D(300)}
+    prefs.set_floor("maya", 5000)  # raised right after Sam helped
+    assert _repay_floor(None, bridge) == D(300)  # repayment still only has to leave her $300
+    prefs.set_floor("maya", 100)  # lowering it lets the money go back sooner
+    assert _repay_floor(None, bridge) == D(100)
+    assert _repay_floor(None, {"borrower_slug": "maya", "borrower_floor": None}) == D(100)  # older bridges
+
+
+def test_with_real_transfers_on_an_anonymous_caller_cant_change_it(
+    monkeypatch: pytest.MonkeyPatch, auth_off: None
+) -> None:
+    from app import data
+
+    monkeypatch.setattr(data, "writes_enabled", lambda: True)
+    r = client.put("/me/safe-floor", json={"persona": "maya", "amount": 0})
+    assert r.status_code in (401, 503) and prefs.floor("maya") == prefs.DEFAULT_FLOOR
