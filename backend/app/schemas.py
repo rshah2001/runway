@@ -35,11 +35,24 @@ class ForecastEvent(BaseModel):
     kind: Literal["paycheck", "bill", "subscription", "card_payment", "spending", "transfer", "other"]
 
 
+class Readiness(BaseModel):
+    """How sure the forecast is (backend/app/forecast/readiness.py). Every figure is the engine's."""
+
+    status: Literal["calibrating", "learning", "confident"]
+    days_of_history: int
+    paychecks_seen: int
+    paycheck_found: bool  # the forecast has a learned payday in it
+    spend_days: int  # days the everyday spending rate was learned from
+    progress: float  # 0–1 toward "confident"
+    reasons: list[str]  # plain English, safe to show as-is
+
+
 class Forecast(BaseModel):
     points: list[ForecastPoint]
     low: ForecastPoint
     safe_floor: float
     events: list[ForecastEvent]
+    readiness: Readiness | None = None  # None only for hand-built schedules (tests)
 
 
 class SimulateRequest(BaseModel):

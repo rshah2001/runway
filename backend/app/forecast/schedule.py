@@ -12,9 +12,11 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Literal
 
+from app.forecast import readiness
 from app.forecast.recurring import detect_recurring
 from app.forecast.sources import PersonaData, Txn
 from app.forecast.spend_model import Outflows, SpendProfile, fit_flat
+from app.schemas import Readiness
 
 EventKind = Literal["paycheck", "bill", "subscription", "card_payment", "spending", "transfer", "other"]
 
@@ -50,6 +52,7 @@ class Schedule:
     monthly: list[MonthlyCharge] = field(default_factory=list)
     regular: list[RegularFlow] = field(default_factory=list)
     spend: SpendProfile = SpendProfile((0.0,) * 7)
+    readiness: Readiness | None = None  # how sure a forecast from this schedule is
 
 
 def _checking_flow(t: Txn) -> bool:
@@ -87,12 +90,23 @@ def everyday_outflows(history: list[Txn], regular: list[RegularFlow]) -> Outflow
     ]
 
 
+def spend_window(data: PersonaData, today: date) -> tuple[date, date]:
+    """The days the spending rate is learned from: the last SPEND_WINDOW_DAYS, or since the first day
+    with data if that is more recent. Dividing a new user's 12 days of spending by 90 would make them
+    look like they barely spend."""
+    first = readiness.history_start(data) or today
+    return max(today - timedelta(days=SPEND_WINDOW_DAYS), first), today
+
+
 def build(data: PersonaData, today: date, fit=fit_flat) -> Schedule:
     """A persona's schedule as of `today`, learned from the history before it."""
     regular = regular_flows(data.history, today)
-    spend = fit(everyday_outflows(data.history, regular), today - timedelta(days=SPEND_WINDOW_DAYS), today)
+    start, end = spend_window(data, today)
+    spend = fit(everyday_outflows(data.history, regular), start, end)
     monthly = [
         MonthlyCharge(b.day, b.amount, b.label, "card_payment" if "credit card" in b.label.lower() else "bill")
         for b in data.bills
     ]
-    return Schedule(start_balance=data.checking, monthly=monthly, regular=regular, spend=spend)
+    paycheck = next(((f.label, f.amount, f.interval_days) for f in regular if f.kind == "paycheck"), None)
+    ready = readiness.assess(data, today, spend_days=(end - start).days, paycheck=paycheck)
+    return Schedule(start_balance=data.checking, monthly=monthly, regular=regular, spend=spend, readiness=ready)

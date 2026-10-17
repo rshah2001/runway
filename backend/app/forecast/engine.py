@@ -15,7 +15,7 @@ from typing import Literal
 from app.forecast import sources
 from app.forecast.recurring import detect_recurring, next_after
 from app.forecast.schedule import Schedule, build
-from app.schemas import Forecast, ForecastEvent, ForecastPoint, Recurring
+from app.schemas import Forecast, ForecastEvent, ForecastPoint, Readiness, Recurring
 
 DEFAULT_PERSONA = "maya"
 MAX_DAYS = 365
@@ -31,11 +31,28 @@ def status(low_balance: float, safe_floor: float) -> Status:
     return "tight" if low_balance < safe_floor + TIGHT_MARGIN else "healthy"
 
 
-def schedule_for(persona: str = DEFAULT_PERSONA, today: date | None = None) -> Schedule:
+def schedule_for(
+    persona: str = DEFAULT_PERSONA, today: date | None = None, *, history_days: int | None = None
+) -> Schedule:
     """Load a persona's data and build its schedule. Callers that forecast repeatedly (the agent's
-    tools) build it once and pass it in, so one question never reads the database twice."""
+    tools) build it once and pass it in, so one question never reads the database twice.
+
+    `history_days` pretends Runway has only known the persona that long — for the demo's "day 12"
+    calibration story and the learning-curve eval. None uses everything."""
     today = today or sources.local_today()
-    return build(sources.load(persona, today), today)
+    data = sources.load(persona, today)
+    if history_days is not None:
+        data = sources.recent(data, today, history_days)
+    return build(data, today)
+
+
+def readiness(
+    persona: str = DEFAULT_PERSONA, today: date | None = None, *, history_days: int | None = None
+) -> Readiness:
+    """How sure a forecast for `persona` is today: calibrating, learning or confident, with reasons."""
+    ready = schedule_for(persona, today, history_days=history_days).readiness
+    assert ready is not None  # build() always sets it
+    return ready
 
 
 # ---------- events ----------
@@ -128,7 +145,7 @@ def forecast(
     events = sorted(build_events(schedule, start, end) + hypothetical, key=lambda e: (e.date, -e.amount))
     points = project(schedule.start_balance, events, start, days)
     low = min(points, key=lambda p: p.balance)  # earliest of equal lows: that's when you'd need to act
-    return Forecast(points=points, low=low, safe_floor=schedule.safe_floor, events=events)
+    return Forecast(points=points, low=low, safe_floor=schedule.safe_floor, events=events, readiness=schedule.readiness)
 
 
 def simulate_purchase(

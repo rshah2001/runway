@@ -23,11 +23,22 @@ export type ForecastEvent = {
   kind: 'paycheck' | 'bill' | 'subscription' | 'card_payment' | 'spending' | 'transfer' | 'other';
 };
 
+export type Readiness = {
+  status: 'calibrating' | 'learning' | 'confident';
+  days_of_history: number;
+  paychecks_seen: number;
+  paycheck_found: boolean; // the forecast has a learned payday in it
+  spend_days: number; // days the everyday spending rate was learned from
+  progress: number; // 0–1 toward "confident"
+  reasons: string[]; // plain English, safe to show as-is
+};
+
 export type Forecast = {
   points: ForecastPoint[];
   low: ForecastPoint;
   safe_floor: number;
   events: ForecastEvent[];
+  readiness?: Readiness | null;
 };
 
 export type Recurring = {

@@ -9,7 +9,7 @@ Everything is normalised to `PersonaData`, so the engine never knows which sourc
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -57,6 +57,12 @@ class PersonaData:
 
 def local_today() -> date:
     return datetime.now(LOCAL_TZ).date()
+
+
+def recent(data: PersonaData, today: date, days: int) -> PersonaData:
+    """The same persona with only the last `days` of history, as if Runway had just met them."""
+    cutoff = today - timedelta(days=max(0, days))
+    return replace(data, history=[t for t in data.history if t.date >= cutoff])
 
 
 class LiveDataUnavailable(RuntimeError):
