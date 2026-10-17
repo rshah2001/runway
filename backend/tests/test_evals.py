@@ -56,5 +56,6 @@ def test_learning_curve_gets_better_with_history_and_the_band_is_honest() -> Non
     curve = forecast_backtest.learning_curve()
     assert curve[90].mae < curve[60].mae < curve[30].mae  # it learns: more history, smaller error
     assert curve[60].payday_found == curve[90].payday_found == 1.0
-    assert 0.65 <= curve[90].coverage <= 0.95  # a p10–p90 band should hold ~80% of real days
+    assert 0.70 <= curve[90].coverage <= 0.95  # a p5–p90 band should hold ~85% of real days
+    assert curve[90].below_low <= 0.10  # the safety net plans on the low end: it must rarely be beaten
     assert curve[90].coverage > curve[30].coverage

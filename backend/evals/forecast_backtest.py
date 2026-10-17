@@ -10,7 +10,7 @@ personas and several seed days, so one lucky month can't decide the result.
 
 The learning curve repeats the live model with only the last 14 / 30 / 60 / 90 days of history before
 the cutoff, as if Runway had just met the person, and adds:
-  * coverage — share of month-4 days whose actual balance landed inside the p10–p90 band (aim ≈ 80%)
+  * coverage — share of month-4 days whose actual balance landed inside the p5–p90 band (aim ≈ 85%)
   * payday found — share of folds where the detector learned the paycheck from that much history
 
 Run:  python -m evals.forecast_backtest      (from backend/)
@@ -53,8 +53,9 @@ LEARNING_CURVE_DAYS = [14, 30, 60, 90]
 class Score:
     mae: float
     mape: float
-    coverage: float = 0.0  # share of test days inside the p10–p90 band
+    coverage: float = 0.0  # share of test days inside the p5–p90 band
     payday_found: float = 0.0  # 1.0 if the schedule had a learned paycheck
+    below_low: float = 0.0  # share of test days below balance_low, the end the safety net plans on
 
 
 def score_fold(persona: str, seed_day: date, fit: Fit = fit_flat, history_days: int | None = None) -> Score:
@@ -68,13 +69,14 @@ def score_fold(persona: str, seed_day: date, fit: Fit = fit_flat, history_days: 
     predicted = engine.forecast(days=TEST_DAYS - 1, start=cutoff, schedule=sched).points
 
     test = [t for t in full.history if cutoff <= t.date < seed_day and t.account == "Checking"]
-    errors, inside, balance = [], 0, 0.0
+    errors, inside, below, balance = [], 0, 0, 0.0
     for point in predicted:
         balance += sum(t.amount for t in test if t.date == point.date)
         errors.append(abs(point.balance - balance))
         low = point.balance if point.balance_low is None else point.balance_low
         high = point.balance if point.balance_high is None else point.balance_high
         inside += low <= balance <= high
+        below += balance < low
 
     actual_spend = sum(a for _, a in schedule.everyday_outflows(test, sched.regular))
     predicted_spend = sched.spend.total(cutoff, TEST_DAYS)
@@ -83,11 +85,13 @@ def score_fold(persona: str, seed_day: date, fit: Fit = fit_flat, history_days: 
         mape=abs(predicted_spend - actual_spend) / actual_spend,
         coverage=inside / len(predicted),
         payday_found=float(bool(sched.readiness and sched.readiness.paycheck_found)),
+        below_low=below / len(predicted),
     )
 
 
 def _mean_score(folds: list[Score]) -> Score:
-    return Score(*(mean(getattr(f, k) for f in folds) for k in ("mae", "mape", "coverage", "payday_found")))
+    fields = ("mae", "mape", "coverage", "payday_found", "below_low")
+    return Score(*(mean(getattr(f, k) for f in folds) for k in fields))
 
 
 def run() -> dict[str, Score]:
@@ -114,9 +118,12 @@ def table(results: dict[str, Score]) -> str:
 
 
 def curve_table(curve: dict[int, Score]) -> str:
-    header = "| Days of history | MAE, daily checking balance | p10–p90 band coverage | Payday found |"
-    header += "\n|---|---|---|---|"
-    rows = [f"| {d} | ${s.mae:,.2f} | {s.coverage:.0%} | {s.payday_found:.0%} |" for d, s in curve.items()]
+    header = "| Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday found |"
+    header += "\n|---|---|---|---|---|"
+    rows = [
+        f"| {d} | ${s.mae:,.2f} | {s.coverage:.0%} | {s.below_low:.0%} | {s.payday_found:.0%} |"
+        for d, s in curve.items()
+    ]
     return "\n".join([header, *rows])
 
 

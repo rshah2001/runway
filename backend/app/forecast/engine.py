@@ -168,7 +168,7 @@ def forecast(
 
 
 def with_range(points: list[ForecastPoint], schedule: Schedule) -> list[ForecastPoint]:
-    """Each point with its p10–p90 balance from how much this person's everyday spending varies.
+    """Each point with its p5–p90 balance from how much this person's everyday spending varies.
     Point i has i + 1 days of spending in it (today's included), so it takes the spread for i + 1 days."""
     if not schedule.daily_spend:
         return points
