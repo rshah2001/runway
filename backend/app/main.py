@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import data, safety_views
+from app import data, forecast_history, safety_views
 from app.agent import chat as agent
 from app.auth.deps import OptionalUser, persona_for, require_owner
 from app.auth.tokens import User
@@ -68,9 +68,14 @@ def authorize_money(user: User | None, owner: str | None) -> None:
 
 
 def background_pass() -> None:
-    """Every interval: pull Nessie into Tiger Data, then let the safety net act (repayments,
-    push approvals, new bridges) — the last part only when real writes are on."""
+    """Every interval: pull Nessie into Tiger Data, save today's forecasts and score past ones (once a
+    day per persona), then let the safety net act (repayments, push approvals, new bridges) — the last
+    part only when real writes are on."""
     sync_personas(prepare=False)
+    try:
+        forecast_history.run()
+    except Exception:  # the track record is informational: it must never hold up the safety net
+        log.exception("forecast history pass failed")
     from app import demo, safety_net
 
     if demo.held():  # a demo reset paused automatic bridges so the dip is still there on stage

@@ -57,6 +57,10 @@ class Readiness(BaseModel):
     reasons: list[str]  # plain English, safe to show as-is
     rolling_error: float | None = None  # $: how far off its week-ahead forecasts were, on average, lately
     rolling_error_days: int = 0  # how many recent days that average covers
+    # where that average comes from: "saved" = forecasts the app really showed, kept in Tiger Data and
+    # checked once the day passed; "replay" = the engine re-run on past days (until enough are saved)
+    rolling_error_source: Literal["saved", "replay"] | None = None
+    band_coverage: float | None = None  # 0–1: share of checked days the real balance was inside the range
     left_out: list[LeftOut] = Field(default_factory=list)  # one-offs kept out of the spending rate
 
 
