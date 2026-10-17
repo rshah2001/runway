@@ -125,7 +125,7 @@ jobs:
         # rebuild the demo personas at 09:00 UTC (5 am Eastern) so the history always ends "yesterday";
         # runs inside the API container, where the keys already are — no secrets in GitHub
         run: |
-          ssh "deploy@$HOST" 'JOB="0 9 * * * cd /opt/runway/deploy && docker compose --env-file ../.env exec -T api python -m seed --reset maya jordan sam emma >> /opt/runway/reseed.log 2>&1 # runway-reseed"; ( crontab -l 2>/dev/null | grep -v "# runway-reseed"; echo "$JOB" ) | crontab - && crontab -l | grep -c runway-reseed'
+          ssh "deploy@$HOST" 'JOB="0 9 * * * cd /opt/runway/deploy && docker compose --env-file ../.env exec -T api python -m seed --reset maya jordan sam emma alex >> /opt/runway/reseed.log 2>&1 # runway-reseed"; ( crontab -l 2>/dev/null | grep -v "# runway-reseed"; echo "$JOB" ) | crontab - && crontab -l | grep -c runway-reseed'
       - name: Smoke test
         # hit the public address (the domain once SITE_ADDRESS is set — the bare IP stops serving then)
         run: curl -fsS --retry 10 --retry-delay 5 --retry-all-errors "${PUBLIC_API_URL:-http://$HOST/api}/health"

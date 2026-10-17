@@ -81,3 +81,45 @@ def allocate(need: Decimal, caps: list[tuple[str, Capacity]]) -> list[tuple[str,
             shares.append((slug, give))
             left -= give
     return shares
+
+
+# ---------- several people short at once ----------
+@dataclass(frozen=True)
+class NetNeed:
+    """One recipient's need in a network pass, with the supporters who could help them automatically."""
+
+    borrower: str
+    need: Decimal
+    shortfall: date
+    options: tuple[tuple[str, Decimal, Decimal], ...]  # (supporter, their shared room, pair room for this person)
+    allow_multi: bool = True
+
+
+def allocate_network(needs: list[NetNeed]) -> dict[str, list[tuple[str, Decimal]]]:
+    """Cover several needs at once from supporters whose safe room is SHARED between them.
+
+    Fairness rule (written down, deterministic, never about who "deserves" it): serve the person with the
+    fewest options first — the least spare capacity beyond their need — then the earliest shortfall, then
+    name order. Each supporter's room (their cushion- and exposure-bound amount) is used up across
+    everyone; each pair limit applies per person. First-come-first-served would let whoever is planned
+    first take a supporter someone else has no alternative to; fewest-options-first covers more need
+    (see tests/test_guardian.py::test_network_*). A need may be covered only in part: the rest is unmet.
+    """
+    room: dict[str, Decimal] = {}
+    for n in needs:  # a supporter's shared room is the smallest any recipient's window allows
+        for s, r, _ in n.options:
+            room[s] = min(room.get(s, r), r)
+
+    def slack(n: NetNeed) -> Decimal:
+        return sum((min(room[s], pair) for s, _, pair in n.options), Decimal(0)) - n.need
+
+    out: dict[str, list[tuple[str, Decimal]]] = {}
+    for n in sorted(needs, key=lambda n: (slack(n), n.shortfall, n.borrower)):
+        caps = [(s, Capacity(round_down(min(room[s], pair)), "pair_limit", room[s])) for s, _, pair in n.options]
+        if not n.allow_multi:
+            caps = [(s, c) for s, c in caps if c.amount >= n.need]
+        shares = allocate(n.need, caps)
+        for s, a in shares:
+            room[s] -= a
+        out[n.borrower] = shares
+    return out

@@ -305,6 +305,33 @@ PERSONAS: list[PersonaSpec] = [
         contacts=[Contact("jules", "Jules", "Park", "Friend")],
         p2p=[P2PPattern("jules", "in", 22.00, "Brunch split", per_month=2)],
     ),
+    PersonaSpec(
+        slug="alex",
+        first_name="Alex",
+        last_name="Rivera",
+        age=22,
+        story="Maya's roommate, a senior with a part-time job — short the same week she is",
+        checking=520.00,
+        savings=300.00,
+        credit_owed=180.00,
+        paycheck=Paycheck(640.00, "Library job paycheck"),
+        bills=[
+            Bill("Gainesville Apartments", "Rent (his half)", 600.00, 1),
+            Bill("Mobile Carrier", "Phone bill", 30.00, 19),
+            Bill("Rewards credit card", "Credit card payment", 180.00, 21),
+        ],
+        subscriptions=[Subscription("Spotify", 5.99, 11)],
+        habits=[
+            Habit("FreshMart", 1.0, 15, 55, "checking"),
+            Habit("Chipotle", 1.1, 10, 16),
+            Habit("Starbucks", 1.0, 5, 8),
+            Habit("Pizza Palace", 0.5, 12, 22),
+            Habit("Shell", 0.4, 25, 40, "checking"),
+        ],
+        contacts=[Contact("sky", "Sky", "Nguyen", "Friend")],
+        p2p=[P2PPattern("sky", "in", 18.00, "Food split", per_month=2)],
+        demo_low_before_payday=215.00,  # → $85 short of his $300 cushion, the same week as Maya
+    ),
 ]
 
 
@@ -316,6 +343,8 @@ SAFETY_LIMITS: list[tuple[str, str, float]] = [
     ("jordan", "maya", 300.00),  # authorized — but a big bill this week leaves no safe room
     ("emma", "maya", 45.00),  # cousin: a quiet $45
     ("emma", "jordan", 100.00),  # an offer Jordan hasn't answered yet (shows the consent flow)
+    ("sam", "alex", 100.00),  # Sam also backs Maya's roommate — his $90 of safe room is shared
+    ("emma", "alex", 50.00),
 ]
 # demo states beyond "both agreed": an offer waiting for the recipient's yes, and a paused supporter
 DEMO_WAITING_FOR_RECIPIENT = frozenset({("emma", "jordan")})
