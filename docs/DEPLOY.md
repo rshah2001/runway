@@ -95,5 +95,5 @@ EXPO_PUBLIC_API_URL=https://sixsevenbucksleft.vip/api
    passes it to the API (done; or put the same line in `/opt/runway/.env`).
 5. **GitHub repo variables** (public identifiers): `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE` —
    the web build reads them as `EXPO_PUBLIC_AUTH0_*`.
-6. Sign in on the site as Maya and check `/api/me` returns Maya. **Only then** set `LIVE_TRANSFERS=1`
-   on the server and redeploy: Fix it, P2P and the safety net move real Nessie money — for signed-in owners only.
+6. Sign in on the site as Maya and check `/api/me` returns Maya. **Only then** set the GitHub repo
+   variable `LIVE_TRANSFERS=1` and redeploy (done): Fix it, P2P and the safety net move real Nessie money — for signed-in owners only.
