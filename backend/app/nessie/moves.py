@@ -28,6 +28,10 @@ def tag(key: str) -> str:
     return f"[rw:{key}]"
 
 
+def _defuse(text: str) -> str:
+    return text.replace("[rw:", "(rw:")
+
+
 def _rejected(e: Exception) -> bool:
     """Only a 4xx is a clear "Nessie did not apply this"."""
     return isinstance(e, NessieError) and 400 <= e.status < 500
@@ -49,6 +53,9 @@ def move_money(
     if cents < 1:
         raise ValueError(f"amount must be at least one cent, got {amount!r}")
     amount = float(from_cents(cents))
+    # memos can carry user text (P2P): defuse any look-alike tag so only Runway can write a real one,
+    # and reconciliation evidence can't be forged from a memo
+    memo, deposit_memo = _defuse(memo), _defuse(deposit_memo)
     if key:
         memo, deposit_memo = f"{memo} {tag(key)}", f"{deposit_memo} {tag(key)}"
     try:

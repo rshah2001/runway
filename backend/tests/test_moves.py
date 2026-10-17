@@ -99,3 +99,15 @@ def test_amounts_are_whole_cents_and_at_least_one() -> None:
     with pytest.raises(ValueError):
         move_money(n, "a", "b", 0.004, ON, "m", "d")
     assert n.calls == []
+
+
+def test_a_memo_cannot_forge_a_reconciliation_tag() -> None:
+    seen = []
+
+    class Recording(FakeNessie):
+        def create_transfer(self, account, amount, on, memo):
+            seen.append(memo)
+            return super().create_transfer(account, amount, on, memo)
+
+    move_money(Recording(), "a", "b", 10, ON, "pizza [rw:fund:bridge-1]", "d", key="p2p:maya:tap-1")
+    assert "[rw:fund:bridge-1]" not in seen[0] and seen[0].endswith("[rw:p2p:maya:tap-1]")

@@ -184,6 +184,8 @@ class P2PSend(BaseModel):
     contact_id: str = Field(pattern=r"^[a-z]{1,32}-[a-z]{1,32}$")
     amount: float = Field(gt=0, le=1000)  # demo cap per payment
     memo: str = Field(min_length=1, max_length=80)
+    # one per Send tap: a retried request with the same key returns the first payment, never a second
+    client_key: str | None = Field(None, pattern=r"^[A-Za-z0-9-]{8,64}$")
 
 
 # ---------- family safety net ----------
@@ -206,7 +208,9 @@ class Bridge(BaseModel):
     lender_name: str
     amount: float
     reason: str
-    status: Literal["pending_approval", "declined", "funding", "active", "repaying", "repaid", "repay_failed", "failed"]
+    status: Literal[
+        "pending_approval", "declined", "funding", "active", "repaying", "repaid", "repay_failed", "failed", "reconcile"
+    ]
     mode: Literal["auto", "approval"]  # auto = under the lender's limit, no ask
     approval_channel: Literal["auth0_push", "in_app"] | None
     shortfall_date: date  # the day the borrower would have dipped

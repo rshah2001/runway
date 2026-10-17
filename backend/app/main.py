@@ -273,9 +273,11 @@ def p2p(user: OptionalUser, persona: str = PERSONA) -> P2PSummary:
 def p2p_send(req: P2PSend, user: OptionalUser) -> P2PPayment:
     authorize_money(user, req.persona)
     try:
-        return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo)
+        return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo, req.client_key)
     except (data.PersonaNotFound, data.ContactNotFound):
         raise HTTPException(404, "Unknown persona or contact") from None
+    except data.PaymentInProgress:
+        raise HTTPException(409, "That payment is already being sent") from None
     except data.TransferNotMade as e:
         raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
     except Exception as e:
