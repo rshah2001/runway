@@ -24,6 +24,7 @@ class Me(BaseModel):
     safe_floor: float = 300.0  # what this person keeps in checking; every "am I okay?" uses it
     alerts_only: bool = False  # Today shows one calm line and speaks up only before a dip
     family_cover: bool = True  # False: family limits never move money to this person
+    discreet_notifications: bool = True  # lock-screen previews carry no amounts or names
 
 
 class ForecastPoint(BaseModel):
@@ -289,6 +290,7 @@ class SetPreferences(BaseModel):
     persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in: you set your own
     alerts_only: bool | None = None
     family_cover: bool | None = None
+    discreet_notifications: bool | None = None
 
 
 class PushSubscription(BaseModel):
@@ -345,6 +347,31 @@ class ActivityItem(BaseModel):
     status: str
     why: str
     reference: str | None = None  # the bank (Nessie) id of the viewer's own side of the transfer
+
+
+class ScenarioPoint(BaseModel):
+    date: date
+    balance: float
+
+
+class Scenario(BaseModel):
+    key: Literal["A", "B", "C", "D"]  # A no help · B one supporter · C your circle · D unsafe help (blocked)
+    label: str
+    help: float  # how much arrives today (and goes back on payday)
+    low: ScenarioPoint  # the lowest point before payday under this scenario
+    covered: bool  # the low stays at or above your cushion
+    blocked: bool = False  # D: what Runway refuses to do
+    note: str
+    points: list[ScenarioPoint]  # your daily balance under this scenario (for the chart)
+
+
+class Scenarios(BaseModel):
+    """Time Machine: YOUR forecast under four what-ifs (app/scenarios.py). Never anyone else's money."""
+
+    floor: float
+    payday: date | None
+    need: float  # how much you're short before payday (0 if fine)
+    scenarios: list[Scenario]
 
 
 class SetSupportMode(BaseModel):

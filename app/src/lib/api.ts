@@ -15,6 +15,7 @@ import type {
   SafetyDecision,
   SafetyLimit,
   SafetyNetSummary,
+  Scenarios,
   Spending,
   SupportSummary,
 } from './types';
@@ -42,7 +43,7 @@ export const api = {
   setSafeFloor: (amount: number, persona = currentPersona()) =>
     request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
   // alerts-only and family cover: on/off, only for yourself; a field left out stays as it is
-  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean }, persona = currentPersona()) =>
+  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean; discreet_notifications?: boolean }, persona = currentPersona()) =>
     request<Me>('/me/preferences', { method: 'PUT', body: JSON.stringify({ persona, ...prefs }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
   // heads-up alerts to this phone (lib/push.ts): the server's public key, this browser's subscription, a test
@@ -79,6 +80,8 @@ export const api = {
   supportExposure: (limit: number, persona = currentPersona()) =>
     request<SupportSummary>('/support/exposure', { method: 'PUT', body: JSON.stringify({ persona, limit }) }),
   activity: (persona = currentPersona()) => request<ActivityItem[]>(`/activity?persona=${persona}`),
+  // Time Machine: your own forecast with no help / one supporter / your circle / unsafe help (blocked)
+  scenarios: (persona = currentPersona()) => request<Scenarios>(`/forecast/scenarios?persona=${persona}`),
   supportRevoke: (supporter: string, recipient: string, persona = currentPersona()) =>
     request<SupportSummary>('/support/revoke', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
   setSafetyLimit: (lender: string, borrower: string, limit: number, enabled = true) =>

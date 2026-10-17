@@ -194,3 +194,64 @@ Rules that still hold: the LLM never computes a number; write tools only create 
 the persona comes from the request / signed-in user, never the model. Tests + evals stay green.
 Branch names: ai/<feature>. Small PRs — readiness first, it unblocks the safety-net guardrail.
 ```
+
+---
+
+# Round 3 — the unbuilt parts of the Runway 2.0 brief (Oct 17, evening · deadline Oct 18 08:00 EDT)
+
+Context for both: Runway is now a **private financial safety network** — Circles, Quiet Support Agreements
+(both people must say yes), the Network Guardian (`backend/app/guardian.py`: a supporter's *safe* share from
+their own cautious forecast), real Nessie transfers with a journal + reconciliation, and server-enforced
+privacy. Read `docs/SAFETY_NET.md` first (10 min). Everything below is on `main` as of the PR that added
+this section.
+
+**Rules (both):** pull `main`, branch per task (`ui/…`, `ai/…`), one PR per task, CI green before merging
+(**merging deploys**), never push to `main`. Never show anyone's balance, spending, forecast or reasons to
+someone else — the server already enforces it; the UI must not work around it. rshah2001 + Claude own
+the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, `seed/`) — ask before editing.
+
+## an2thu — screens (`app/` only)
+
+1. **Today chart: cautious range + how sure.** `GET /forecast` already returns `points[].balance_low` /
+   `balance_high` and `readiness.status` (`calibrating | learning | confident`) + `readiness.reasons`. Draw the
+   range as a soft band under the line (keep the existing interactions) and a small plain "how sure" note.
+   Files: `app/src/components/today/today-interactive.tsx`, `today-home.tsx`.
+2. **Time Machine** (on Today, under the chart). `api.scenarios()` → `GET /forecast/scenarios` returns
+   `{ floor, payday, need, scenarios: [{ key: 'A'|'B'|'C'|'D', label, help, low, covered, blocked, note,
+   points[] }] }` — A no help · B one supporter alone · C your circle · D unsafe help (**blocked**, names
+   nobody; only appears when the safe split falls short). A segmented control (A/B/C/D) that redraws the
+   existing chart with `points`, shows `low` vs `floor`, and `note` underneath. D is visibly "blocked".
+   For Maya today it returns A (short), B "Only Sam" (still short), C "Your circle" (covered).
+3. **Settings: "Hide my balance" + discreet notifications.** In the account menu
+   (`app/src/components/login/account-menu.tsx`): "Hide my balance" is **on-device only** (store it locally,
+   blur/replace amounts on your own screens) and must say so; "Discreet notifications" is a real setting:
+   `api.setPreferences({ discreet_notifications })`, read from `api.me().discreet_notifications` (default on).
+4. **My Circles cards** — when the circles API lands (Claude will add it to this file + `lib/api.ts`).
+5. Keep going on the circle map from branch `ui/circle-chart` (`components/rw/circle-map.tsx` only).
+
+## Patil-Hemangi — AI + Auth0 (`backend/app/agent/`, `backend/evals/`, Auth0 tenant)
+
+1. **Ask Runway: three new answers, from the asker's own side only** (`agent/tools.py`, `agent/chat.py`):
+   - *"Why didn't I get help?" / "What happened with my support?"* → a read tool over
+     `safety_views.activity_for(persona)` (each item has a ready-made `why` from the viewer's side).
+   - *"Will helping Maya affect my bills?"* → the supporter's own room: `guardian.capacity(...)` on their own
+     projection (see `safety_net._capacity`) — say the safe amount and that it keeps *their* cushion; never
+     the other person's numbers.
+   - *"Pause my support for Maya"* → a **pending action** the user approves (like transfers); on approval call
+     `PUT /safety-net/limits` with `enabled=false` for that pair. Never an instant change from chat.
+   Keep the privacy guard (`agent/privacy.py`) in front, add eval cases to `evals/agent_eval.py`, and keep
+   `python -m evals.privacy_eval --gemini` at **15/15**. Update `backend/evals/README.md` + the README table.
+2. **Auth0 phone push (CIBA)** — `docs/SAFETY_NET.md` → "Auth0 push approvals": Guardian push on, enroll
+   sam/jordan/emma@runway.demo (post-login Action), "Runway Agent" app with the CIBA grant, repo var
+   `AUTH0_CIBA_CLIENT_ID`, secret `AUTH0_CIBA_CLIENT_SECRET`, var `AUTH0_CIBA_USERS` (add `emma=auth0|6ad3e91c0a1da0ed0ab04f5a`).
+   Then test an over-limit approval reaching a phone (Sam, "Ask me before every transfer" on, in Circles).
+3. **Tone eval re-run** (`python -m evals.tone_eval`) after the privacy prompt; update the README numbers.
+
+## Claude (with rshah2001) — backend, in this order
+
+1. ✅ `GET /forecast/scenarios` + `discreet_notifications` (this PR)
+2. Named Circles: tables + invite / accept / decline / leave / remove API (+ add the calls to `lib/api.ts`)
+3. Recipient limits: "max I can owe at once", "allow several supporters"
+4. Demo 6: a demo-only "payday now" (real Nessie paycheck deposit → safe repayment) + a deferred case
+5. A `support_decisions` record of every decision and its reasons
+6. Alex / Priya / Leo + simultaneous shortfalls (network-wide split with a written fairness rule)
