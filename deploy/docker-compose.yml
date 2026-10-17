@@ -14,6 +14,12 @@ services:
       # token the site gets is always one the API accepts
       AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-}
+      # Auth0 push approvals (CIBA): over-limit bridges buzz the lender's phone through Auth0 Guardian.
+      # The client id and persona → user map are repo variables; the secret is a GitHub Actions
+      # secret. Empty = off, and over-limit bridges use the in-app approval card instead.
+      AUTH0_CIBA_CLIENT_ID: ${AUTH0_CIBA_CLIENT_ID:-}
+      AUTH0_CIBA_CLIENT_SECRET: ${AUTH0_CIBA_CLIENT_SECRET:-}
+      AUTH0_CIBA_USERS: ${AUTH0_CIBA_USERS:-}
       # "1" = Fix it, P2P and the safety net move real Nessie money (signed-in owners only);
       # from the GitHub repo variable LIVE_TRANSFERS at deploy time
       LIVE_TRANSFERS: ${LIVE_TRANSFERS:-}

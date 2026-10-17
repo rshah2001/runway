@@ -80,6 +80,8 @@ jobs:
       LIVE_TRANSFERS: ${{ vars.LIVE_TRANSFERS }}
       AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
       AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
+      AUTH0_CIBA_CLIENT_ID: ${{ vars.AUTH0_CIBA_CLIENT_ID }}
+      AUTH0_CIBA_USERS: ${{ vars.AUTH0_CIBA_USERS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -101,8 +103,10 @@ jobs:
           rsync -az --delete deploy/  "deploy@$HOST:/opt/runway/deploy/"
           rsync -az --delete web/     "deploy@$HOST:/opt/runway/web/"
       - name: Restart services
+        env:
+          AUTH0_CIBA_CLIENT_SECRET: ${{ secrets.AUTH0_CIBA_CLIENT_SECRET }}  # masked in logs
         run: |
-          ssh "deploy@$HOST" "cd /opt/runway/deploy && AUTH0_PERSONAS='$AUTH0_PERSONAS' LIVE_TRANSFERS='$LIVE_TRANSFERS' AUTH0_DOMAIN='$AUTH0_DOMAIN' AUTH0_AUDIENCE='$AUTH0_AUDIENCE' docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f"
+          ssh "deploy@$HOST" "cd /opt/runway/deploy && AUTH0_PERSONAS='$AUTH0_PERSONAS' LIVE_TRANSFERS='$LIVE_TRANSFERS' AUTH0_DOMAIN='$AUTH0_DOMAIN' AUTH0_AUDIENCE='$AUTH0_AUDIENCE' AUTH0_CIBA_CLIENT_ID='$AUTH0_CIBA_CLIENT_ID' AUTH0_CIBA_CLIENT_SECRET='$AUTH0_CIBA_CLIENT_SECRET' AUTH0_CIBA_USERS='$AUTH0_CIBA_USERS' docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f"
       - name: Schedule nightly reseed
         # rebuild the demo personas at 09:00 UTC (5 am Eastern) so the history always ends "yesterday";
         # runs inside the API container, where the keys already are — no secrets in GitHub

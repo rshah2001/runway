@@ -115,6 +115,10 @@ def health() -> dict:
         # public identifiers (they ship in the website too) — lets anyone check the server and the
         # app agree on which Auth0 tenant and API a sign-in token must come from
         report["auth"] = {"issuer": cfg.issuer, "audience": cfg.audience, "linked_logins": len(cfg.personas)}
+        from app import auth0_ciba
+
+        ciba = auth0_ciba.config()  # never the secret: only whether push approvals are on, and for how many
+        report["auth"]["push_approvals"] = {"on": ciba is not None, "lenders": len(ciba.users) if ciba else 0}
     return report
 
 
