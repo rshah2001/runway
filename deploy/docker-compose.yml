@@ -7,6 +7,9 @@ services:
     env_file: ../.env
     environment:
       ROOT_PATH: /api
+      # which Auth0 login sees which demo persona — user ids aren't secret, so they come from the
+      # GitHub repo variable AUTH0_PERSONAS at deploy time (falls back to ../.env)
+      AUTH0_PERSONAS: ${AUTH0_PERSONAS:-}
     restart: unless-stopped
     expose:
       - "8000"

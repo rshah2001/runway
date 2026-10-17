@@ -76,6 +76,7 @@ jobs:
     env:
       HOST: ${{ vars.VULTR_HOST }}
       PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
+      AUTH0_PERSONAS: ${{ vars.AUTH0_PERSONAS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -98,7 +99,7 @@ jobs:
           rsync -az --delete web/     "deploy@$HOST:/opt/runway/web/"
       - name: Restart services
         run: |
-          ssh "deploy@$HOST" 'cd /opt/runway/deploy && docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f'
+          ssh "deploy@$HOST" "cd /opt/runway/deploy && AUTH0_PERSONAS='$AUTH0_PERSONAS' docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f"
       - name: Schedule nightly reseed
         # rebuild the demo personas at 09:00 UTC (5 am Eastern) so the history always ends "yesterday";
         # runs inside the API container, where the keys already are — no secrets in GitHub
