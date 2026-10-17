@@ -55,8 +55,17 @@ def _shortfall(f: Forecast) -> float:
     return round(max(0.0, f.safe_floor - f.low.balance), 2)
 
 
+def _mood(low_balance: float, safe_floor: float) -> dict[str, Any]:
+    """Tone inputs for the agent, computed here so the model never compares numbers itself."""
+    return {
+        "status": engine.status(low_balance, safe_floor),
+        "low_point_under_100": low_balance < 100,
+    }
+
+
 def _low_summary(f: Forecast) -> dict[str, Any]:
     return {
+        **_mood(f.low.balance, f.safe_floor),
         "lowest_balance": money(f.low.balance),
         "lowest_day": day(f.low.date),
         "safety_floor": money(f.safe_floor),
@@ -116,6 +125,8 @@ def simulate_purchase(
     shortfall = round(max(0.0, base.safe_floor - low.balance), 2)
     result: dict[str, Any] = {
         "verdict": "safe" if shortfall == 0 else "not_safe",
+        # tone follows the worse of this purchase's month and the dips already coming without it
+        **_mood(min(low.balance, base.low.balance), base.safe_floor),
         "purchase": f"{label} {money(amount)} on {day(on)}",
         "lowest_balance_with_it": money(low.balance),
         "lowest_day_with_it": day(low.date),
@@ -133,7 +144,9 @@ def simulate_purchase(
 
 def find_recurring(*, today: date | None = None) -> dict[str, Any]:
     """Subscriptions detected from purchase history, with totals."""
-    subs = engine.recurring(start=today or date.today())
+    today = today or date.today()
+    subs = engine.recurring(start=today)
+    now = engine.forecast(start=today)
     monthly = sum(s.amount * 30 / s.interval_days for s in subs)
     return {
         "count": len(subs),
@@ -143,6 +156,7 @@ def find_recurring(*, today: date | None = None) -> dict[str, Any]:
         ],
         "monthly_total": money(monthly),
         "yearly_total": money(monthly * 12),
+        **_mood(now.low.balance, now.safe_floor),
     }
 
 

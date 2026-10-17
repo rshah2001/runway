@@ -11,6 +11,7 @@ import calendar
 from collections import defaultdict
 from collections.abc import Iterator
 from datetime import date, timedelta
+from typing import Literal
 
 from app.forecast.history import demo_history
 from app.forecast.recurring import detect_recurring
@@ -18,6 +19,16 @@ from app.forecast.schedule import MAYA, Schedule
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Recurring
 
 MAX_DAYS = 365
+TIGHT_MARGIN = 150.0  # a low point within this much of the floor counts as "tight"
+
+Status = Literal["healthy", "tight", "overdraft_risk"]
+
+
+def status(low_balance: float, safe_floor: float) -> Status:
+    """Green / amber / red for a low point. Decided here so the app's colour and the agent's tone agree."""
+    if low_balance < safe_floor:
+        return "overdraft_risk"
+    return "tight" if low_balance < safe_floor + TIGHT_MARGIN else "healthy"
 
 
 def _on_day(year: int, month: int, day: int) -> date:

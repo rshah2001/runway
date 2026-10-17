@@ -42,6 +42,8 @@ def test_learned_spend_model_beats_the_hand_set_dials() -> None:
         ("Buying it is not safe because you'd fall to $71.61.", False),
         ("Yes, you can afford it — the lowest you'd hit is $517.89 on Tue Dec 1.", True),
         ("Not safely — you'd drop to $71.61 on Thu Nov 5.", False),
+        ("You can buy it on Fri Nov 6, but your balance already dips below your floor on Thu Nov 5.", True),
+        ("I would hold off on the $120.00 concert for tomorrow.", False),
     ],
 )
 def test_verdict_grader_reads_the_first_sentence(reply: str, says_safe: bool) -> None:

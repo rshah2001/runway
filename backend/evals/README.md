@@ -21,12 +21,20 @@ phrasings (19 not safe, 11 safe), 4 "fix it", 3 subscription and 3 forecast ques
 
 | Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
 |---|---|---|---|---|---|
-| Gemini (`gemini-3.8-flash`, free tier) | 40 | 100% | 100% | 100% | 0 |
+| Gemini (`gemini-3.8-flash`, free tier, with personality) | 40 | 100% | 100% | 100% | 0 |
 | Rule-based router (offline baseline) | 40 | 100% | 100% | 100% | — |
 
-Gemini run on 2026-10-16. API errors are counted separately and score as failures, so a silent fallback
-to the router can never pass as a Gemini answer; earlier free-tier runs on the same day hit 1–2 transient
-403s, which is why the agent retries each request once before falling back.
+Gemini run on 2026-10-17 with the personality prompt and the status-driven tone dial. Notes on method:
+
+- **API errors** count as failures, so a silent fallback to the router can never pass as a Gemini answer.
+  Free-tier runs sometimes hit transient 403s, which is why the agent retries each request once.
+- **Answer accuracy** reads the verdict from the reply's first sentence with a keyword list ("not",
+  "can't", "hold off", …). Keyword grading can miss new phrasings; every miss so far was a correct
+  answer worded differently, and each one became a grader test in `tests/test_evals.py`.
+- **Grounded figures** checks the reply against every tool output the agent actually received, so a
+  reply may cite another tool it chose to call, but never a number no tool produced.
+- Runs vary: across five runs on the same day, single questions occasionally failed on wording or an API
+  error. The table shows the latest run.
 
 ## Forecast backtest
 

@@ -23,7 +23,8 @@ from app.schemas import ChatResponse
 
 TODAY = date(2026, 10, 16)  # fixed so ground truth never drifts: Friday, low $251.61 on Thu Nov 5
 MONEY = re.compile(r"-?\$[\d,]+(?:\.\d{2})?")
-NEGATIVE = re.compile(r"\b(not|no|can't|cannot|isn't|aren't|shouldn't|won't|wouldn't)\b|short|below|under your")
+# a "no" verdict. Words like "below" don't count: a correct "yes" may still warn about an existing dip.
+NEGATIVE = re.compile(r"\b(not|no|can't|cannot|isn't|aren't|shouldn't|won't|wouldn't|hold off|wait|skip|pass on)\b")
 # sentence end: ., ! or ? not inside a number (so "$35.00" doesn't end the sentence), or a dash
 SENTENCE_END = re.compile(r"(?<!\d)[.!?]|[.!?](?!\d)|—")
 
@@ -113,26 +114,38 @@ def build_cases() -> list[Case]:
     return cases
 
 
-def _grounded(reply: str, message: str, truth: dict[str, Any]) -> bool:
+def _grounded(reply: str, message: str, truth: Any) -> bool:
     allowed = set(MONEY.findall(str(truth))) | set(MONEY.findall(message))
     allowed |= {m.removesuffix(".00") for m in allowed}  # "$50" is the same figure as "$50.00"
     return all(m in allowed or m.removesuffix(".00") in allowed for m in MONEY.findall(reply))
 
 
-def _ask(message: str, client: Any) -> ChatResponse | None:
-    """The agent's reply, or None if Gemini errored — never let a silent fallback score as Gemini."""
+def _ask(message: str, client: Any) -> tuple[ChatResponse | None, list[dict[str, Any]]]:
+    """The agent's reply plus every tool output it saw. The reply is None if Gemini errored, so a
+    silent fallback to the router can never score as Gemini."""
     if client is None:
-        return agent.chat(message, today=TODAY)
+        return agent.chat(message, today=TODAY), []
+    seen: list[dict[str, Any]] = []
+    real_call = tools.call
+
+    def recording_call(name: str, arguments: dict[str, Any], today: date | None = None) -> dict[str, Any]:
+        result = real_call(name, arguments, today)
+        seen.append(result)
+        return result
+
+    tools.call = recording_call  # the agent may ground its reply in any tool it called, not just ours
     try:
-        return agent._chat_with_gemini(client, message, TODAY)
+        return agent._chat_with_gemini(client, message, TODAY), seen
     except Exception:
-        return None
+        return None, seen
+    finally:
+        tools.call = real_call
 
 
 def run(client: Any = None) -> list[dict[str, Any]]:
     rows = []
     for case in build_cases():
-        r = _ask(case.message, client)
+        r, seen = _ask(case.message, client)
         if r is None:
             rows.append({"message": case.message, "tool": False, "answer": False, "grounded": False, "reply": "ERROR"})
             continue
@@ -141,7 +154,7 @@ def run(client: Any = None) -> list[dict[str, Any]]:
                 "message": case.message,
                 "tool": case.tool in r.tool_calls,
                 "answer": case.check(r),
-                "grounded": _grounded(r.reply, case.message, case.truth),
+                "grounded": _grounded(r.reply, case.message, [case.truth, *seen]),
                 "reply": r.reply,
             }
         )

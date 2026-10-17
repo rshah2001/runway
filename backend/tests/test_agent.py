@@ -174,3 +174,32 @@ def test_gemini_failure_falls_back_to_rules() -> None:
 
     r = agent.chat("fix it", client=Broken(), today=TODAY)
     assert r.pending_action is not None and r.tool_calls == ["propose_transfer"]
+
+
+# ---------- personality: the tone dial is computed, not judged by the model ----------
+
+
+@pytest.mark.parametrize(
+    ("low", "expected"),
+    [(299.99, "overdraft_risk"), (300, "tight"), (449.99, "tight"), (450, "healthy"), (-50, "overdraft_risk")],
+)
+def test_status_thresholds(low: float, expected: str) -> None:
+    from app.forecast import engine
+
+    assert engine.status(low, 300) == expected
+
+
+def test_tools_hand_the_model_its_tone_inputs() -> None:
+    f = tools.get_forecast(today=TODAY)
+    assert f["status"] == "overdraft_risk" and f["low_point_under_100"] is False
+    concert = tools.simulate_purchase(180, "friday", today=TODAY)
+    assert concert["status"] == "overdraft_risk" and concert["low_point_under_100"] is True  # $71.61
+    later = tools.simulate_purchase(40, "2026-11-07", today=TODAY)
+    assert later["verdict"] == "safe" and later["status"] == "overdraft_risk"  # Nov 5 dip still coming
+    assert tools.find_recurring(today=TODAY)["status"] == "overdraft_risk"
+
+
+def test_system_prompt_carries_the_current_status() -> None:
+    fake = FakeGemini(_text("You're short on Nov 5."))
+    agent.chat("how am I doing?", client=fake, today=TODAY)
+    assert "Current status: overdraft_risk." in fake.sent[0]["system_instruction"]
