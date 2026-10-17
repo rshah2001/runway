@@ -17,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import data, safety_views
 from app.agent import chat as agent
+from app.auth.deps import OptionalUser, persona_for, require_owner
+from app.auth.tokens import User
+from app.auth.tokens import config as auth_config
 from app.config import get_settings
 from app.db import pool
 from app.db import schema as db_schema
@@ -46,6 +49,22 @@ from app.sync_loop import run_periodically
 
 log = logging.getLogger("runway")
 PERSONA = Query(data.DEFAULT_PERSONA, pattern=r"^[a-z]{1,32}$", description="demo persona slug, e.g. maya")
+
+# ---------- who may do what ----------
+# Reads: signed in → always your own persona (persona_for ignores ?persona=); signed out → the demo
+#        persona named in the request, so the site stays browsable without an account.
+# Money: with real transfers on (LIVE_TRANSFERS=1) you must be signed in AND own the money; with them
+#        off nothing real moves, so anyone may run the simulation — but a signed-in user still only
+#        ever acts as themselves.
+
+
+def authorize_money(user: User | None, owner: str | None) -> None:
+    if user is not None:
+        require_owner(user, owner or "")
+    elif data.writes_enabled():
+        if auth_config() is None:  # never move real money for an anonymous caller
+            raise HTTPException(503, "Real transfers need sign-in, and sign-in isn't configured")
+        raise HTTPException(401, "Sign in to move money", headers={"WWW-Authenticate": "Bearer"})
 
 
 def background_pass() -> None:
@@ -80,7 +99,9 @@ app = FastAPI(title="Runway API", lifespan=lifespan)
 
 # only the app's own origins may call the API; set CORS_ORIGINS (comma-separated) when deploying
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8081,http://localhost:19006").split(",")
-app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST", "PUT"], allow_headers=["*"]
+)
 
 
 @app.get("/health")
@@ -94,7 +115,8 @@ def personas() -> list[Persona]:
 
 
 @app.get("/me", response_model=Me)
-def me(persona: str = PERSONA) -> Me:
+def me(user: OptionalUser, persona: str = PERSONA) -> Me:
+    persona = persona_for(user, persona)
     try:
         return data.me(persona)
     except data.PersonaNotFound:
@@ -103,9 +125,11 @@ def me(persona: str = PERSONA) -> Me:
 
 @app.get("/spending", response_model=Spending)
 def spending(
+    user: OptionalUser,
     month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM, default this month"),
     persona: str = PERSONA,
 ) -> Spending:
+    persona = persona_for(user, persona)
     month = month or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m")
     try:
         return data.spending(month, persona)
@@ -120,7 +144,8 @@ P2P_FAILED = "The payment may be incomplete — we're checking with the bank"
 
 
 @app.get("/p2p", response_model=P2PSummary)
-def p2p(persona: str = PERSONA) -> P2PSummary:
+def p2p(user: OptionalUser, persona: str = PERSONA) -> P2PSummary:
+    persona = persona_for(user, persona)
     try:
         return data.p2p_summary(persona)
     except data.PersonaNotFound:
@@ -128,7 +153,8 @@ def p2p(persona: str = PERSONA) -> P2PSummary:
 
 
 @app.post("/p2p/send", response_model=P2PPayment)
-def p2p_send(req: P2PSend) -> P2PPayment:
+def p2p_send(req: P2PSend, user: OptionalUser) -> P2PPayment:
+    authorize_money(user, req.persona)
     try:
         return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo)
     except (data.PersonaNotFound, data.ContactNotFound):
@@ -141,7 +167,8 @@ def p2p_send(req: P2PSend) -> P2PPayment:
 
 
 @app.post("/p2p/requests", response_model=P2PRequest)
-def p2p_request(req: P2PSend) -> P2PRequest:
+def p2p_request(req: P2PSend, user: OptionalUser) -> P2PRequest:
+    authorize_money(user, req.persona)
     try:
         return data.p2p_request(req.persona, req.contact_id, req.amount, req.memo)
     except (data.PersonaNotFound, data.ContactNotFound):
@@ -149,7 +176,12 @@ def p2p_request(req: P2PSend) -> P2PRequest:
 
 
 @app.post("/p2p/requests/{request_id}/settle", response_model=P2PRequest)
-def p2p_settle(request_id: str) -> P2PRequest:
+def p2p_settle(request_id: str, user: OptionalUser) -> P2PRequest:
+    # settling pays the requester; only they mark it paid until the payer has their own sign-in
+    owner = data.p2p_request_owner(request_id)
+    if owner is None:
+        raise HTTPException(409, "That request isn't open")
+    authorize_money(user, owner)
     try:
         return data.p2p_settle(request_id)
     except data.RequestNotOpen:
@@ -164,9 +196,7 @@ def p2p_settle(request_id: str) -> P2PRequest:
 # ---------- family safety net ----------
 # The agent covers a family member's forecast dip from someone else's money — automatically under
 # the lender's limit, with an Auth0 push approval over it — and repays the lender on payday.
-# TODO(auth) — required before LIVE_TRANSFERS=1: take the persona from the Auth0 user, not ?persona= or the
-# body; only that user may set their own limits (lender = current user) and approve/decline bridges where
-# they are the lender. Until then real writes are off and these routes only simulate.
+# Only the lender sets their own limits and answers bridges where they are the lender (authorize_money).
 
 
 def _live_writes() -> bool:
@@ -176,7 +206,8 @@ def _live_writes() -> bool:
 
 
 @app.get("/safety-net", response_model=SafetyNetSummary)
-def safety_net_summary(persona: str = PERSONA) -> SafetyNetSummary:
+def safety_net_summary(user: OptionalUser, persona: str = PERSONA) -> SafetyNetSummary:
+    persona = persona_for(user, persona)
     try:
         return safety_views.summary(persona)
     except LookupError:
@@ -184,7 +215,8 @@ def safety_net_summary(persona: str = PERSONA) -> SafetyNetSummary:
 
 
 @app.put("/safety-net/limits", response_model=SafetyLimit)
-def set_safety_limit(req: SetLimit) -> SafetyLimit:
+def set_safety_limit(req: SetLimit, user: OptionalUser) -> SafetyLimit:
+    authorize_money(user, req.lender)  # only the lender sets their own limit
     if req.lender == req.borrower:
         raise HTTPException(422, "You can't set a limit for yourself")
     names = {p.slug: p.first_name for p in data.personas()}
@@ -213,8 +245,16 @@ def set_safety_limit(req: SetLimit) -> SafetyLimit:
 
 
 @app.post("/safety-net/run", response_model=list[SafetyDecision])
-def run_safety_net(persona: str | None = Query(None, pattern=r"^[a-z]{1,32}$")) -> list[SafetyDecision]:
-    """Check for upcoming dips now. With real writes off this is a dry run (executed: false)."""
+def run_safety_net(
+    user: OptionalUser, persona: str | None = Query(None, pattern=r"^[a-z]{1,32}$")
+) -> list[SafetyDecision]:
+    """Check for upcoming dips now. With real writes off this is a dry run (executed: false). With them
+    on, it acts only on limits lenders already set — and still requires a signed-in caller, who can
+    only run it for themselves."""
+    if user is not None:
+        persona = persona_for(user, persona or "")
+    elif data.writes_enabled():
+        authorize_money(None, persona)
     if not get_settings().live:
         demo = safety_views.demo_summary("maya").borrowed[0]
         return [
@@ -236,15 +276,21 @@ def run_safety_net(persona: str | None = Query(None, pattern=r"^[a-z]{1,32}$")) 
     return [safety_views.decision(d, b) for d, b in safety_net.run([persona] if persona else None)]
 
 
-def _bridge_action(bridge_id: str, approve: bool) -> Bridge:
+def _bridge_action(bridge_id: str, approve: bool, user: User | None) -> Bridge:
     if not get_settings().live:
         b = next((x for x in safety_views.demo_summary("jordan").approvals_waiting if x.id == bridge_id), None)
         if b is None:
             raise HTTPException(409, "That bridge isn't waiting for approval")
+        authorize_money(user, b.lender)
         return b.model_copy(update={"status": "active" if approve else "declined"})
     from app import safety_net
     from app.db import pool, safety_repo
 
+    with pool.connection() as conn:
+        lender = (safety_repo.bridge(conn, bridge_id) or {}).get("lender_slug")
+    if lender is None:
+        raise HTTPException(409, "That bridge isn't waiting for approval")
+    authorize_money(user, lender)  # only the bridge's lender answers it
     if not _live_writes():
         with pool.connection() as conn:
             row = safety_repo.bridge(conn, bridge_id)
@@ -264,43 +310,42 @@ def _bridge_action(bridge_id: str, approve: bool) -> Bridge:
 
 
 @app.post("/safety-net/bridges/{bridge_id}/approve", response_model=Bridge)
-def approve_bridge(bridge_id: str) -> Bridge:
-    return _bridge_action(bridge_id, approve=True)
+def approve_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
+    return _bridge_action(bridge_id, approve=True, user=user)
 
 
 @app.post("/safety-net/bridges/{bridge_id}/decline", response_model=Bridge)
-def decline_bridge(bridge_id: str) -> Bridge:
-    return _bridge_action(bridge_id, approve=False)
+def decline_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
+    return _bridge_action(bridge_id, approve=False, user=user)
 
 
 @app.get("/forecast", response_model=Forecast)
-def forecast(days: int = Query(30, ge=1, le=365)) -> Forecast:  # bounded: cost is linear in days
-    return engine.forecast(days=days)
+def forecast(user: OptionalUser, days: int = Query(30, ge=1, le=365), persona: str = PERSONA) -> Forecast:
+    return engine.forecast(days=days, persona=persona_for(user, persona))  # days bounded: cost is linear
 
 
 @app.post("/simulate", response_model=Forecast)
-def simulate(req: SimulateRequest) -> Forecast:
-    return engine.simulate_purchase(req.amount, req.date, req.label)
+def simulate(req: SimulateRequest, user: OptionalUser, persona: str = PERSONA) -> Forecast:
+    return engine.simulate_purchase(req.amount, req.date, req.label, persona=persona_for(user, persona))
 
 
 @app.get("/recurring", response_model=list[Recurring])
-def recurring() -> list[Recurring]:
-    return engine.recurring()
+def recurring(user: OptionalUser, persona: str = PERSONA) -> list[Recurring]:
+    return engine.recurring(persona=persona_for(user, persona))
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-def agent_chat(req: ChatRequest) -> ChatResponse:
-    return agent.chat(req.message, persona=req.persona)
+def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
+    return agent.chat(req.message, persona=persona_for(user, req.persona))
 
 
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
 
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
-def approve(action_id: str) -> PendingAction:
-    # TODO(auth): require the Auth0 user (Depends) and check action.owner_id == user.id before
-    # anything else, and take the persona from the user. Only then set LIVE_TRANSFERS=1 —
-    # until that flag is on, approving never writes to Nessie (see data.move_savings_to_checking).
+def approve(action_id: str, user: OptionalUser) -> PendingAction:
+    if action_id in agent.PENDING:  # an unknown id still gets its 404 below
+        authorize_money(user, agent.persona_of(action_id))  # only the person it was proposed for
     with _approve_lock:
         action = agent.PENDING.get(action_id)
         if action is None:

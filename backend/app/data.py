@@ -133,6 +133,20 @@ def spending(month: str, slug: str = DEFAULT_PERSONA) -> Spending:
         return demo.spending(month)
 
 
+def writes_enabled() -> bool:
+    """True when routes move real money in Nessie (live mode + LIVE_TRANSFERS=1)."""
+    return _writes_enabled()
+
+
+def p2p_request_owner(request_id: str) -> str | None:
+    """Whose request this is (the persona who gets paid when it's settled)."""
+    if not get_settings().live:
+        return next((DEFAULT_PERSONA for r in demo.p2p_summary().requests if r.id == request_id), None)
+    with pool.connection() as conn:
+        row = conn.execute("SELECT persona_slug FROM p2p_requests WHERE id = %s", (request_id,)).fetchone()
+    return row["persona_slug"] if row else None
+
+
 def _writes_enabled() -> bool:
     """Real Nessie writes need live mode AND LIVE_TRANSFERS=1 — keep the switch off until the
     routes check the Auth0 user, or anyone could move a persona's money."""

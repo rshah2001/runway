@@ -61,3 +61,15 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 - **App:** Expo (React Native + Expo Router) + TypeScript → web, iOS, Android from one codebase; react-native-svg charts; Auth0
 - **Backend:** Python 3.12, FastAPI, httpx (Nessie), psycopg (Tiger Data), Google Gen AI SDK (Gemini)
 - **Hosting:** Vultr (backend + DB + static web export); iOS/Android via EAS preview builds / Expo Go for the demo
+
+## Who may do what (sign-in)
+
+`backend/app/main.py` → `authorize_money()`, with Auth0 token checks from `backend/app/auth/`:
+
+| | Signed out | Signed in |
+|---|---|---|
+| **Reads** (`/me`, `/spending`, `/p2p`, `/safety-net`, `/forecast`, `/simulate`, `/recurring`, `/agent/chat`) | the demo persona named in `?persona=` — the site stays browsable for judges | **always your own persona**, whatever `?persona=` says |
+| **Money** (approve a fix-it, P2P send / request / settle, set a limit, answer a bridge, run the safety net) — real transfers **off** | simulated, nothing moves | simulated, and only as yourself (else 403) |
+| **Money** — real transfers **on** (`LIVE_TRANSFERS=1`) | **401** (or 503 if sign-in isn't configured) | only if you own the money (else 403) |
+
+A token that is sent is always fully verified (RS256, issuer, audience, expiry) — a bad one is 401 even on reads.

@@ -80,3 +80,20 @@ EXPO_PUBLIC_API_URL=https://sixsevenbucksleft.vip/api
 | Deploy job skipped | `VULTR_HOST` repo variable not set yet |
 | `Host key verification failed` | Re-run the `VULTR_KNOWN_HOSTS` command from step 3 |
 | Smoke test fails | `ssh root@<SERVER_IP> 'cd /opt/runway/deploy && docker compose logs --tail 50'` |
+
+## Turning on sign-in and real money (in this order)
+
+1. **Auth0 dashboard → Applications → Runway (Native) → Settings**
+   - Allowed Callback URLs: `runway://auth, https://sixsevenbucksleft.vip, http://localhost:8081`
+   - Allowed Logout URLs: same three
+   - Allowed Web Origins: `https://sixsevenbucksleft.vip, http://localhost:8081` (if this field isn't
+     offered for a Native app, create a *Single Page Application* for the web and use its client id)
+   - Refresh Token Rotation: on
+2. **APIs → Runway API**: *Allow Offline Access* on; **Application Access**: allow the Runway app for users.
+3. **User Management → Users**: create Maya / Jordan / Sam demo logins; note each user id (`auth0|…`).
+4. **Server** (`/opt/runway/.env`): `AUTH0_PERSONAS=maya=auth0|…,jordan=auth0|…,sam=auth0|…`
+   (`AUTH0_DOMAIN` / `AUTH0_AUDIENCE` are already set).
+5. **GitHub repo variables** (public identifiers): `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE` —
+   the web build reads them as `EXPO_PUBLIC_AUTH0_*`.
+6. Sign in on the site as Maya and check `/api/me` returns Maya. **Only then** set `LIVE_TRANSFERS=1`
+   on the server and redeploy: Fix it, P2P and the safety net move real Nessie money — for signed-in owners only.
