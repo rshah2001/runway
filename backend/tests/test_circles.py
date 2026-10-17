@@ -72,3 +72,20 @@ def test_you_see_your_circles_and_invitations_and_nothing_about_money() -> None:
     assert jordan["Weekend crew"]["my_state"] == "invited" and jordan["Family"]["my_state"] == "active"
     text = json.dumps(maya).lower()
     assert "balance" not in text and "limit" not in text and "$" not in text
+
+
+def test_a_removed_or_declined_person_can_only_be_asked_again_by_the_creator(monkeypatch) -> None:
+    m = Members({"sam": "active", "maya": "active", "jordan": "removed", "emma": "declined"})
+    m.install(monkeypatch)
+    for slug in ("jordan", "emma"):
+        with pytest.raises(circles.CircleRefused):
+            circles.invite(m, "maya", "c", slug)  # a member can't undo the creator's removal or nag a "no"
+    circles.invite(m, "sam", "c", "jordan")  # the creator can
+    assert m.states["jordan"] == "invited"
+
+
+def test_a_creator_who_left_cannot_remove_people(monkeypatch) -> None:
+    m = Members({"sam": "left", "maya": "active"})
+    m.install(monkeypatch)
+    with pytest.raises(circles.CircleRefused):
+        circles.remove(m, "sam", "c", "maya")
