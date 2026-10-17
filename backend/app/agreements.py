@@ -68,6 +68,19 @@ def revoke(conn: psycopg.Connection, actor: str, supporter: str, recipient: str)
     return agreements_repo.get(conn, supporter, recipient)
 
 
+def set_mode(conn: psycopg.Connection, actor: str, supporter: str, recipient: str, mode: str) -> dict:
+    """The supporter chooses 'auto' (Runway may move up to their limit) or 'approval' (ask me every time).
+    Bumps the version, so anything waiting on the old setting re-checks before money moves."""
+    if actor != supporter:
+        raise NotYourAgreement("Only the supporter chooses how their support works")
+    if mode not in ("auto", "approval"):
+        raise ValueError(mode)
+    agreements_repo.ensure(conn, supporter, recipient)
+    agreements_repo.set_mode(conn, supporter, recipient, mode)
+    agreements_repo.audit(conn, supporter, recipient, actor, "mode_set", mode=mode)
+    return agreements_repo.get(conn, supporter, recipient)
+
+
 def limit_changed(conn: psycopg.Connection, supporter: str, recipient: str, limit: float, enabled: bool) -> None:
     """The supporter set their limit in the app: that is the supporter's explicit authorization (unlike a
     migrated legacy limit), and any change bumps the version so a waiting approval re-checks it."""
@@ -80,10 +93,17 @@ def limit_changed(conn: psycopg.Connection, supporter: str, recipient: str, limi
     agreements_repo.audit(conn, supporter, recipient, supporter, "limit_set", limit=limit, enabled=enabled)
 
 
-def setup_demo(conn: psycopg.Connection, pairs: list[tuple[str, str]], *, force: bool = False) -> int:
-    """Record both consents for the scripted demo relationships, auditably (source 'demo_setup').
-    Without `force`, a pair someone has acted on (consented or revoked) is left alone, so the nightly
-    reseed never overrides a person's own choice. Returns how many pairs were set up."""
+def setup_demo(
+    conn: psycopg.Connection,
+    pairs: list[tuple[str, str]],
+    *,
+    force: bool = False,
+    waiting_for_recipient: frozenset[tuple[str, str]] = frozenset(),
+) -> int:
+    """Record the scripted demo relationships' consents, auditably (source 'demo_setup'): both sides,
+    or only the supporter's for a pair in `waiting_for_recipient` (an offer the recipient hasn't answered,
+    so the consent flow shows in the demo). Without `force`, a pair someone has acted on (consented or
+    revoked) is left alone, so the nightly reseed never overrides a person's own choice."""
     done = 0
     for supporter, recipient in pairs:
         agreements_repo.ensure(conn, supporter, recipient)
@@ -91,8 +111,11 @@ def setup_demo(conn: psycopg.Connection, pairs: list[tuple[str, str]], *, force:
         untouched = row["supporter_consent_at"] is None and row["recipient_consent_at"] is None
         if not force and (row["revoked_at"] is not None or not untouched):
             continue
-        for side in ("supporter", "recipient"):
+        if force:  # the rehearsal starts from the script, including offers not yet answered
+            agreements_repo.revoke(conn, supporter, recipient, "demo_setup")
+        sides = ("supporter",) if (supporter, recipient) in waiting_for_recipient else ("supporter", "recipient")
+        for side in sides:
             agreements_repo.stamp(conn, supporter, recipient, side, "demo_setup")
-        agreements_repo.audit(conn, supporter, recipient, "demo_setup", "both_consented_for_demo")
+        agreements_repo.audit(conn, supporter, recipient, "demo_setup", f"{'+'.join(sides)}_consented_for_demo")
         done += 1
     return done

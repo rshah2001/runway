@@ -315,4 +315,8 @@ SAFETY_LIMITS: list[tuple[str, str, float]] = [
     ("sam", "jordan", 300.00),
     ("jordan", "maya", 300.00),  # authorized — but a big bill this week leaves no safe room
     ("emma", "maya", 45.00),  # cousin: a quiet $45
+    ("emma", "jordan", 100.00),  # an offer Jordan hasn't answered yet (shows the consent flow)
 ]
+# demo states beyond "both agreed": an offer waiting for the recipient's yes, and a paused supporter
+DEMO_WAITING_FOR_RECIPIENT = frozenset({("emma", "jordan")})
+DEMO_PAUSED = frozenset({("sam", "jordan")})  # Sam paused his support for Jordan (limit kept, nothing moves)

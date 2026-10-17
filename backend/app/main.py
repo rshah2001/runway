@@ -26,6 +26,7 @@ from app.db import schema as db_schema
 from app.forecast import engine
 from app.ingest import sync_personas
 from app.schemas import (
+    ActivityItem,
     AgreementChange,
     Bridge,
     ChatRequest,
@@ -44,9 +45,11 @@ from app.schemas import (
     SafetyDecision,
     SafetyLimit,
     SafetyNetSummary,
+    SetExposure,
     SetLimit,
     SetPreferences,
     SetSafeFloor,
+    SetSupportMode,
     SimulateRequest,
     Spending,
     SupportSummary,
@@ -377,6 +380,48 @@ def _change_agreement(req: AgreementChange, user: User | None, action: str) -> S
                         safety_repo.transition(conn, b["id"], ("pending_approval",), "declined")
         conn.commit()
         return safety_views.support_summary(actor, agreements_repo.involving(conn, actor))
+
+
+@app.get("/activity", response_model=list[ActivityItem])
+def activity_feed(user: OptionalUser, persona: str = PERSONA) -> list[ActivityItem]:
+    """My support received, provided and repaid — each with a why, from my side only."""
+    return safety_views.activity_for(persona_for(user, persona))
+
+
+@app.put("/support/mode", response_model=SupportSummary)
+def support_mode(req: SetSupportMode, user: OptionalUser) -> SupportSummary:
+    """The supporter chooses: Runway may move up to my limit ('auto'), or ask me every time ('approval')."""
+    actor = _own_settings(user, req.persona)
+    if req.recipient not in {p.slug for p in data.personas()} or req.recipient == actor:
+        raise HTTPException(404, "Unknown persona")
+    if not get_settings().live:
+        return safety_views.demo_support(actor)
+    from app import agreements
+    from app.db import pool, safety_repo
+
+    with pool.connection() as conn:
+        safety_repo.lock_people(conn, actor, req.recipient)  # same locks as money decisions
+        try:
+            agreements.set_mode(conn, actor, actor, req.recipient, req.mode)
+        except agreements.NotYourAgreement:
+            raise HTTPException(403, "Only the supporter chooses how their support works") from None
+        conn.commit()
+    return safety_views.support_for(actor)
+
+
+@app.put("/support/exposure", response_model=SupportSummary)
+def support_exposure(req: SetExposure, user: OptionalUser) -> SupportSummary:
+    """The most I let Runway have out across everyone I support. Money already out still counts."""
+    actor = _own_settings(user, req.persona)
+    if not get_settings().live:
+        return safety_views.demo_support(actor).model_copy(update={"exposure_limit": req.limit})
+    from app.db import pool, repo, safety_repo
+
+    with pool.connection() as conn:
+        safety_repo.lock_people(conn, actor)
+        repo.set_exposure_limit(conn, actor, round(req.limit, 2))
+        conn.commit()
+    return safety_views.support_for(actor)
 
 
 @app.post("/support/consent", response_model=SupportSummary)

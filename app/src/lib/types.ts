@@ -243,10 +243,25 @@ export type SupportAgreement = {
   limit: number | null; // the supporter's own cap for this person
   outstanding: number; // supporter: owed to me · recipient: what I owe them
   version: number;
+  mode?: 'auto' | 'approval'; // approval: the supporter wants to be asked every time
 };
 
 export type SupportSummary = {
   persona: string;
   supporting: SupportAgreement[]; // people I may help
   supporters: SupportAgreement[]; // people who may help me
+  exposure_limit?: number; // the most I let Runway have out across everyone I support
+  committed?: number; // what I have out (or promised) right now as a supporter
+};
+
+/** One support transfer or repayment from MY side, with a plain why (backend/app/activity.py). */
+export type ActivityItem = {
+  id: string;
+  date: string;
+  kind: 'received' | 'provided' | 'repaid_by_me' | 'repaid_to_me' | 'waiting' | 'pending_my_ok' | 'problem';
+  title: string;
+  amount: number;
+  status: string;
+  why: string;
+  reference?: string | null; // the bank (Nessie) id of my side of the transfer
 };

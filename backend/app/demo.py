@@ -89,7 +89,7 @@ def rebuild() -> None:
     from app.db import schema as db_schema
     from app.nessie.client import NessieClient
     from seed.__main__ import ensure_merchants, seed_persona
-    from seed.personas import PERSONAS, SAFETY_LIMITS
+    from seed.personas import DEMO_PAUSED, DEMO_WAITING_FOR_RECIPIENT, PERSONAS, SAFETY_LIMITS
 
     nessie = NessieClient.from_settings()
     merchant_ids = ensure_merchants(nessie)
@@ -103,11 +103,14 @@ def rebuild() -> None:
         pairs = []
         for lender, borrower, amount in SAFETY_LIMITS:
             if lender in DEMO_PERSONAS and borrower in DEMO_PERSONAS:
-                safety_repo.set_limit(conn, lender, borrower, amount, True)
+                safety_repo.set_limit(conn, lender, borrower, amount, (lender, borrower) not in DEMO_PAUSED)
                 pairs.append((lender, borrower))
         from app import agreements
 
-        agreements.setup_demo(conn, pairs, force=True)  # the rehearsal starts from the script: both agreed
+        # the rehearsal starts from the script: both agreed, except the offer Jordan hasn't answered
+        agreements.setup_demo(conn, pairs, force=True, waiting_for_recipient=DEMO_WAITING_FOR_RECIPIENT)
+        for slug in DEMO_PERSONAS:  # everyone's total cap back to the default
+            conn.execute("UPDATE money_preferences SET support_exposure_limit = NULL WHERE slug = %s", (slug,))
         conn.commit()
         db_schema.refresh_daily_spend(conn)  # after the commit, as the seed does
     from app import alerts

@@ -263,6 +263,21 @@ def set_safe_floor(conn: psycopg.Connection, slug: str, amount: float) -> None:
     )
 
 
+def exposure_limit(conn: psycopg.Connection, slug: str) -> float | None:
+    """The most this person lets Runway have out across everyone they support, or None (the default)."""
+    row = conn.execute("SELECT support_exposure_limit FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
+    return float(row["support_exposure_limit"]) if row and row["support_exposure_limit"] is not None else None
+
+
+def set_exposure_limit(conn: psycopg.Connection, slug: str, amount: float) -> None:
+    conn.execute(
+        """INSERT INTO money_preferences (slug, support_exposure_limit) VALUES (%s, %s)
+           ON CONFLICT (slug) DO UPDATE
+             SET support_exposure_limit = EXCLUDED.support_exposure_limit, updated_at = now()""",
+        (slug, amount),
+    )
+
+
 def clear_safe_floors(conn: psycopg.Connection, slugs: list[str]) -> None:
     """Back to every default (floor and on/off settings) for these people."""
     conn.execute("DELETE FROM money_preferences WHERE slug = ANY(%s)", (slugs,))

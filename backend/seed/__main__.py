@@ -22,7 +22,7 @@ from app.db import schema as db_schema
 from app.ingest import start_of_day, sync_customer, ts_for
 from app.nessie.client import NessieClient
 from app.nessie.moves import move_money
-from seed.personas import MERCHANTS, PERSONAS, SAFETY_LIMITS, PersonaSpec
+from seed.personas import DEMO_PAUSED, DEMO_WAITING_FOR_RECIPIENT, MERCHANTS, PERSONAS, SAFETY_LIMITS, PersonaSpec
 from seed.plan import Op, build_plan, demo_opening_balance
 
 log = logging.getLogger("seed")
@@ -214,10 +214,14 @@ def main() -> None:
         seed_persona(nessie, spec, merchant_ids, reset=spec.slug in args.reset)
     with pool.connection() as conn:
         for lender, borrower, amount in SAFETY_LIMITS:  # defaults; a lender's own change is never overwritten
-            safety_repo.seed_limit(conn, lender, borrower, amount)
+            safety_repo.seed_limit(conn, lender, borrower, amount, enabled=(lender, borrower) not in DEMO_PAUSED)
         # the scripted relationships get both consents through an auditable setup step; a pair either
         # person has acted on (agreed or revoked) is left exactly as they left it
-        agreements.setup_demo(conn, [(lender, borrower) for lender, borrower, _ in SAFETY_LIMITS])
+        agreements.setup_demo(
+            conn,
+            [(lender, borrower) for lender, borrower, _ in SAFETY_LIMITS],
+            waiting_for_recipient=DEMO_WAITING_FOR_RECIPIENT,
+        )
         conn.commit()
         db_schema.refresh_daily_spend(conn)
     log.info("done — %s", ", ".join(p.slug for p in PERSONAS))

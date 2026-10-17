@@ -257,21 +257,24 @@ def agreement(row: dict, viewer: str) -> SupportAgreement:
         limit=float(row["limit_amount"]) if row.get("limit_amount") is not None else None,
         outstanding=float(row["outstanding"]),
         version=row["version"],
+        mode=row.get("mode") or "auto",
     )
 
 
-def support_summary(viewer: str, rows: list[dict]) -> SupportSummary:
+def support_summary(viewer: str, rows: list[dict], exposure_limit: float = 500, committed: float = 0) -> SupportSummary:
     mine = [agreement(r, viewer) for r in rows if viewer in (r["supporter"], r["recipient"])]
     return SupportSummary(
         persona=viewer,
         supporting=[a for a in mine if a.my_side == "supporter"],
         supporters=[a for a in mine if a.my_side == "recipient"],
+        exposure_limit=exposure_limit,
+        committed=committed,
     )
 
 
 def demo_support(viewer: str) -> SupportSummary:
     """Offline/demo mode: the scripted relationships, both sides agreed."""
-    from seed.personas import PERSONAS, SAFETY_LIMITS
+    from seed.personas import DEMO_PAUSED, DEMO_WAITING_FOR_RECIPIENT, PERSONAS, SAFETY_LIMITS
 
     names = {p.slug: p.first_name for p in PERSONAS}
     rows = [
@@ -281,23 +284,62 @@ def demo_support(viewer: str) -> SupportSummary:
             "recipient": r,
             "recipient_name": names[r],
             "supporter_consent_at": "demo",
-            "recipient_consent_at": "demo",
+            "recipient_consent_at": None if (s, r) in DEMO_WAITING_FOR_RECIPIENT else "demo",
             "revoked_at": None,
             "limit_amount": amount,
-            "enabled": True,
+            "enabled": (s, r) not in DEMO_PAUSED,
             "outstanding": 0,
             "version": 1,
+            "mode": "auto",
         }
         for s, r, amount in SAFETY_LIMITS
     ]
     return support_summary(viewer, rows)
 
 
+def activity_for(viewer: str) -> list:
+    """`viewer`'s support activity with explanations, live or demo."""
+    from app import activity, prefs
+
+    floor = prefs.floor(viewer)
+    if not get_settings().live:  # demo: the same scripted bridges the other demo screens show
+        s = demo_summary(viewer)
+        rows = [
+            {
+                "id": b.id,
+                "borrower_slug": b.borrower,
+                "borrower_name": b.borrower_name,
+                "lender_slug": b.lender,
+                "lender_name": b.lender_name,
+                "amount": b.amount,
+                "status": b.status,
+                "due_date": b.due_date,
+                "created_at": b.created,
+                "funded_at": b.funded_on,
+                "repaid_at": b.repaid_on,
+            }
+            for b in [*s.borrowed, *s.lent, *s.approvals_waiting]
+        ]
+        unique = list({r["id"]: r for r in rows}.values())
+        return activity.feed(viewer, unique, {lim.borrower: lim.limit for lim in s.limits_i_set}, floor)
+    from app.db import pool, safety_repo
+
+    with pool.connection() as conn:
+        limits = {r["borrower_slug"]: float(r["limit_amount"]) for r in safety_repo.limits(conn, lender=viewer)}
+        return activity.feed(viewer, safety_repo.bridges_for(conn, viewer), limits, floor)
+
+
 def support_for(viewer: str) -> SupportSummary:
     """`viewer`'s own agreements, live or demo — the one place the API and the assistant both read."""
     if not get_settings().live:
         return demo_support(viewer)
-    from app.db import agreements_repo, pool
+    from app.db import agreements_repo, pool, repo, safety_repo
 
     with pool.connection() as conn:
-        return support_summary(viewer, agreements_repo.involving(conn, viewer))
+        cap = repo.exposure_limit(conn, viewer)
+        return support_summary(
+            viewer,
+            agreements_repo.involving(conn, viewer),
+            exposure_limit=500 if cap is None else cap,
+            committed=safety_repo.committed_by(conn, viewer),
+        )
