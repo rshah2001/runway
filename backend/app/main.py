@@ -4,7 +4,7 @@ Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000
 """
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent import chat as agent
@@ -30,7 +30,7 @@ def me() -> Me:
 
 
 @app.get("/forecast", response_model=Forecast)
-def forecast(days: int = 30) -> Forecast:
+def forecast(days: int = Query(30, ge=1, le=365)) -> Forecast:  # bounded: cost is linear in days
     return engine.forecast(days=days)
 
 
