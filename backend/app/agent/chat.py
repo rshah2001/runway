@@ -2,7 +2,7 @@
 
 Gemini decides which tool to call and explains the result; the tools in `tools.py` do all the math.
 Rules that hold on every path:
-  * the model never computes numbers — a reply with figures but no tool call is discarded
+  * the model never computes numbers — a reply quoting any $ figure that no tool returned is discarded
   * money-moving tools only create a PendingAction; nothing executes until /actions/{id}/approve
 
 Without GEMINI_API_KEY (CI, tests, offline demo), or if Gemini fails mid-demo, a rule-based router
@@ -17,20 +17,30 @@ import time
 from datetime import date
 from typing import Any
 
-from dotenv import load_dotenv
-
 from app.agent import tools, voice
-from app.agent.tools import PENDING  # noqa: F401 — main.py reads pending actions from here
-from app.forecast import engine
+from app.agent.tools import PENDING, persona_of  # noqa: F401 — main.py reads pending actions from here
+from app.forecast import engine, sources
 from app.schemas import ChatResponse, PendingAction
 
-load_dotenv()
-log = logging.getLogger(__name__)
+log = logging.getLogger(__name__)  # .env is loaded by app.config
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 MAX_MESSAGE_CHARS = 500  # a chat question is short; this caps cost and prompt-injection surface
 MAX_TOOL_ROUNDS = 4
 RETRY_DELAY_S = 1.0
+MONEY = re.compile(r"-?\$[\d,]+(?:\.\d{2})?")
+
+
+class Ungrounded(RuntimeError):
+    """Gemini stated a figure that no tool returned. Carries the discarded response for the eval; never shown."""
+
+
+def grounded(reply: str, message: str, outputs: object) -> bool:
+    """Every $ figure in the reply appears in a tool output or in the user's own message."""
+    allowed = set(MONEY.findall(str(outputs))) | set(MONEY.findall(message))
+    allowed |= {m.removesuffix(".00") for m in allowed}  # "$50" is the same figure as "$50.00"
+    return all(m in allowed or m.removesuffix(".00") in allowed for m in MONEY.findall(reply))
+
 
 # Shared by every voice: accuracy, the tone dial's serious end and the guardrails never vary by user.
 SYSTEM_PROMPT = """You are Runway, the assistant inside a budgeting app that forecasts a user's checking balance.
@@ -62,10 +72,10 @@ Today is {today}. Current status: {status}."""
 
 
 def chat(
-    message: str, *, persona: str = voice.DEFAULT_PERSONA, client: Any = None, today: date | None = None
+    message: str, *, persona: str = engine.DEFAULT_PERSONA, client: Any = None, today: date | None = None
 ) -> ChatResponse:
     """Answer one chat message in the voice for `persona`'s age. `client` is injectable for offline tests."""
-    today = today or date.today()
+    today = today or sources.local_today()
     message = message.strip()
     if not message:
         return ChatResponse(reply='Ask me "can I afford $X on Friday?" or say "fix it".')
@@ -76,10 +86,12 @@ def chat(
         client = _gemini_client()
     if client is not None:
         try:
-            return _chat_with_gemini(client, message, today, voice.voice_for_persona(persona))
+            return _chat_with_gemini(client, message, today, voice.voice_for_persona(persona), persona)
+        except Ungrounded:
+            log.warning("Discarded an ungrounded Gemini reply; answering with the rule-based router")
         except Exception:  # any SDK, network or quota failure: the demo must still answer
             log.exception("Gemini failed; answering with the rule-based router")
-    return _chat_with_rules(message, today)
+    return _chat_with_rules(message, today, persona)
 
 
 def _gemini_client() -> Any:
@@ -88,13 +100,16 @@ def _gemini_client() -> Any:
     return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
-def _chat_with_gemini(client: Any, message: str, today: date, tone: voice.Voice = "genz") -> ChatResponse:
-    now = engine.forecast(start=today)  # the tone dial: set before any tool runs
+def _chat_with_gemini(
+    client: Any, message: str, today: date, tone: voice.Voice = "genz", persona: str = engine.DEFAULT_PERSONA
+) -> ChatResponse:
+    now = engine.forecast(start=today, persona=persona)  # the tone dial: set before any tool runs
     status = engine.status(now.low.balance, now.safe_floor)
     system = SYSTEM_PROMPT.format(voice=voice.VOICES[tone], today=tools.day(today) + f", {today.year}", status=status)
     request = {"model": MODEL, "tools": tools.DECLARATIONS, "system_instruction": system}
     interaction = _create(client, **request, input=message)
     tool_calls: list[str] = []
+    outputs: list[dict[str, Any]] = []
     pending: PendingAction | None = None
 
     for _ in range(MAX_TOOL_ROUNDS):
@@ -107,7 +122,8 @@ def _chat_with_gemini(client: Any, message: str, today: date, tone: voice.Voice 
             if c.name in tools.WRITE_TOOLS and pending is not None:
                 result: dict[str, Any] = {"error": "A transfer is already awaiting approval for this message."}
             else:
-                result = tools.call(c.name, dict(c.arguments or {}), today)
+                result = tools.call(c.name, dict(c.arguments or {}), today, persona)
+            outputs.append(result)
             if "action_id" in result:
                 pending = tools.PENDING[result["action_id"]]
             results.append(_function_result(c, result))
@@ -116,10 +132,9 @@ def _chat_with_gemini(client: Any, message: str, today: date, tone: voice.Voice 
         log.warning("Gemini still calling tools after %d rounds", MAX_TOOL_ROUNDS)
 
     reply = (interaction.output_text or "").strip()
-    if not reply or (not tool_calls and re.search(r"[$\d]", reply)):
-        # an empty reply, or figures that no tool produced: don't show them — answer deterministically
-        log.warning("Discarding Gemini reply without tool grounding: %r", reply)
-        return _chat_with_rules(message, today)
+    if not reply or not grounded(reply, message, outputs):
+        # an empty reply, or a figure no tool produced: never show it; the caller answers deterministically
+        raise Ungrounded(ChatResponse(reply=reply, tool_calls=tool_calls, pending_action=pending))
     return ChatResponse(reply=reply, tool_calls=tool_calls, pending_action=pending)
 
 
@@ -155,20 +170,22 @@ def _amount_in(text: str) -> float | None:
     return float((m.group(1) or m.group(2)).replace(",", "")) if m else None
 
 
-def _chat_with_rules(message: str, today: date) -> ChatResponse:
+def _chat_with_rules(message: str, today: date, persona: str = engine.DEFAULT_PERSONA) -> ChatResponse:
     try:
-        return _route(message.lower(), today)
+        return _route(message.lower(), today, persona)
     except ValueError as e:  # a date or amount the tools can't use: say so instead of a 500
         return ChatResponse(reply=str(e))
+    except sources.UnknownPersona:
+        return ChatResponse(reply="I can't find that account. Try signing in again.")
 
 
-def _route(text: str, today: date) -> ChatResponse:
+def _route(text: str, today: date, persona: str) -> ChatResponse:
     amount = _amount_in(text)
     when_match = WHEN.search(text)
     when = when_match.group(1) if when_match else None
 
     if re.search(r"\b(fix|cover|top up|move money|transfer)\b", text):
-        r = tools.propose_transfer(amount, when, today=today)
+        r = tools.propose_transfer(amount, when, persona=persona, today=today)
         if not r["needed"]:
             reply = f"No fix needed — your lowest balance is {r['lowest_balance']} on {r['lowest_day']}."
             return ChatResponse(reply=reply, tool_calls=["propose_transfer"])
@@ -182,7 +199,7 @@ def _route(text: str, today: date) -> ChatResponse:
         return ChatResponse(reply=reply, tool_calls=["propose_transfer"], pending_action=tools.PENDING[r["action_id"]])
 
     if amount is not None:
-        r = tools.simulate_purchase(amount, when, today=today)
+        r = tools.simulate_purchase(amount, when, persona=persona, today=today)
         if r["verdict"] == "safe":
             reply = (
                 f"Yes — the lowest you'd hit afterwards is {r['lowest_balance_with_it']} on {r['lowest_day_with_it']}."
@@ -200,12 +217,12 @@ def _route(text: str, today: date) -> ChatResponse:
         return ChatResponse(reply=reply, tool_calls=["simulate_purchase"])
 
     if re.search(r"subscri|recurring|streaming", text):
-        r = tools.find_recurring(today=today)
+        r = tools.find_recurring(persona=persona, today=today)
         names = ", ".join(f"{s['merchant']} ({s['amount']})" for s in r["subscriptions"])
         reply = f"You have {r['count']} subscriptions: {names} — {r['monthly_total']}/mo, {r['yearly_total']}/yr."
         return ChatResponse(reply=reply, tool_calls=["find_recurring"])
 
-    r = tools.get_forecast(today=today)
+    r = tools.get_forecast(persona=persona, today=today)
     reply = f"Your tightest day in the next 30 days is {r['lowest_day']} at {r['lowest_balance']}. "
     reply += 'Ask "can I afford $X on Friday?" or say "fix it".'
     return ChatResponse(reply=reply, tool_calls=["get_forecast"])

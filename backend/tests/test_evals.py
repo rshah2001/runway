@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.agent import chat as agent
 from evals import agent_eval, forecast_backtest
 
 
@@ -13,7 +14,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_router_baseline_is_perfect_on_every_metric() -> None:
     rows = agent_eval.run()
     failures = [r for r in rows if not (r["tool"] and r["answer"] and r["grounded"])]
-    assert len(rows) == 40 and failures == []
+    assert len(rows) == 42 and failures == []
 
 
 def test_eval_has_both_verdicts() -> None:
@@ -23,16 +24,16 @@ def test_eval_has_both_verdicts() -> None:
 
 def test_grounding_check_catches_an_invented_figure() -> None:
     truth = {"lowest_balance": "$251.61"}
-    assert agent_eval._grounded("Lowest is $251.61.", "how low?", truth)
-    assert not agent_eval._grounded("You'll have about $900.", "how low?", truth)
-    assert agent_eval._grounded("Yes, the $180 concert is fine.", "can I spend $180?", truth)
+    assert agent.grounded("Lowest is $251.61.", "how low?", truth)
+    assert not agent.grounded("You'll have about $900.", "how low?", truth)
+    assert agent.grounded("Yes, the $180 concert is fine.", "can I spend $180?", truth)
 
 
-def test_learned_spend_model_beats_the_hand_set_dials() -> None:
+def test_live_spend_model_beats_the_naive_baselines() -> None:
     results = forecast_backtest.run()
-    dials = results["Schedule dials (live today)"]
-    assert results["Learned: flat daily mean"].mae < dials.mae
-    assert results["Learned: weekday means"].mae < dials.mae
+    live = results["Flat daily mean, 90 days (live)"]
+    assert live.mae < results["Last 30 days repeated (naive)"].mae
+    assert live.mae < results["No everyday spending (bills only)"].mae
 
 
 @pytest.mark.parametrize(

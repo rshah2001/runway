@@ -1,20 +1,15 @@
 """Learned day-to-day spending model — owner: Patil-Hemangi.
 
-Bills, subscriptions and paychecks are known in advance; everyday card spending is the uncertain
-part of a forecast. This learns the expected spend for each weekday from purchase history, which
-captures habits like weekend eating out. Deliberately simple: a few months of one person's history
-supports seven means, not a neural net, and the backtest in evals/ shows whether it earns its place.
+Bills, paydays and other regular transfers are known in advance; everyday spending is the uncertain
+part of a forecast. This learns the expected spend per day from recent history. Deliberately simple:
+a few months of one person's history supports a handful of means, not a neural net, and the
+backtest in evals/ decides which variant the live forecast uses.
 """
 
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.forecast.history import Transaction
-
-
-def is_everyday_spend(t: Transaction) -> bool:
-    """Card purchases that vary day to day — subscriptions are forecast from the schedule instead."""
-    return t.kind == "purchase" and t.category != "Subscription" and t.amount > 0
+Outflows = list[tuple[date, float]]  # (day, dollars out), positive
 
 
 @dataclass(frozen=True)
@@ -24,22 +19,30 @@ class SpendProfile:
     def expected(self, d: date) -> float:
         return self.by_weekday[d.weekday()]
 
+    def total(self, start: date, days: int) -> float:
+        return sum(self.expected(start + timedelta(days=i)) for i in range(days))
 
-def fit_weekday(transactions: list[Transaction], start: date, end: date) -> SpendProfile:
-    """Mean everyday spend for each weekday over [start, end)."""
-    totals, counts = [0.0] * 7, [0] * 7
+
+def _day_counts(start: date, end: date) -> list[int]:
+    counts = [0] * 7
     d = start
     while d < end:
         counts[d.weekday()] += 1
         d += timedelta(days=1)
-    for t in transactions:
-        if start <= t.date < end and is_everyday_spend(t):
-            totals[t.date.weekday()] += t.amount
-    return SpendProfile(tuple(total / count if count else 0.0 for total, count in zip(totals, counts, strict=True)))
+    return counts
 
 
-def fit_flat(transactions: list[Transaction], start: date, end: date) -> SpendProfile:
-    """One mean for every day — the baseline the weekday model has to beat."""
+def fit_weekday(outflows: Outflows, start: date, end: date) -> SpendProfile:
+    """Mean spend for each weekday over [start, end) — catches habits like weekend shopping."""
+    totals, counts = [0.0] * 7, _day_counts(start, end)
+    for d, amount in outflows:
+        if start <= d < end:
+            totals[d.weekday()] += amount
+    return SpendProfile(tuple(t / c if c else 0.0 for t, c in zip(totals, counts, strict=True)))
+
+
+def fit_flat(outflows: Outflows, start: date, end: date) -> SpendProfile:
+    """One mean for every day."""
     days = (end - start).days
-    total = sum(t.amount for t in transactions if start <= t.date < end and is_everyday_spend(t))
+    total = sum(amount for d, amount in outflows if start <= d < end)
     return SpendProfile((total / days if days else 0.0,) * 7)

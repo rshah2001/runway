@@ -1,10 +1,9 @@
 """Forecast engine — owner: Patil-Hemangi.
 
-Deterministic port of `buildEvents` + `project` from prototype/index.html. Every number the app
-shows and the agent says comes from here, never from the LLM.
-
-The demo runs on the fictional persona in `schedule.MAYA`; feeding it Nessie data means building a
-`Schedule` from Nessie instead. The function signatures are the contract main.py relies on.
+Deterministic port of `buildEvents` + `project` from prototype/index.html, fed with each persona's
+real data (see `sources` and `schedule`). Every number the app shows and the agent says comes from
+here, never from the LLM. The route-facing functions (`forecast`, `simulate_purchase`, `recurring`)
+keep their original signatures; `persona` is a new keyword argument that defaults to the demo persona.
 """
 
 import calendar
@@ -13,11 +12,12 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 from typing import Literal
 
-from app.forecast.history import demo_history
-from app.forecast.recurring import detect_recurring
-from app.forecast.schedule import MAYA, Schedule
+from app.forecast import sources
+from app.forecast.recurring import detect_recurring, next_after
+from app.forecast.schedule import Schedule, build
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Recurring
 
+DEFAULT_PERSONA = "maya"
 MAX_DAYS = 365
 TIGHT_MARGIN = 150.0  # a low point within this much of the floor counts as "tight"
 
@@ -29,6 +29,16 @@ def status(low_balance: float, safe_floor: float) -> Status:
     if low_balance < safe_floor:
         return "overdraft_risk"
     return "tight" if low_balance < safe_floor + TIGHT_MARGIN else "healthy"
+
+
+def schedule_for(persona: str = DEFAULT_PERSONA, today: date | None = None) -> Schedule:
+    """Load a persona's data and build its schedule. Callers that forecast repeatedly (the agent's
+    tools) build it once and pass it in, so one question never reads the database twice."""
+    today = today or sources.local_today()
+    return build(sources.load(persona, today), today)
+
+
+# ---------- events ----------
 
 
 def _on_day(year: int, month: int, day: int) -> date:
@@ -44,76 +54,39 @@ def _months(start: date, end: date) -> Iterator[tuple[int, int]]:
         year, month = (year + 1, 1) if month == 12 else (year, month + 1)
 
 
-def _next_on_or_after(start: date, day: int) -> date:
-    """The first date on or after `start` that falls on `day` of a month."""
-    candidate = _on_day(start.year, start.month, day)
-    if candidate >= start:
-        return candidate
-    year, month = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
-    return _on_day(year, month, day)
-
-
-def _paychecks(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
-    pay = schedule.paycheck
-    # first payday is the next payday weekday strictly after today, so the demo opens before
-    # payday — the tight window the forecast exists to catch
-    d = start + timedelta(days=(pay.weekday - start.weekday()) % 7 or 7)
-    while d <= end:
-        yield ForecastEvent(date=d, amount=pay.amount, label=pay.label, kind="paycheck")
-        d += timedelta(days=pay.every_days)
-
-
 def _monthly_charges(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
     for year, month in _months(start, end):
         for charge in schedule.monthly:
             yield ForecastEvent(
                 date=_on_day(year, month, charge.day), amount=-charge.amount, label=charge.label, kind=charge.kind
             )
-        if schedule.monthly_spend > 0:
-            yield ForecastEvent(
-                date=_on_day(year, month, 10),
-                amount=-schedule.monthly_spend,
-                label="Discretionary — eating out, one-offs",
-                kind="spending",
-            )
 
 
-def _installments(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
-    for plan in schedule.installments:
-        # payments start next month: this month's is already reflected in the balance
-        months = [ym for ym in _months(start, end) if ym != (start.year, start.month)]
-        for year, month in months[: plan.months_left]:
-            yield ForecastEvent(
-                date=_on_day(year, month, plan.day), amount=-plan.monthly, label=plan.label, kind="bill"
-            )
+def _regular_flows(schedule: Schedule, end: date) -> Iterator[ForecastEvent]:
+    for flow in schedule.regular:
+        d = flow.next_date
+        while d <= end:
+            yield ForecastEvent(date=d, amount=flow.amount, label=flow.label, kind=flow.kind)
+            d = next_after(d, flow.interval_days, flow.next_date.day)
 
 
-def _card_payoffs(schedule: Schedule, start: date) -> Iterator[ForecastEvent]:
-    for card in schedule.cards:
-        if card.balance > 0:
-            yield ForecastEvent(
-                date=_next_on_or_after(start, card.pay_day),
-                amount=-card.balance,
-                label=f"Pay {card.label} statement in full",
-                kind="card_payment",
-            )
-
-
-def _weekly_spend(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
+def _everyday_spend(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
+    """Learned everyday spending, booked as one estimate per week so the event list stays readable."""
     d = start
-    while schedule.weekly_spend > 0 and d <= end:
-        yield ForecastEvent(date=d, amount=-schedule.weekly_spend, label="Groceries", kind="spending")
+    while d <= end:
+        days = min(7, (end - d).days + 1)
+        amount = round(schedule.spend.total(d, days), 2)
+        if amount > 0:
+            yield ForecastEvent(date=d, amount=-amount, label="Everyday spending (estimate)", kind="spending")
         d += timedelta(days=7)
 
 
 def build_events(schedule: Schedule, start: date, end: date) -> list[ForecastEvent]:
-    """Every scheduled cash flow in [start, end], sorted by date with income first within a day."""
+    """Every expected cash flow in [start, end], sorted by date with income first within a day."""
     events = [
-        *_paychecks(schedule, start, end),
         *_monthly_charges(schedule, start, end),
-        *_installments(schedule, start, end),
-        *_card_payoffs(schedule, start),
-        *_weekly_spend(schedule, start, end),
+        *_regular_flows(schedule, end),
+        *_everyday_spend(schedule, start, end),
     ]
     in_window = [e for e in events if start <= e.date <= end]
     return sorted(in_window, key=lambda e: (e.date, -e.amount))
@@ -135,15 +108,20 @@ def project(start_balance: float, events: list[ForecastEvent], start: date, days
     return points
 
 
+# ---------- route-facing ----------
+
+
 def forecast(
     days: int = 30,
     extra: list[ForecastEvent] | None = None,
     *,
+    persona: str = DEFAULT_PERSONA,
     start: date | None = None,
-    schedule: Schedule = MAYA,
+    schedule: Schedule | None = None,
 ) -> Forecast:
     """Day-by-day projected checking balance from `start` (default today), plus hypothetical events."""
-    start = start or date.today()
+    start = start or sources.local_today()
+    schedule = schedule or schedule_for(persona, start)
     end = start + timedelta(days=days)
     hypothetical = [e for e in extra or [] if start <= e.date <= end]
     events = sorted(build_events(schedule, start, end) + hypothetical, key=lambda e: (e.date, -e.amount))
@@ -152,20 +130,28 @@ def forecast(
     return Forecast(points=points, low=low, safe_floor=schedule.safe_floor, events=events)
 
 
-def simulate_purchase(amount: float, on: date, label: str, *, start: date | None = None) -> Forecast:
+def simulate_purchase(
+    amount: float,
+    on: date,
+    label: str,
+    *,
+    persona: str = DEFAULT_PERSONA,
+    start: date | None = None,
+    schedule: Schedule | None = None,
+) -> Forecast:
     """Forecast as if the user also spent `amount` on `on`.
 
     A date in the past means the money would go out now. The horizon stretches to cover the purchase
     (up to MAX_DAYS) so a far-off purchase is never silently dropped from the answer.
     """
-    start = start or date.today()
+    start = start or sources.local_today()
     on = max(on, start)
     days = min(max(30, (on - start).days), MAX_DAYS)
     hypothetical = ForecastEvent(date=on, amount=-abs(amount), label=label, kind="other")
-    return forecast(days=days, extra=[hypothetical], start=start)
+    return forecast(days=days, extra=[hypothetical], persona=persona, start=start, schedule=schedule)
 
 
-def recurring(*, start: date | None = None, schedule: Schedule = MAYA) -> list[Recurring]:
-    """Recurring card charges detected in the persona's transaction history ("subscription detective")."""
-    start = start or date.today()
-    return detect_recurring(demo_history(start, schedule=schedule), start)
+def recurring(*, persona: str = DEFAULT_PERSONA, start: date | None = None) -> list[Recurring]:
+    """Recurring card charges detected in the persona's purchase history ("subscription detective")."""
+    start = start or sources.local_today()
+    return detect_recurring(sources.load(persona, start).history, start)

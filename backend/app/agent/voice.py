@@ -1,17 +1,15 @@
 """How the agent talks to each user — owner: Patil-Hemangi.
 
-The voice is picked in code from the user's age, never inferred by the model. It changes tone only:
-every voice gets the same tools, numbers, verdicts and safety rules (see the shared rules in chat.py),
-and the agent eval runs in every voice to show the answers don't change.
+The voice is picked in code from the user's age (from the persona records), never inferred by the
+model. It changes tone only: every voice gets the same tools, numbers, verdicts and safety rules (see
+the shared rules in chat.py), and the agent eval runs in every voice to show the answers don't change.
 """
 
 from typing import Literal
 
 Voice = Literal["genz", "direct", "classic"]
 
-# Hard-coded for the fictional demo personas until ages come from the signed-in user's profile.
-PERSONA_AGES = {"maya": 20, "jordan": 40, "sam": 60}
-DEFAULT_PERSONA = "maya"
+DEFAULT_AGE = 20  # unknown users get the default voice; tone never changes the answers anyway
 
 
 def voice_for(age: int) -> Voice:
@@ -20,8 +18,15 @@ def voice_for(age: int) -> Voice:
     return "direct" if age < 50 else "classic"
 
 
+def age_of(persona: str) -> int:
+    """The persona's age from the data team's persona records (Tiger Data, or the demo list offline)."""
+    from app import data  # imported lazily: the voice table itself shouldn't need the data layer
+
+    return next((p.age for p in data.personas() if p.slug == persona and p.age), DEFAULT_AGE)
+
+
 def voice_for_persona(persona: str) -> Voice:
-    return voice_for(PERSONA_AGES.get(persona, PERSONA_AGES[DEFAULT_PERSONA]))
+    return voice_for(age_of(persona))
 
 
 # Example lines use no figures on purpose, so the model can't copy a number into a real answer.

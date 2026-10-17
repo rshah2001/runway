@@ -1,16 +1,17 @@
-"""Recurring-transaction detector tests on hand-built histories, plus the seeded demo history."""
+"""Recurring-transaction detector tests on hand-built histories, plus the seeded personas."""
 
 from datetime import date, timedelta
 
-from app.forecast.history import Transaction, demo_history
+from app.forecast import sources
 from app.forecast.recurring import detect_recurring
+from app.forecast.sources import Txn
 
 TODAY = date(2026, 10, 16)
 
 
-def _charges(merchant: str, dates: list[date], amounts: list[float] | float) -> list[Transaction]:
+def _charges(label: str, dates: list[date], amounts: list[float] | float) -> list[Txn]:
     amounts = amounts if isinstance(amounts, list) else [amounts] * len(dates)
-    return [Transaction(d, merchant, a, "Other", "purchase") for d, a in zip(dates, amounts, strict=True)]
+    return [Txn(d, "purchase", -a, label, "Other", "Credit Card") for d, a in zip(dates, amounts, strict=True)]
 
 
 def _monthly(day: int, n: int = 4) -> list[date]:
@@ -19,7 +20,7 @@ def _monthly(day: int, n: int = 4) -> list[date]:
 
 def test_finds_a_monthly_subscription_and_its_next_charge() -> None:
     [sub] = detect_recurring(_charges("StreamCo", _monthly(14), 15.49), TODAY)
-    assert (sub.merchant, sub.amount, sub.next_date) == ("StreamCo", 15.49, date(2026, 10, 14) + timedelta(days=31))
+    assert (sub.merchant, sub.amount, sub.next_date) == ("StreamCo", 15.49, date(2026, 11, 14))
 
 
 def test_finds_a_weekly_charge() -> None:
@@ -59,17 +60,27 @@ def test_month_end_billing_returns_to_the_31st_after_february() -> None:
     assert sub.next_date == date(2027, 3, 31)
 
 
-def test_bills_and_deposits_are_ignored() -> None:
-    history = [Transaction(d, "Rent", 650, "Bill", "bill") for d in _monthly(1)]
-    history += [Transaction(d, "Payroll", -780, "Income", "deposit") for d in _monthly(9)]
+def test_by_default_only_purchases_count() -> None:
+    history = [Txn(d, "bill", -650, "Rent", "Bills", "Checking") for d in _monthly(1)]
+    history += [Txn(d, "deposit", 780, "Payroll", "Income", "Checking") for d in _monthly(9)]
     assert detect_recurring(history, TODAY) == []
 
 
-def test_demo_history_yields_exactly_the_personas_subscriptions() -> None:
-    found = detect_recurring(demo_history(TODAY), TODAY)
-    assert {(r.merchant, r.amount) for r in found} == {
-        ("Music streaming", 11.99),
-        ("Video streaming", 15.49),
-        ("Cloud storage", 9.99),
+def test_income_can_be_detected_with_a_filter() -> None:
+    history = [
+        Txn(TODAY - timedelta(days=14 * i), "deposit", 780, "Payroll", "Income", "Checking") for i in range(6, 0, -1)
+    ]
+    [pay] = detect_recurring(history, TODAY, lambda t: t.kind == "deposit")
+    assert pay.amount == 780 and pay.interval_days == 14
+
+
+def test_seeded_personas_yield_exactly_their_subscriptions() -> None:
+    expected = {
+        "maya": {"Spotify", "Netflix", "iCloud+"},
+        "jordan": {"Netflix", "Hulu", "Max", "Disney+", "Spotify", "Kids Game Pass", "Gym Membership", "Audible"},
+        "sam": {"News Digital", "Netflix"},
     }
-    assert [r.next_date for r in found] == sorted(r.next_date for r in found)
+    for persona, subs in expected.items():
+        found = detect_recurring(sources.load(persona, TODAY).history, TODAY)
+        assert {r.merchant for r in found} == subs, persona
+        assert [r.next_date for r in found] == sorted(r.next_date for r in found)

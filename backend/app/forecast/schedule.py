@@ -1,23 +1,25 @@
-"""The recurring cash flows the forecast engine projects — owner: Patil-Hemangi.
+"""The cash flows the forecast engine projects for one persona — owner: Patil-Hemangi.
 
-A `Schedule` is plain data: starting balance, paychecks, bills, card statements and spending
-estimates. Keeping it separate from the engine means the engine is a pure function of
-(schedule, start, horizon), which is what makes it testable and backtestable. Today the only
-schedule is the fictional demo persona; later one is built from Nessie bills, deposits and purchases.
+A `Schedule` is plain data, built from a persona's real inputs (`sources.PersonaData`):
+  * bills from the bills table — known amounts on known days;
+  * regular money in and out of checking (paychecks, fixed transfers), detected from history;
+  * everyday spending, learned from the last 90 days of checking outflows that are neither.
+Keeping it separate from the engine makes the engine a pure function of (schedule, start, horizon),
+which is what lets the backtest fit a schedule on months 1–3 and score it on month 4.
 """
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Literal
+
+from app.forecast.recurring import detect_recurring
+from app.forecast.sources import PersonaData, Txn
+from app.forecast.spend_model import Outflows, SpendProfile, fit_flat
 
 EventKind = Literal["paycheck", "bill", "subscription", "card_payment", "spending", "transfer", "other"]
 
-
-@dataclass(frozen=True)
-class Paycheck:
-    amount: float
-    every_days: int
-    label: str
-    weekday: int = 4  # 0 = Monday; paychecks land on Fridays
+SAFE_FLOOR = 300.0
+SPEND_WINDOW_DAYS = 90  # the backtest's training window: long enough to smooth out one odd week
 
 
 @dataclass(frozen=True)
@@ -31,56 +33,66 @@ class MonthlyCharge:
 
 
 @dataclass(frozen=True)
-class Installment:
-    """Fixed monthly payments starting next month until `months_left` run out."""
-
-    day: int
-    monthly: float
-    months_left: int
-    label: str
-
-
-@dataclass(frozen=True)
-class CardStatement:
-    """A credit card paid in full on `pay_day`.
-
-    Only the current statement balance is known, so only the next payoff is projected. Later
-    statements depend on new charges, which the spending estimates below already count once.
-    """
+class RegularFlow:
+    """Money that reliably moves in or out of checking on a cadence, found in history."""
 
     label: str
-    balance: float
-    pay_day: int
+    amount: float  # signed: positive = money in
+    interval_days: int
+    next_date: date
+    kind: EventKind
 
 
 @dataclass(frozen=True)
 class Schedule:
     start_balance: float  # checking only: savings is the cushion, not spending money
-    safe_floor: float
-    paycheck: Paycheck
+    safe_floor: float = SAFE_FLOOR
     monthly: list[MonthlyCharge] = field(default_factory=list)
-    installments: list[Installment] = field(default_factory=list)
-    cards: list[CardStatement] = field(default_factory=list)
-    weekly_spend: float = 0.0  # groceries estimate, charged every 7 days from the start
-    monthly_spend: float = 0.0  # discretionary estimate (eating out, one-offs), charged on the 10th
+    regular: list[RegularFlow] = field(default_factory=list)
+    spend: SpendProfile = SpendProfile((0.0,) * 7)
 
 
-# Fictional demo persona — the same numbers as PERSONA in prototype/index.html. Not a real person.
-MAYA = Schedule(
-    start_balance=680.00,
-    safe_floor=300.00,
-    paycheck=Paycheck(amount=780.00, every_days=14, label="Campus job paycheck"),
-    monthly=[
-        MonthlyCharge(1, 650.00, "Rent"),
-        MonthlyCharge(5, 62.00, "Electric + internet"),
-        MonthlyCharge(12, 108.00, "Car insurance"),
-        MonthlyCharge(20, 35.00, "Phone bill"),
-        MonthlyCharge(8, 11.99, "Music streaming", "subscription"),
-        MonthlyCharge(14, 15.49, "Video streaming", "subscription"),
-        MonthlyCharge(17, 9.99, "Cloud storage", "subscription"),
-    ],
-    installments=[Installment(28, 83.25, 9, "Laptop — 0% installments")],
-    cards=[CardStatement("Rewards credit card", 286.40, pay_day=22)],
-    weekly_spend=55.00,
-    monthly_spend=120.00,
-)
+def _checking_flow(t: Txn) -> bool:
+    """Money moving in or out of checking other than purchases and bills."""
+    return t.account == "Checking" and t.kind in ("deposit", "transfer", "withdrawal")
+
+
+def regular_flows(history: list[Txn], today: date) -> list[RegularFlow]:
+    """Paychecks and fixed transfers that repeat on a steady cadence for a steady amount."""
+    incoming = detect_recurring(history, today, lambda t: _checking_flow(t) and t.amount > 0)
+    outgoing = detect_recurring(history, today, lambda t: _checking_flow(t) and t.amount < 0)
+    biggest_in = max((r.amount for r in incoming), default=0)
+    flows = [
+        # the largest steady income is the paycheck; smaller ones are splits and allowances
+        RegularFlow(
+            r.merchant, r.amount, r.interval_days, r.next_date, "paycheck" if r.amount == biggest_in else "transfer"
+        )
+        for r in incoming
+    ]
+    flows += [RegularFlow(r.merchant, -r.amount, r.interval_days, r.next_date, "transfer") for r in outgoing]
+    return flows
+
+
+def everyday_outflows(history: list[Txn], regular: list[RegularFlow]) -> Outflows:
+    """Checking outflows that are neither bills nor a detected regular transfer: debit purchases,
+    occasional transfers. Card purchases are left out — they reach checking as the card-payment bill."""
+    regular_labels = {f.label.strip().lower() for f in regular}
+    return [
+        (t.date, -t.amount)
+        for t in history
+        if t.account == "Checking"
+        and t.amount < 0
+        and t.kind in ("purchase", "transfer", "withdrawal")
+        and t.label.strip().lower() not in regular_labels
+    ]
+
+
+def build(data: PersonaData, today: date, fit=fit_flat) -> Schedule:
+    """A persona's schedule as of `today`, learned from the history before it."""
+    regular = regular_flows(data.history, today)
+    spend = fit(everyday_outflows(data.history, regular), today - timedelta(days=SPEND_WINDOW_DAYS), today)
+    monthly = [
+        MonthlyCharge(b.day, b.amount, b.label, "card_payment" if "credit card" in b.label.lower() else "bill")
+        for b in data.bills
+    ]
+    return Schedule(start_balance=data.checking, monthly=monthly, regular=regular, spend=spend)

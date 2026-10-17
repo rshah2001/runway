@@ -1,9 +1,12 @@
-"""Recurring-transaction detector ("subscription detective") — owner: Patil-Hemangi.
+"""Recurring-transaction detector — owner: Patil-Hemangi.
 
-A merchant counts as recurring when its charges arrive on a steady cadence for a steady amount.
-Both conditions matter: a coffee shop visited every few days is frequent but not a subscription,
-and a $15.49 charge that shows up once is just a purchase. Rules, not ML: with a few months of
-history per user there is too little data to learn from, and every decision stays explainable.
+A series counts as recurring when it arrives on a steady cadence for a steady amount. Both matter: a
+coffee shop visited every few days is frequent but not a subscription, and a $15.49 charge that shows
+up once is just a purchase. Rules, not ML: with a few months of one person's history there is too
+little data to learn from, and every decision stays explainable.
+
+The same detector serves two callers: the "subscription detective" (card purchases) and the forecast,
+which uses it to find paydays and other regular money in or out of checking from history alone.
 
 Timing is checked per charge against its expected slot (same weekday rhythm, or same day of the
 month), not per gap between charges: one late charge then counts as one miss instead of two.
@@ -11,16 +14,17 @@ month), not per gap between charges: one late charge then counts as one miss ins
 
 import calendar
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, timedelta
 from statistics import median
 
-from app.forecast.history import Transaction
+from app.forecast.sources import Txn
 from app.schemas import Recurring
 
 MIN_CHARGES = 3
 # cadence name → (period in days, slot tolerance in days)
 CADENCES = {"weekly": (7, 1), "biweekly": (14, 2), "monthly": (30, 3)}
-AMOUNT_TOLERANCE = 0.05  # max relative deviation from the median charge
+AMOUNT_TOLERANCE = 0.05  # max relative deviation from the median amount
 MIN_ON_SLOT_SHARE = 0.75  # share of charges that must land on their slot; tolerates one late charge
 
 
@@ -53,43 +57,46 @@ def _steady_amount(amounts: list[float]) -> bool:
     return all(abs(a - mid) <= max(AMOUNT_TOLERANCE * mid, 0.01) for a in amounts)
 
 
-def _next_charge(last: date, cadence: str, day_of_month: int) -> date:
-    if cadence != "monthly":
-        return last + timedelta(days=CADENCES[cadence][0])
+def next_after(last: date, interval_days: int, day_of_month: int) -> date:
+    """The occurrence after `last`: same day next month for monthly series, else `interval_days` on."""
+    if interval_days < CADENCES["monthly"][0]:
+        return last + timedelta(days=interval_days)
     year, month = (last.year + 1, 1) if last.month == 12 else (last.year, last.month + 1)
     return _month_day(year, month, day_of_month)
 
 
-def detect_recurring(transactions: list[Transaction], today: date) -> list[Recurring]:
-    """Recurring card charges still active as of `today`, soonest next charge first.
+def detect_recurring(history: list[Txn], today: date, include: Callable[[Txn], bool] | None = None) -> list[Recurring]:
+    """Series still active as of `today`, soonest next occurrence first. Amounts are positive.
 
-    Only purchases are considered: bills and paychecks are already known from the schedule, and
-    the point of the detective is finding the charges the user forgot about.
+    `include` picks the transactions to look at; by default, card and debit purchases, since bills
+    are already known from the bills table and the detective's job is the charges people forget.
     """
-    by_merchant: dict[str, list[Transaction]] = defaultdict(list)
-    for t in transactions:
-        if t.kind == "purchase" and t.amount > 0:
-            by_merchant[t.merchant.strip().lower()].append(t)
+    include = include or (lambda t: t.kind == "purchase" and t.amount < 0)
+    by_label: dict[str, list[Txn]] = defaultdict(list)
+    for t in history:
+        if include(t):
+            by_label[t.label.strip().lower()].append(t)
 
     found: list[Recurring] = []
-    for charges in by_merchant.values():
-        charges.sort(key=lambda t: t.date)
-        if len(charges) < MIN_CHARGES or not _steady_amount([t.amount for t in charges]):
+    for series in by_label.values():
+        series.sort(key=lambda t: t.date)
+        amounts = [abs(t.amount) for t in series]
+        if len(series) < MIN_CHARGES or not _steady_amount(amounts):
             continue
-        dates = [t.date for t in charges]
+        dates = [t.date for t in series]
         cadence = next((c for c in CADENCES if _fits(dates, c)), None)
         if cadence is None:
             continue
         period, tolerance = CADENCES[cadence]
-        last = charges[-1]
+        last = series[-1]
         if (today - last.date).days > period * 1.5 + tolerance:
-            continue  # missed its last charge: probably cancelled
+            continue  # missed its last occurrence: probably cancelled
         days = [d.day for d in dates]
         day_of_month = round(median(days))  # usual billing day, robust to one late charge
         if day_of_month >= 28:
             day_of_month = max(days)  # month-end billers: a clamped Feb 28 must not stick for March
-        next_date = _next_charge(last.date, cadence, day_of_month)
-        while next_date < today:  # the charge is due already but hasn't posted; expect it next cycle
-            next_date = _next_charge(next_date, cadence, day_of_month)
-        found.append(Recurring(merchant=last.merchant, amount=last.amount, interval_days=period, next_date=next_date))
+        next_date = next_after(last.date, period, day_of_month)
+        while next_date < today:  # due already but not posted yet; expect it next cycle
+            next_date = next_after(next_date, period, day_of_month)
+        found.append(Recurring(merchant=last.label, amount=abs(last.amount), interval_days=period, next_date=next_date))
     return sorted(found, key=lambda r: r.next_date)
