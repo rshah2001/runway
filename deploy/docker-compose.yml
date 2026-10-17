@@ -10,6 +10,10 @@ services:
       # which Auth0 login sees which demo persona — user ids aren't secret, so they come from the
       # GitHub repo variable AUTH0_PERSONAS at deploy time (falls back to ../.env)
       AUTH0_PERSONAS: ${AUTH0_PERSONAS:-}
+      # the same tenant + API identifier the website's sign-in asks Auth0 for (repo variables), so a
+      # token the site gets is always one the API accepts
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-}
       # "1" = Fix it, P2P and the safety net move real Nessie money (signed-in owners only);
       # from the GitHub repo variable LIVE_TRANSFERS at deploy time
       LIVE_TRANSFERS: ${LIVE_TRANSFERS:-}

@@ -14,8 +14,20 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_health_reports_demo_mode() -> None:
+def test_health_reports_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AUTH0_DOMAIN", raising=False)
+    monkeypatch.delenv("AUTH0_AUDIENCE", raising=False)
     assert client.get("/health").json() == {"ok": True, "mode": "demo"}
+
+
+def test_health_shows_which_auth0_tenant_and_api_tokens_must_come_from(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH0_DOMAIN", "https://tenant.example.auth0.com/")
+    monkeypatch.setenv("AUTH0_AUDIENCE", "https://api.example")
+    monkeypatch.setenv("AUTH0_PERSONAS", "maya=auth0|a,sam=auth0|b")
+    auth = client.get("/health").json()["auth"]
+    assert auth == {
+        "issuer": "https://tenant.example.auth0.com/", "audience": "https://api.example", "linked_logins": 2,
+    }
 
 
 def test_personas_list_the_three_demo_stories() -> None:

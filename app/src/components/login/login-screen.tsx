@@ -29,6 +29,7 @@ import { Airfield, AIRFIELD_MS } from '@/components/login/airfield';
 import { Swoosh } from '@/components/rw/icons';
 import { T, useWide } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
+import { httpStatus } from '@/hooks/use-load';
 import { enterSignedIn, NotLinked, signIn } from '@/lib/account';
 import { isAuthConfigured } from '@/lib/auth';
 
@@ -77,7 +78,8 @@ export function LoginScreen() {
       setTimeout(() => enterSignedIn(profile), TAKEOFF_MS);
     } catch (e) {
       setBusy(false);
-      setError(e instanceof NotLinked ? e.message : 'Sign-in didn’t finish. Check your connection and try again.');
+      const code = httpStatus(e instanceof Error ? e.message : '');
+      setError(e instanceof NotLinked ? e.message : `Sign-in didn’t finish${code ? ` (error ${code})` : ''}. Please try again.`);
     }
   }
 
