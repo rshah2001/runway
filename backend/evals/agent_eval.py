@@ -130,8 +130,8 @@ def build_cases() -> list[Case]:
 def _ask(case: Case, client: Any) -> tuple[ChatResponse | None, list[dict[str, Any]]]:
     """The agent's reply plus every tool output it saw. The reply is None if Gemini errored, so a
     silent fallback to the router can never score as Gemini."""
-    if client is None:
-        return agent.chat(case.message, persona=case.persona, today=TODAY), []
+    if client is None:  # the router directly: chat() would pick up a GEMINI_API_KEY from .env and score Gemini
+        return agent._chat_with_rules(case.message, TODAY, case.persona), []
     seen: list[dict[str, Any]] = []
     real_call = tools.call
 

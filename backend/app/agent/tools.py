@@ -90,10 +90,12 @@ def get_forecast(days: int = 30, *, persona: str = engine.DEFAULT_PERSONA, today
     days = max(1, min(int(days), engine.MAX_DAYS))
     _, sched = _inputs(persona, today)
     f = engine.forecast(days=days, start=today, schedule=sched)
-    upcoming = [{"day": day(e.date), "label": e.label, "amount": money(e.amount)} for e in f.events[:12]]
+    scheduled = [e for e in f.events if e.kind != "spending"]  # the daily estimates would crowd out the bills
+    upcoming = [{"day": day(e.date), "label": e.label, "amount": money(e.amount)} for e in scheduled[:12]]
     return {
         **_low_summary(f),
-        "balance_today": money(f.points[0].balance),
+        "balance_today": money(sched.start_balance),  # the real balance, before today's estimated spending
+        "everyday_spending_per_week": money(sched.spend.total(today, 7)),
         "balance_at_end": money(f.points[-1].balance),
         "horizon_days": days,
         "upcoming": upcoming,
