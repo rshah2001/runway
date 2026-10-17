@@ -37,6 +37,14 @@ class ForecastEvent(BaseModel):
     kind: Literal["paycheck", "bill", "subscription", "card_payment", "spending", "transfer", "other"]
 
 
+class LeftOut(BaseModel):
+    """A one-off purchase kept out of the everyday spending rate (it still counts in the range)."""
+
+    date: date
+    amount: float  # positive
+    label: str
+
+
 class Readiness(BaseModel):
     """How sure the forecast is (backend/app/forecast/readiness.py). Every figure is the engine's."""
 
@@ -49,6 +57,7 @@ class Readiness(BaseModel):
     reasons: list[str]  # plain English, safe to show as-is
     rolling_error: float | None = None  # $: how far off its week-ahead forecasts were, on average, lately
     rolling_error_days: int = 0  # how many recent days that average covers
+    left_out: list[LeftOut] = Field(default_factory=list)  # one-offs kept out of the spending rate
 
 
 class Forecast(BaseModel):
