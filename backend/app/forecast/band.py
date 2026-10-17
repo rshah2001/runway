@@ -3,8 +3,8 @@
 Bills and paydays are known; everyday spending is the only part of the forecast that is uncertain, so
 the band comes from how much this person's spending has actually varied. Method: a moving-block
 bootstrap over the daily spending totals the rate was learned from. Each simulated future is built
-from real 7-day stretches of the person's history, laid end to end; the band at day k is the p10–p90
-of total spending by day k across BOOTSTRAP_PATHS such futures.
+from real 7-day stretches of the person's history, laid end to end; the band at day k runs from p95 down
+to p10 of total spending by day k across BOOTSTRAP_PATHS such futures: a p5–p90 balance.
 
 Why a bootstrap instead of per-day quantiles: quantiles don't add up. The p90 of one day's spending
 times 30 is far more than the p90 of a month's spending, because big days and small days average out,
@@ -22,8 +22,11 @@ from functools import lru_cache
 
 BOOTSTRAP_PATHS = 400
 BLOCK_DAYS = 7
-LOW_QUANTILE = 0.10  # the cautious end: spending this high or higher happens 1 time in 10
-HIGH_QUANTILE = 0.90
+# Quantiles of SPENDING. High spending gives the low balance, so the cautious end comes from the top.
+# Asymmetric on purpose: the safety net plans on balance_low, so it is set from p95 spending (the
+# backtest at p90 let 13% of real days fall below it); balance_high only needs to be a fair p90.
+SPEND_QUANTILE_FOR_LOW_BALANCE = 0.95
+SPEND_QUANTILE_FOR_HIGH_BALANCE = 0.10
 SEED = 20261017
 
 
@@ -42,7 +45,7 @@ def _quantile(sorted_values: list[float], q: float) -> float:
 
 @lru_cache(maxsize=64)
 def _spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], ...]:
-    """(extra spending at p90, spending saved at p10) versus the mean, for cumulative days 1..days."""
+    """(extra spending at p95, spending saved at p10) versus the mean, for cumulative days 1..days."""
     rng = random.Random(SEED)
     block = min(BLOCK_DAYS, len(daily))
     starts = len(daily) - block + 1
@@ -62,14 +65,14 @@ def _spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], .
     for k in range(days):
         by_day = sorted(path[k] for path in totals)
         expected = mean_day * (k + 1)
-        down = max(0.0, _quantile(by_day, HIGH_QUANTILE) - expected)
-        up = max(0.0, expected - _quantile(by_day, LOW_QUANTILE))
+        down = max(0.0, _quantile(by_day, SPEND_QUANTILE_FOR_LOW_BALANCE) - expected)
+        up = max(0.0, expected - _quantile(by_day, SPEND_QUANTILE_FOR_HIGH_BALANCE))
         spread.append((down, up))
     return tuple(spread)
 
 
 def spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], ...]:
-    """How far below / above the expected balance the p10 / p90 balance sits after each of `days` days.
+    """How far below / above the expected balance the p5 / p90 balance sits after each of `days` days.
 
     `daily` is the everyday spending total of every day in the learning window, zeros included. Both
     values are ≥ 0 when the history has any variation; with no history the band is empty (zero width)."""

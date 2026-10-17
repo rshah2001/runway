@@ -317,3 +317,24 @@ def test_router_says_when_it_is_still_learning(monkeypatch: pytest.MonkeyPatch, 
 def test_confidence_note_is_grounded() -> None:
     r = tools.simulate_purchase(15, "2026-11-07", persona="maya", today=TODAY)
     assert agent.grounded(r["confidence_note"], "", r)
+
+
+def test_a_thrown_away_reply_leaves_no_approvable_transfer_behind() -> None:
+    before = set(tools.PENDING)
+    fake = FakeGemini(_calls(("propose_transfer", {})), _text("Done, I moved $9,999 for you."))  # ungrounded
+    r = agent.chat("fix it", persona="maya", client=fake, today=TODAY)
+    new = set(tools.PENDING) - before
+    assert r.pending_action is not None and new == {r.pending_action.id}  # only the router's proposal survives
+
+
+def test_a_gemini_crash_after_proposing_leaves_nothing_behind() -> None:
+    class Crashes(FakeGemini):
+        def create(self, **kwargs: Any) -> SimpleNamespace:
+            if self.sent:
+                raise RuntimeError("quota")
+            return super().create(**kwargs)
+
+    before = set(tools.PENDING)
+    with pytest.raises(RuntimeError):
+        agent._chat_with_gemini(Crashes(_calls(("propose_transfer", {}))), "fix it", TODAY, "genz", "maya")
+    assert set(tools.PENDING) == before

@@ -1,4 +1,4 @@
-"""The forecast's range: a p10–p90 band from how much everyday spending actually varies."""
+"""The forecast's range: a p5–p90 band from how much everyday spending actually varies."""
 
 from datetime import date
 
@@ -28,7 +28,7 @@ def test_same_history_same_band() -> None:
     assert [p.balance_low for p in a.points] == [p.balance_low for p in b.points]
 
 
-def test_cautious_low_is_the_lowest_p10_and_is_below_the_expected_low() -> None:
+def test_cautious_low_is_the_lowest_p5_and_is_below_the_expected_low() -> None:
     f = engine.forecast(start=TODAY, persona="maya")
     assert f.cautious_low is not None
     assert f.cautious_low.balance_low == min(p.balance_low for p in f.points)

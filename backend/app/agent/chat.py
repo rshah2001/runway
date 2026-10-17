@@ -114,11 +114,32 @@ def _chat_with_gemini(
     status = engine.status(now.low.balance, now.safe_floor)
     system = SYSTEM_PROMPT.format(voice=voice.VOICES[tone], today=tools.day(today) + f", {today.year}", status=status)
     request = {"model": MODEL, "tools": tools.DECLARATIONS, "system_instruction": system}
-    interaction = _create(client, **request, input=message)
     tool_calls: list[str] = []
     outputs: list[dict[str, Any]] = []
-    pending: PendingAction | None = None
+    try:
+        return _run_gemini(client, request, message, today, persona, tool_calls, outputs)
+    except Exception:
+        # the user never sees this reply, so a transfer it proposed must not stay approvable; the
+        # rule-based fallback proposes its own if the message asks for one
+        for result in outputs:
+            if "action_id" in result:
+                tools.discard(result["action_id"])
+        raise
 
+
+def _run_gemini(
+    client: Any,
+    request: dict[str, Any],
+    message: str,
+    today: date,
+    persona: str,
+    tool_calls: list[str],
+    outputs: list[dict[str, Any]],
+) -> ChatResponse:
+    """The tool-calling loop. `tool_calls` and `outputs` are filled in place, so the caller can clean
+    up after a reply that gets thrown away."""
+    interaction = _create(client, **request, input=message)
+    pending: PendingAction | None = None
     for _ in range(MAX_TOOL_ROUNDS):
         calls = [s for s in interaction.steps or [] if s.type == "function_call"]
         if not calls:

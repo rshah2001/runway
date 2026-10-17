@@ -17,7 +17,7 @@ export type Me = {
 export type ForecastPoint = {
   date: string; // 'YYYY-MM-DD'
   balance: number; // expected end-of-day balance
-  balance_low?: number | null; // p10: the cautious end, if everyday spending runs high
+  balance_low?: number | null; // p5: the cautious end, if everyday spending runs high
   balance_high?: number | null; // p90
 };
 
@@ -49,7 +49,7 @@ export type Forecast = {
   safe_floor: number;
   events: ForecastEvent[];
   readiness?: Readiness | null;
-  cautious_low?: ForecastPoint | null; // the day with the lowest p10 balance: what to plan around
+  cautious_low?: ForecastPoint | null; // the day with the lowest p5 balance: what to plan around
 };
 
 export type Recurring = {
