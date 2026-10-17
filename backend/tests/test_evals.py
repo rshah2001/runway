@@ -88,3 +88,11 @@ def test_tone_rules_catch_a_bank_letter_and_overdoing_it() -> None:
 def test_tone_rules_keep_slang_out_of_adult_voices() -> None:
     assert all(_passes("direct", "tight", "Heads up: you'll come up short when rent clears.").values())
     assert not _passes("classic", "fine", "You're in good shape, tbh.")["no Gen Z words"]
+
+
+def test_privacy_eval_passes_on_the_deterministic_path(monkeypatch) -> None:
+    """Nobody can get another person's money out of Ask Runway — and own-relationship questions still work."""
+    from evals import privacy_eval
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert privacy_eval.run(use_gemini=False) == 0

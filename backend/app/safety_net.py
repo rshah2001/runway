@@ -70,6 +70,9 @@ class Decision:
     floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
     allocations: tuple[tuple[str, Decimal], ...] = ()  # (supporter, amount): one bridge each
     versions: tuple[tuple[str, int], ...] = ()  # the consent each share relied on; re-checked before money moves
+    # supporters who agreed but were kept out because helping wasn't safe for THEM: (slug, their cushion, why).
+    # Logged for the audit trail only — never sent to them, since its timing would reveal someone's shortfall.
+    held: tuple[tuple[str, Decimal, str], ...] = ()
 
 
 def _md(d: date) -> str:
@@ -139,12 +142,17 @@ def decide(
         if h.enabled and not h.is_borrowing
     ]
     names = {h.projection.slug: h.projection.first_name for h, _ in caps}
+    held = tuple(
+        (h.projection.slug, h.projection.floor, c.bound)
+        for h, c in caps
+        if c.amount == 0 and c.bound in ("cushion", "low_confidence")
+    )
     shares = guardian.allocate(need, [(h.projection.slug, c) for h, c in caps])
     if shares and sum(a for _, a in shares) >= need:
         who = " and ".join(f"{names[s]} covers {_money(a)}" for s, a in shares)
         reason = f"{gap}. {who} — within their limits, with their own bills still covered."
         reason += f" Expected back {_md(b.next_payday)}."
-        return Decision(b.slug, "auto_bridge", reason, need, shares[0][0], allocations=tuple(shares), **base)
+        return Decision(b.slug, "auto_bridge", reason, need, shares[0][0], allocations=tuple(shares), held=held, **base)
 
     # not enough automatic room: ask ONE person whose own cushion allows the whole amount
     approvable = [(h, c) for h, c in caps if c.cash_room >= need]
@@ -501,6 +509,8 @@ def act(decision: Decision) -> dict | None:
         with pool.connection() as conn:
             return safety_repo.bridge(conn, ids[0])
     funded = [b for b in (_fund(i) for i in ids) if b is not None]
+    if decision.held:  # audit only: telling a held-back supporter would reveal WHEN their person was short
+        log.info("decision for %s protected %s", decision.borrower, [(s, why) for s, _, why in decision.held])
     if len(funded) < len(ids):  # some shares landed, some didn't: say so, never "covered"
         got = sum((Decimal(b["amount"]) for b in funded), Decimal(0))
         with pool.connection() as conn:
