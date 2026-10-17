@@ -22,6 +22,8 @@ class Me(BaseModel):
     first_name: str
     accounts: list[Account]
     safe_floor: float = 300.0  # what this person keeps in checking; every "am I okay?" uses it
+    alerts_only: bool = False  # Today shows one calm line and speaks up only before a dip
+    family_cover: bool = True  # False: family limits never move money to this person
 
 
 class ForecastPoint(BaseModel):
@@ -240,7 +242,9 @@ class SafetyNetSummary(BaseModel):
 
 class SafetyDecision(BaseModel):
     borrower: str
-    action: Literal["none", "auto_bridge", "needs_approval", "no_safe_helper", "no_payday", "already_covered"]
+    action: Literal[
+        "none", "auto_bridge", "needs_approval", "no_safe_helper", "no_payday", "already_covered", "family_off"
+    ]
     reason: str
     amount: float
     lender: str | None
@@ -254,6 +258,14 @@ class SafetyDecision(BaseModel):
 class SetSafeFloor(BaseModel):
     persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in: you set your own
     amount: float = Field(ge=0, le=5000)
+
+
+class SetPreferences(BaseModel):
+    """Change one or both on/off settings; a field left out stays as it is."""
+
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in: you set your own
+    alerts_only: bool | None = None
+    family_cover: bool | None = None
 
 
 class SetLimit(BaseModel):

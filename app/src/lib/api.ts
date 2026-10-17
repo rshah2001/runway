@@ -38,6 +38,9 @@ export const api = {
   // what you keep in checking: every "am I okay?" is measured against it (only for yourself)
   setSafeFloor: (amount: number, persona = currentPersona()) =>
     request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
+  // alerts-only and family cover: on/off, only for yourself; a field left out stays as it is
+  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean }, persona = currentPersona()) =>
+    request<Me>('/me/preferences', { method: 'PUT', body: JSON.stringify({ persona, ...prefs }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
   forecast: (days = 30, persona = currentPersona()) => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
   simulate: (amount: number, date: string, label = 'Purchase', persona = currentPersona()) =>

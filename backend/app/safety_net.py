@@ -157,6 +157,11 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     today = today or _today()
     slugs = [p["slug"] for p in repo.personas(conn)]
     projections = {s: project(conn, s, today) for s in slugs}
+    # the borrower's own switch beats any limit a relative set: strict, because guessing "on" after a
+    # failed read would move family money someone turned off
+    if not prefs.setting(borrower_slug, "family_cover", conn, strict=True):
+        name = projections[borrower_slug].first_name
+        return Decision(borrower_slug, "family_off", f"{name} turned family cover off, so nobody is asked.")
     owing = {b["borrower_slug"] for b in safety_repo.outstanding_bridges(conn)}
     helpers = [
         Helper(

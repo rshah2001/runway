@@ -13,6 +13,8 @@ export type Me = {
   first_name: string;
   accounts: Account[];
   safe_floor: number; // what this person keeps in checking (default 300)
+  alerts_only?: boolean; // Today shows one calm line and speaks up only before a dip (older servers: absent)
+  family_cover?: boolean; // false: family limits never move money to this person
 };
 
 export type ForecastPoint = {
@@ -194,7 +196,7 @@ export type SafetyNetSummary = {
 
 export type SafetyDecision = {
   borrower: string;
-  action: 'none' | 'auto_bridge' | 'needs_approval' | 'no_safe_helper' | 'no_payday' | 'already_covered';
+  action: 'none' | 'auto_bridge' | 'needs_approval' | 'no_safe_helper' | 'no_payday' | 'already_covered' | 'family_off';
   reason: string;
   amount: number;
   lender: string | null;

@@ -42,8 +42,8 @@ function shifted(f: Forecast, delta: number): Forecast {
 }
 
 /** Bills and pay on a day (everyday spending left out). */
-const eventsOn = (f: Forecast, date: string) => f.events.filter((e) => e.date === date && e.kind !== 'spending');
-const describe = (es: ForecastEvent[]) => es.map((e) => `${e.label} ${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`).join(' · ');
+export const eventsOn = (f: Forecast, date: string) => f.events.filter((e) => e.date === date && e.kind !== 'spending');
+export const describe = (es: ForecastEvent[]) => es.map((e) => `${e.label} ${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`).join(' · ');
 
 export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; takeoff: number }) {
   const store = useStore();
@@ -254,7 +254,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
  * "Cover this dip": asks the agent for a fix, then opens the approval sheet with the facts.
  * After an approval: a quiet "Done" line instead.
  */
-function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; approved: number; compact?: boolean }) {
+export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; approved: number; compact?: boolean }) {
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState(false);
 

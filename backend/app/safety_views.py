@@ -34,6 +34,14 @@ def bridge(row: dict) -> Bridge:
     )
 
 
+def for_lender(b: Bridge) -> Bridge:
+    """The bridge as the person covering it sees it: who, how much, and when it comes back — never
+    the borrower's balance, spending, or what it was for. People told us the embarrassment of family
+    seeing their money is why they'd leave the safety net off, so the stored reason (which names the
+    borrower's projected balance) stays with the borrower."""
+    return b.model_copy(update={"reason": f"Covering {b.borrower_name} until payday."})
+
+
 def limit(row: dict) -> SafetyLimit:
     lim, out = float(row["limit_amount"]), float(row["outstanding"])
     return SafetyLimit(
@@ -61,8 +69,8 @@ def summary(slug: str) -> SafetyNetSummary:
         limits_i_set=[limit(r) for r in s["limits_i_set"]],
         limits_for_me=[limit(r) for r in s["limits_for_me"]],
         borrowed=[bridge(r) for r in s["borrowed"]],
-        lent=[bridge(r) for r in s["lent"]],
-        approvals_waiting=[bridge(r) for r in s["approvals_waiting"]],
+        lent=[for_lender(bridge(r)) for r in s["lent"]],
+        approvals_waiting=[for_lender(bridge(r)) for r in s["approvals_waiting"]],
         events=[
             SafetyEvent(at=e["at"], kind=e["kind"], message=e["message"], bridge_id=e["bridge_id"]) for e in s["events"]
         ],
@@ -215,7 +223,7 @@ def demo_summary(slug: str) -> SafetyNetSummary:
         limits_i_set=[x for x in limits if x.lender == slug],
         limits_for_me=[x for x in limits if x.borrower == slug],
         borrowed=[b for b in mine if b.borrower == slug],
-        lent=[b for b in mine if b.lender == slug and b.status != "pending_approval"],
-        approvals_waiting=[b for b in mine if b.lender == slug and b.status == "pending_approval"],
+        lent=[for_lender(b) for b in mine if b.lender == slug and b.status != "pending_approval"],
+        approvals_waiting=[for_lender(b) for b in mine if b.lender == slug and b.status == "pending_approval"],
         events=ev.get(slug, []),
     )

@@ -122,12 +122,18 @@ CREATE INDEX IF NOT EXISTS p2p_requests_persona ON p2p_requests (persona_slug, s
 # family safety net: lenders pre-authorize bridges up to a limit; the agent covers a forecast dip
 # automatically under the limit, asks for an Auth0 push approval over it, and repays on payday
 # what each person wants to keep in checking (app/prefs.py); no row = the default cushion
+# one row per person who changed a setting; a NULL column means "never set it" → the default
 MONEY_PREFS = """
 CREATE TABLE IF NOT EXISTS money_preferences (
-    slug        text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
-    safe_floor  numeric(12, 2) NOT NULL CHECK (safe_floor >= 0 AND safe_floor <= 5000),
-    updated_at  timestamptz NOT NULL DEFAULT now()
+    slug          text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
+    safe_floor    numeric(12, 2) CHECK (safe_floor >= 0 AND safe_floor <= 5000),
+    alerts_only   boolean,  -- Today shows one calm line, and speaks up only before a dip
+    family_cover  boolean,  -- false: family limits never move money to this person
+    updated_at    timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE money_preferences ALTER COLUMN safe_floor DROP NOT NULL;
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS alerts_only boolean;
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS family_cover boolean;
 """
 
 SAFETY_NET = """
