@@ -121,3 +121,29 @@ balance). Two choices matter:
 Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled. The seed
 generator draws purchases independently each day, which flatters any bootstrap; real transaction data
 would be the real test of the band's calibration.
+
+
+## Tone eval
+
+*How* the agent talks, not just *what* it says. Real Gemini replies in each voice, to the same three
+questions, once with money tight (Maya's seeded data, overdraft risk) and once with money fine (Sam's,
+healthy). Every check is a plain rule on the text (`evals/tone_eval.py`), so nothing is judged by
+another model:
+
+- **Gen Z voice** (users under 30), one steady voice: no cringe phrases ("bestie", "slay", "no cap"…),
+  at most one Gen Z touch per reply, no bank-letter phrasing ("you are projected to", "leaving you"…),
+  sounds casual (uses contractions), no emoji when money is tight and at most one when it's fine.
+- **Direct and classic voices** (30–49, 50+): no Gen Z words, no emoji.
+
+| Voice | Money | Before (old prompt) | After |
+|---|---|---|---|
+| Gen Z | tight | 1/3 — read like a bank letter | **3/3** |
+| Gen Z | fine | 2/3 — piled on slang | **3/3** |
+| Direct | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
+| Classic | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
+
+The old Gen Z prompt said "not Gen Z, no slang" when money was tight and "playful Gen Z, a celebration"
+when it was fine, so the voice flipped between a bank letter and a group chat. The new one keeps one
+voice and only changes the mood. Runs on 2026-10-17, `gemini-3.8-flash`; three replies per cell is a
+small sample, so treat this as a regression check rather than a precise rate. The rules are unit-tested
+in `tests/test_evals.py`. Run it with `python -m evals.tone_eval` (needs `GEMINI_API_KEY`).
