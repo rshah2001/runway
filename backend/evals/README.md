@@ -74,3 +74,39 @@ seed days (each seed day generates a different history).
   real transaction data would be the test of whether the weekday model earns its place.
 - Single folds vary a lot because a month of random purchases varies a lot: Jordan's worst fold had
   half his usual purchases in month 4, so every average-based model over-predicted by ~97%.
+
+## Learning curve and forecast range
+
+How does it learn? The same backtest, but the live model may only learn from the last N days before
+the cutoff, as if Runway had just met the person. Same 18 folds.
+
+| Days of history | MAE, daily checking balance | p10–p90 band coverage | Payday found |
+|---|---|---|---|
+| 14 | $2,700.01 | 8% | 0% |
+| 30 | $2,737.30 | 12% | 0% |
+| 60 | $198.69 | 63% | 100% |
+| 90 | $137.65 | 76% | 100% |
+
+- **Coverage** is the share of month-4 days whose actual balance landed inside the forecast's
+  p10–p90 band. A well-calibrated band holds about 80%; at 90 days it holds 76%, a little narrow.
+- **The cliff between 30 and 60 days is the payday.** The detector needs three paychecks on a steady
+  rhythm before it puts income in the forecast (biweekly: ~5 weeks; monthly: ~2 months). Without
+  income, the forecast misses every paycheck in month 4, which is where a $2,700 error comes from.
+  That is exactly what readiness reports: with no payday found, the status is "calibrating" or
+  "learning", never "confident", and the safety net won't act on it automatically.
+- Coverage at 14–30 days is low for the same reason: the band models everyday spending, not a
+  missing paycheck.
+
+**How the band is built (`app/forecast/band.py`):** a moving-block bootstrap over the daily spending
+totals the rate was learned from: 400 simulated months, each stitched from real 7-day stretches of the
+person's history; the band at day k is the p10–p90 of total spending by day k. Two choices matter:
+
+- **Quantiles of the running total, not per-day quantiles summed.** Big and small days average out
+  over a month, so the sum of 30 daily p90s is far more than the p90 of a month: the band would be
+  much too wide by month-end.
+- **Weekly blocks, not single days.** Spending clusters (a weekly grocery run, a busy weekend);
+  resampling whole weeks keeps those clusters, so the band isn't falsely narrow.
+
+Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled. The seed
+generator draws purchases independently each day, which flatters any bootstrap; real transaction data
+would be the real test of the band's calibration.

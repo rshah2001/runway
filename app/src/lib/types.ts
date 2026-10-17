@@ -36,6 +36,8 @@ export type Readiness = {
   spend_days: number; // days the everyday spending rate was learned from
   progress: number; // 0–1 toward "confident"
   reasons: string[]; // plain English, safe to show as-is
+  rolling_error?: number | null; // $: how far off its week-ahead forecasts were, on average, lately
+  rolling_error_days?: number; // how many recent days that average covers
 };
 
 export type Forecast = {

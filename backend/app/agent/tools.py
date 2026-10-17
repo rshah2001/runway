@@ -15,7 +15,7 @@ import secrets
 from datetime import date, timedelta
 from typing import Any
 
-from app.forecast import engine, schedule, sources
+from app.forecast import engine, sources
 from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import Schedule
 from app.forecast.sources import PersonaData
@@ -61,7 +61,7 @@ def resolve_date(when: str | None, today: date) -> date:
 def _inputs(persona: str, today: date) -> tuple[PersonaData, Schedule]:
     """Read the persona's data once per tool call; every forecast in the call reuses it."""
     data = sources.load(persona, today)
-    return data, schedule.build(data, today)
+    return data, engine.schedule_from(data, today)
 
 
 def _shortfall(f: Forecast) -> float:

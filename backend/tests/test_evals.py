@@ -50,3 +50,11 @@ def test_live_spend_model_beats_the_naive_baselines() -> None:
 def test_verdict_grader_reads_the_first_sentence(reply: str, says_safe: bool) -> None:
     first = agent_eval.SENTENCE_END.split(reply, maxsplit=1)[0].lower()
     assert (agent_eval.NEGATIVE.search(first) is None) == says_safe
+
+
+def test_learning_curve_gets_better_with_history_and_the_band_is_honest() -> None:
+    curve = forecast_backtest.learning_curve()
+    assert curve[90].mae < curve[60].mae < curve[30].mae  # it learns: more history, smaller error
+    assert curve[60].payday_found == curve[90].payday_found == 1.0
+    assert 0.65 <= curve[90].coverage <= 0.95  # a p10–p90 band should hold ~80% of real days
+    assert curve[90].coverage > curve[30].coverage
