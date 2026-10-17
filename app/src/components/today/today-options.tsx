@@ -10,7 +10,7 @@
  * plain "Coming up" list with payday and spare money. Sentence case everywhere, 16px+ body text.
  */
 import { useEffect, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedProps, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
@@ -27,7 +27,7 @@ import type { Forecast, PendingAction } from '@/lib/types';
 const longDate = (iso: string) => fromIso(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
 /** The answer to "am I okay?", in two plain sentences — the same words in both options. */
-function answer(f: Forecast) {
+export function answer(f: Forecast) {
   if (isClear(f)) {
     return { title: 'You’re covered all month.', detail: `Your balance stays above the ${money(f.safe_floor, 0)} you like to keep.` };
   }
@@ -178,8 +178,11 @@ export function OptionB({ f, takeoffKey, compact }: { f: Forecast; takeoffKey: n
 
 /* ---------------- shared ---------------- */
 
-/** The fix: asks the agent for a proposal, then the person approves it here. Says what it does. */
-function Fix({ f }: { f: Forecast }) {
+/**
+ * The fix: asks the agent for a proposal, then the person approves it here. Says what it does.
+ * `onProposal` reports the proposed amount (so the chart can preview the result) and null when it's gone.
+ */
+export function Fix({ f, onProposal }: { f: Forecast; onProposal?: (amount: number | null) => void }) {
   const [proposal, setProposal] = useState<PendingAction | null>(null);
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -191,6 +194,7 @@ function Fix({ f }: { f: Forecast }) {
     try {
       const r = await api.chat('Fix it');
       setProposal(r.pending_action);
+      onProposal?.(r.pending_action?.amount ?? null);
       if (!r.pending_action) setFailed(true);
     } catch {
       setFailed(true);
@@ -199,7 +203,7 @@ function Fix({ f }: { f: Forecast }) {
     }
   }
 
-  if (proposal) return <View style={{ marginTop: 16 }}><ApprovalCard action={proposal} compact /></View>;
+  if (proposal) return <View style={{ marginTop: 16 }}><ApprovalCard action={proposal} compact onDone={() => onProposal?.(null)} /></View>;
   return (
     <View style={s.fix}>
       <PressableScale onPress={getFix} disabled={asking} accessibilityRole="button" style={[s.fixBtn, asking && { opacity: 0.6 }]}>
@@ -212,8 +216,12 @@ function Fix({ f }: { f: Forecast }) {
   );
 }
 
-/** Bills and pay in the next two weeks, then payday and spare money in plain words. */
-function ComingUp({ f }: { f: Forecast }) {
+/**
+ * Bills and pay in the next two weeks, then payday and spare money in plain words.
+ * With `onFocusDate`, rows are interactive: hover or press a row to point at that day on the chart;
+ * the row for `selectedDate` (from scrubbing the chart) lights up, so the two stay in step.
+ */
+export function ComingUp({ f, selectedDate, onFocusDate }: { f: Forecast; selectedDate?: string | null; onFocusDate?: (date: string | null) => void }) {
   const items = upcoming(f);
   const pay = nextPaycheck(f);
   const spare = safeToSpend(f);
@@ -223,13 +231,18 @@ function ComingUp({ f }: { f: Forecast }) {
       <View style={{ marginTop: 6 }}>
         {items.length === 0 && <T tone="dim" style={s.row}>Nothing due in the next two weeks.</T>}
         {items.map((e, i) => (
-          <View key={`${e.date}-${e.label}-${i}`} style={[s.row, i > 0 && s.rowLine]}>
+          <Pressable key={`${e.date}-${e.label}-${i}`} disabled={!onFocusDate}
+            accessibilityRole={onFocusDate ? 'button' : undefined}
+            accessibilityLabel={`${weekdayDate(e.date)}, ${e.label}, ${e.amount > 0 ? 'plus' : 'minus'} ${money(Math.abs(e.amount), 0)}. Show on the chart.`}
+            onHoverIn={() => onFocusDate?.(e.date)} onHoverOut={() => onFocusDate?.(null)}
+            onPressIn={() => onFocusDate?.(e.date)}
+            style={({ pressed }) => [s.row, i > 0 && s.rowLine, (pressed || selectedDate === e.date) && s.rowOn]}>
             <T tone="dim" style={s.rowDate}>{weekdayDate(e.date)}</T>
             <T style={s.rowName} numberOfLines={1}>{e.label}</T>
             <Text style={[s.rowAmount, { color: e.amount > 0 ? C.green : C.text }]}>
               {`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`}
             </Text>
-          </View>
+          </Pressable>
         ))}
       </View>
       <View style={s.facts}>
@@ -270,6 +283,8 @@ const s = StyleSheet.create({
   cardTitle: { fontFamily: F.bodySemi, fontSize: 20, color: C.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   rowLine: { borderTopWidth: 1, borderTopColor: C.line },
+  // lit when the row's day is selected on the chart (or pressed); the bleed keeps text aligned
+  rowOn: { backgroundColor: C.card2, marginHorizontal: -10, paddingHorizontal: 10, borderRadius: 10, borderTopColor: 'transparent' },
   rowDate: { width: 104, fontSize: 16 },
   rowName: { flex: 1, fontSize: 17 },
   rowAmount: { fontFamily: F.bodySemi, fontSize: 17 },
