@@ -1,39 +1,29 @@
+// Native tab bar (Android / iOS): the platform's real tabs, in Runway's charcoal palette.
+// Tab switches don't animate — tabs are peers, and they're used dozens of times a session.
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { C, F } from '@/constants/runway';
 
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      backgroundColor={C.tabBar}
+      indicatorColor={C.card2}
+      iconColor={{ default: C.text3, selected: C.text }}
+      labelStyle={{ default: { color: C.text3, fontFamily: F.bodyMedium }, selected: { color: C.text, fontFamily: F.bodyMedium } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Icon sf="house" md="home" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="ask">
         <NativeTabs.Trigger.Label>Ask</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Icon sf="bubble.left" md="chat_bubble" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="spending">
         <NativeTabs.Trigger.Label>Spending</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

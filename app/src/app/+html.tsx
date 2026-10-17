@@ -21,6 +21,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta property="og:url" content="https://sixsevenbucksleft.vip" />
         <meta name="apple-mobile-web-app-title" content="Runway" />
         <ScrollViewStyleReset />
+        {/* charcoal before the app paints, so the page never flashes white */}
+        <style dangerouslySetInnerHTML={{ __html: 'html,body{background:#14181c;}' }} />
       </head>
       <body>{children}</body>
     </html>
