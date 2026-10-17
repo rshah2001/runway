@@ -26,7 +26,9 @@ def test_health_shows_which_auth0_tenant_and_api_tokens_must_come_from(monkeypat
     monkeypatch.setenv("AUTH0_PERSONAS", "maya=auth0|a,sam=auth0|b")
     auth = client.get("/health").json()["auth"]
     assert auth == {
-        "issuer": "https://tenant.example.auth0.com/", "audience": "https://api.example", "linked_logins": 2,
+        "issuer": "https://tenant.example.auth0.com/",
+        "audience": "https://api.example",
+        "linked_logins": 2,
     }
 
 

@@ -6,7 +6,13 @@
 import { useSyncExternalStore } from 'react';
 
 export type Mode = 'checking' | 'signed-out' | 'signed-in';
-export type Session = { mode: Mode; persona: string; name: string | null };
+export type Session = {
+  mode: Mode;
+  persona: string;
+  name: string | null;
+  /** a message for the login screen, e.g. why the last sign-in didn't finish */
+  notice?: string | null;
+};
 
 let session: Session = { mode: 'checking', persona: 'maya', name: null };
 const listeners = new Set<() => void>();

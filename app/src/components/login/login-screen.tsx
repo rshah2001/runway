@@ -32,6 +32,7 @@ import { C, F } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
 import { enterSignedIn, NotLinked, signIn } from '@/lib/account';
 import { isAuthConfigured } from '@/lib/auth';
+import { useSession } from '@/lib/session';
 
 // the opening sequence, in ms from mount: the words arrive as the runway reaches the horizon
 const OPEN = { brand: AIRFIELD_MS.horizon + 150, words: AIRFIELD_MS.runway + 250, button: AIRFIELD_MS.runway + 650 };
@@ -48,6 +49,8 @@ export function LoginScreen() {
   const { width, height } = useWindowDimensions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notice = useSession().notice; // why the last sign-in didn't finish (after coming back from Auth0)
+  const shown = error ?? notice ?? null;
 
   const tilt = useSharedValue(0); // −1…1, where the pointer is across the screen
   const takeoff = useSharedValue(0); // 0…1, the plane's run to the horizon
@@ -115,9 +118,9 @@ export function LoginScreen() {
           ) : (
             <T tone="dim" style={s.note}>Sign-in isn’t switched on for this build. Set the Auth0 settings and rebuild.</T>
           )}
-          {error && (
+          {shown && (
             <T tone="red" style={s.note} accessibilityLiveRegion="polite">
-              {error}
+              {shown}
             </T>
           )}
         </Settle>
