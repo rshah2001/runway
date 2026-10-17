@@ -64,9 +64,30 @@ Tone follows the tool's "status" field (or the current status below if you haven
 - overdraft_risk: no jokes or emoji in any reply, whatever the question, but keep your voice's way of
   talking. Calm, clear and reassuring: say when and by how much, then offer the fix. If a tool says
   already_below_floor_without_it, mention that dip too.
-- No jokes at all, ever, around money movement or security: transfer proposals, approvals, failed transfers,
-  login, or anything that looks like fraud. When you propose a transfer or a request, say plainly what
-  moves or who gets asked, and that it is waiting for the user's approval; never say it has happened.
+- No jokes at all, ever, around money movement or security: transfer proposals, approvals, family
+  safety-net bridges, failed transfers, login, or anything that looks like fraud. When you propose a
+  transfer or a request, say plainly what moves or who gets asked, and that it is waiting for the user's
+  approval; never say it has happened.
+
+Family safety net:
+- For questions about family covering a dip, money lent, or requests waiting, call explain_safety_net and
+  explain it in plain words: who, how much, why, and when it goes back.
+- You can't approve, decline, start or change anything in the safety net. If asked, say so and point to the
+  Family screen, where the person whose money it is decides.
+
+Needs vs. could-wait:
+- For "what can I cut", "how can I save", "what are my necessities" or a tight-month question, call
+  budget_suggestions. Say briefly what the needs are, then name the 2-3 biggest things that could wait until
+  payday with their amounts, and what holding off would keep in their pocket. Frame them as choices, never
+  shame, and never suggest skipping a need. If there's a dip before payday, say a transfer from savings is what
+  covers it (holding off on card spending shrinks next month's bill instead).
+- If a tool includes could_wait_until_payday while money is tight, you may mention one of them in a sentence.
+
+Weekly brief:
+- For "brief me" or "how's my week", call weekly_brief and write 3-4 short sentences, most important first:
+  the week's low point and whether it's safe, what's coming (paycheck, bills, renewals), and spending vs the
+  week before. Mention family money due back or requests waiting only if there are any. Quote every figure
+  exactly as the tool wrote it, and don't list everything: pick what matters for this person this week.
 
 How sure you are:
 - Tool results carry "readiness" and a "confidence_note". If readiness is "confident", you may say so
@@ -295,10 +316,79 @@ def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
 
 
+BUDGET = re.compile(
+    r"\b(cut|cut back|save money|saving|skip|budget|necessit\w*|essentials?|spend less|tips|can wait)\b"
+)
+
+
+def _route_budget(today: date, persona: str) -> ChatResponse:
+    r = tools.budget_suggestions(persona=persona, today=today)
+    wait = r["could_wait_until_payday"][:3]
+    if not wait:
+        return ChatResponse(
+            reply="Nothing big looks optional before payday; it's mostly bills and essentials.",
+            tool_calls=["budget_suggestions"],
+        )
+    items = ", ".join(f"{w['what']} ({w['amount']})" for w in wait)
+    reply = f"Until {r['until']}, your bills and essentials come first. Things that could wait: {items}."
+    reply += f" Holding off would keep about {r['could_keep_in_your_pocket']} in your pocket."
+    return ChatResponse(reply=reply, tool_calls=["budget_suggestions"])
+
+
+BRIEF = re.compile(r"\b(brief|my week|this week|week ahead|weekly|week look)")
+BRIEF_MESSAGE = "Brief me on my week ahead."
+
+
+def weekly_brief(
+    *, persona: str = engine.DEFAULT_PERSONA, client: Any = None, today: date | None = None
+) -> ChatResponse:
+    """A short weekly money brief in the person's own voice, for the app to show without being asked.
+    It goes through the same path as any chat message, so the same guarantees hold: every figure comes
+    from the weekly_brief tool, and a reply quoting anything else is replaced by a rule-based brief."""
+    return chat(BRIEF_MESSAGE, persona=persona, client=client, today=today)
+
+
+def _route_brief(today: date, persona: str) -> ChatResponse:
+    r = tools.weekly_brief(persona=persona, today=today)
+    reply = f"This week your lowest day is {r['lowest_day']} at {r['lowest_balance']}"
+    reply += ", under your floor." if r["below_safety_floor"] else f"; safe to spend {r['safe_to_spend_this_week']}."
+    pay = next((c for c in r["coming_up"] if c["in_or_out"] == "in"), None)
+    if pay:
+        reply += f" Payday {pay['day']}: {pay['amount']}."
+    reply += (
+        f" You spent {r['spent_last_7_days']} in the last 7 days ({r['spending_vs_week_before']} than the week before)."
+    )
+    return ChatResponse(reply=reply, tool_calls=["weekly_brief"])
+
+
+SAFETY_NET = re.compile(r"safety net|anyone cover|cover(ed)? me\b|covered|family|bridge|\blen[dt]\b|money back|my ok")
+
+
+def _explain_safety_net(persona: str, today: date) -> ChatResponse:
+    r = tools.explain_safety_net(persona=persona, today=today)
+    lines = [f"{b['amount']} from {b['from']}: {b['status']}." for b in r["covered_me"]]
+    lines += [f"You lent {b['to']} {b['amount']}: {b['status']}." for b in r["i_lent"]]
+    lines += [f"{b['to']} is asking you for {b['amount']}: {b['why']}" for b in r["waiting_for_my_ok"]]
+    if r["waiting_for_my_ok"]:
+        lines.append("You can approve or decline it in the Family screen.")
+    reply = " ".join(lines) or "Nothing's happening in your family safety net right now."
+    return ChatResponse(reply=reply, tool_calls=["explain_safety_net"])
+
+
 def _route(text: str, today: date, persona: str) -> ChatResponse:
     amount = _amount_in(text)
     when_match = WHEN.search(text)
     when = when_match.group(1) if when_match else None
+
+    if re.search(r"\b(approve|decline)\b", text):  # never from chat: the money's owner decides in the app
+        return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
+    if BRIEF.search(text):
+        return _route_brief(today, persona)
+    if BUDGET.search(text):
+        return _route_budget(today, persona)
+    # before "fix": "did anyone cover me?" is about the safety net, "cover the shortfall" is a fix
+    if SAFETY_NET.search(text):
+        return _explain_safety_net(persona, today)
 
     # P2P before the money checks: "ask alex for $45" names an amount but isn't a purchase or a fix
     if P2P_ASK.search(text):

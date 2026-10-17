@@ -13,6 +13,8 @@ export type Me = {
   first_name: string;
   accounts: Account[];
   safe_floor: number; // what this person keeps in checking (default 300)
+  alerts_only?: boolean; // Today shows one calm line and speaks up only before a dip (older servers: absent)
+  family_cover?: boolean; // false: family limits never move money to this person
 };
 
 export type ForecastPoint = {
@@ -172,6 +174,12 @@ export type Bridge = {
 export type SafetyEvent = { at: string; kind: string; message: string; bridge_id: string | null };
 
 /** GET /demo/status: the demo reset, and how long automatic bridges are paused for the live demo. */
+/** GET /alerts/key, PUT /me/push, POST /me/push/test. */
+export type PushStatus = {
+  key: string | null; // the server's public key for Web Push; null = alerts to phones are off
+  sent: number; // browsers reached (test alerts)
+};
+
 export type DemoStatus = {
   state: 'idle' | 'running' | 'done' | 'failed';
   started: string | null;
@@ -194,7 +202,7 @@ export type SafetyNetSummary = {
 
 export type SafetyDecision = {
   borrower: string;
-  action: 'none' | 'auto_bridge' | 'needs_approval' | 'no_safe_helper' | 'no_payday' | 'already_covered';
+  action: 'none' | 'auto_bridge' | 'needs_approval' | 'no_safe_helper' | 'no_payday' | 'already_covered' | 'family_off';
   reason: string;
   amount: number;
   lender: string | null;

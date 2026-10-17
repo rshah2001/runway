@@ -338,3 +338,152 @@ def test_a_gemini_crash_after_proposing_leaves_nothing_behind() -> None:
     with pytest.raises(RuntimeError):
         agent._chat_with_gemini(Crashes(_calls(("propose_transfer", {}))), "fix it", TODAY, "genz", "maya")
     assert set(tools.PENDING) == before
+
+
+# ---------- family safety net: the agent explains it and can never act on it ----------
+
+
+@pytest.fixture
+def no_safety_net_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every write path in the safety net blows up, so a test passing proves the agent never took one."""
+    from app import safety_net
+    from app.db import safety_repo
+
+    def forbidden(*_: object, **__: object) -> None:
+        raise AssertionError("the agent must never change the safety net")
+
+    for module, names in [
+        (safety_net, ["approve", "decline", "act", "run", "tick", "repay_due", "repay_now", "poll_push_approvals"]),
+        (safety_repo, ["set_limit", "seed_limit", "insert_bridge", "transition", "add_event", "forget"]),
+    ]:
+        for name in names:
+            monkeypatch.setattr(module, name, forbidden)
+
+
+def test_safety_net_tool_explains_each_side(no_safety_net_writes: None) -> None:
+    maya = tools.explain_safety_net(persona="maya", today=TODAY)
+    assert [(b["from"], b["amount"]) for b in maya["covered_me"]] == [("Sam", "$100.00"), ("Jordan", "$150.00")]
+    assert "goes back automatically" in maya["covered_me"][0]["status"]
+    sam = tools.explain_safety_net(persona="sam", today=TODAY)
+    assert {b["to"] for b in sam["i_lent"]} == {"Maya", "Jordan"}
+    assert any(b["status"].startswith("paid back") for b in sam["i_lent"])
+    jordan = tools.explain_safety_net(persona="jordan", today=TODAY)
+    assert [b["to"] for b in jordan["waiting_for_my_ok"]] == ["Maya"]
+    assert jordan["can_change_here"] is False
+
+
+def test_asking_the_agent_to_approve_a_bridge_changes_nothing(
+    no_safety_net_writes: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = agent.chat("approve Maya's request", persona="jordan", today=TODAY)
+    assert r.pending_action is None and r.tool_calls == [] and "Family screen" in r.reply
+
+
+def test_the_model_has_no_safety_net_write_tool() -> None:
+    names = {d["name"] for d in tools.DECLARATIONS}
+    assert "explain_safety_net" in names and "explain_safety_net" in tools.READ_TOOLS
+    assert not any("bridge" in n or "limit" in n or "approve" in n for n in names)
+    assert "error" in tools.call("approve_bridge", {"bridge_id": "demo-b2"}, TODAY, persona="jordan")
+
+
+def test_gemini_can_read_the_safety_net_but_not_act(no_safety_net_writes: None) -> None:
+    fake = FakeGemini(
+        _calls(("explain_safety_net", {}), ("approve_bridge", {"bridge_id": "demo-b2"})),
+        _text("Maya is asking you for $150.00. You can decide in the Family screen."),
+    )
+    r = agent.chat("approve Maya", persona="jordan", client=fake, today=TODAY)
+    results = fake.sent[1]["input"]
+    assert results[1]["is_error"] is True  # the made-up write tool doesn't exist
+    assert r.pending_action is None
+
+
+@pytest.mark.parametrize(
+    ("persona", "message"),
+    [("maya", "Did anyone cover me?"), ("sam", "who did I lend money to?"), ("jordan", "anything waiting for my OK?")],
+)
+def test_router_sends_safety_net_questions_to_the_explainer(
+    persona: str, message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = agent.chat(message, persona=persona, today=TODAY)
+    assert r.tool_calls == ["explain_safety_net"] and r.pending_action is None
+
+
+def test_cover_the_shortfall_is_still_a_fix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert agent.chat("can you cover the shortfall?", persona="maya", today=TODAY).tool_calls == ["propose_transfer"]
+
+
+def test_p2p_questions_still_go_to_p2p(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Teammates' peer-to-peer routing must win over the safety-net words it shares ("money back")."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert agent.chat("who owes me money?", persona="maya", today=TODAY).tool_calls == ["who_owes_me"]
+
+
+# ---------- weekly money brief ----------
+
+
+def test_brief_facts_come_from_the_engine() -> None:
+    r = tools.weekly_brief(persona="maya", today=TODAY)
+    week = engine.forecast(days=tools.BRIEF_DAYS - 1, start=TODAY, persona="maya")
+    assert r["lowest_balance"] == tools.money(week.low.balance) and r["lowest_day"] == tools.day(week.low.date)
+    assert r["below_safety_floor"] is True and r["safe_to_spend_this_week"] == "$0.00"
+    assert all(not c["amount"].startswith("-") for c in r["coming_up"])  # "a $35 bill", never "a -$35 bill"
+    assert r["spent_last_7_days"] == "$20.80" and r["spending_vs_week_before"] == "less"
+
+
+def test_brief_mentions_family_only_when_there_is_something() -> None:
+    assert tools.weekly_brief(persona="jordan", today=TODAY)["family_requests_waiting_for_you"] == 1
+    assert tools.weekly_brief(persona="sam", today=TODAY)["family_requests_waiting_for_you"] == 0
+
+
+def test_router_answers_brief_me_with_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = agent.weekly_brief(persona="sam", today=TODAY)
+    assert r.tool_calls == ["weekly_brief"] and "$5,997.55" in r.reply and r.pending_action is None
+
+
+def test_an_ungrounded_gemini_brief_is_replaced_by_the_rule_based_one() -> None:
+    fake = FakeGemini(_calls(("weekly_brief", {})), _text("Great week! You'll have about $9,999 to spare."))
+    r = agent.weekly_brief(persona="sam", client=fake, today=TODAY)
+    assert "$9,999" not in r.reply and "$5,997.55" in r.reply
+
+
+# ---------- needs vs. could-wait until payday ----------
+
+
+def test_needs_and_could_wait_never_mix() -> None:
+    r = tools.budget_suggestions(persona="maya", today=TODAY)
+    essentials = {e["what"] for e in r["needs"]["usual_essentials"]}
+    waiting = {w["what"] for w in r["could_wait_until_payday"]}
+    assert essentials <= tools.NEED_CATEGORIES and not essentials & waiting
+    assert {"Rent", "Phone bill", "Credit card payment"} & {b["what"] for b in r["needs"]["bills_before_payday"]}
+    assert not waiting & {"Groceries", "Gas", "Health", "Rent"}  # never suggests skipping a need
+
+
+def test_could_wait_adds_up_and_only_counts_renewals_before_payday() -> None:
+    r = tools.budget_suggestions(persona="maya", today=TODAY)
+    total = sum(float(w["amount"].strip("$").replace(",", "")) for w in r["could_wait_until_payday"])
+    assert r["could_keep_in_your_pocket"] == tools.money(total)
+    assert r["until"] == "payday Fri Oct 23"
+    subs = [w for w in r["could_wait_until_payday"] if w["kind"] == "subscription"]
+    assert [s["what"] for s in subs] == ["iCloud+"]  # Spotify and Netflix renew after payday
+
+
+def test_suggestions_change_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    before = set(tools.PENDING)
+    r = agent.chat("what can I cut back on until payday?", persona="maya", today=TODAY)
+    assert r.tool_calls == ["budget_suggestions"] and r.pending_action is None and set(tools.PENDING) == before
+    assert "Shopping ($29.61)" in r.reply and "$64.41" in r.reply
+
+
+def test_a_tight_week_brief_names_what_could_wait_and_a_healthy_one_does_not() -> None:
+    assert len(tools.weekly_brief(persona="maya", today=TODAY)["could_wait_until_payday"]) == 2
+    assert "could_wait_until_payday" not in tools.weekly_brief(persona="sam", today=TODAY)
+
+
+def test_forecast_questions_with_tight_still_go_to_the_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert agent.chat("When do I get tight?", persona="sam", today=TODAY).tool_calls == ["get_forecast"]

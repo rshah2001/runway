@@ -12,13 +12,21 @@ so summing daily quantiles would give a band that is much too wide by the end of
 instead of single days: spending clusters (a weekly grocery run, a busy weekend), and resampling whole
 weeks keeps those clusters intact, so the band isn't falsely narrow.
 
+Calibration: a bootstrap of the person's own days captures day-to-day noise but not month-to-month
+swings in how much they spend, so on real data its cautious end was beaten 12–43% of the time instead
+of 5%. `spread` widens the raw bootstrap by a factor per history length, learned by split conformal
+calibration on 1,259 IBM card users and checked on real UK and Czech accounts it never saw (ml/README.md,
+fit by ml/calibrate_band.py into band_calibration.json). Calibration only ever widens.
+
 What it doesn't cover: a paycheck or bill that changes amount or date. Those are taken as scheduled.
 Deterministic (fixed seed), so the same history always gives the same band — the agent and the safety
 net must never see two different numbers for one question.
 """
 
+import json
 import random
-from functools import lru_cache
+from functools import cache, lru_cache
+from pathlib import Path
 
 BOOTSTRAP_PATHS = 400
 BLOCK_DAYS = 7
@@ -28,6 +36,7 @@ BLOCK_DAYS = 7
 SPEND_QUANTILE_FOR_LOW_BALANCE = 0.95
 SPEND_QUANTILE_FOR_HIGH_BALANCE = 0.10
 SEED = 20261017
+CALIBRATION_FILE = Path(__file__).with_name("band_calibration.json")
 
 
 def _horizon_bucket(days: int) -> int:
@@ -71,11 +80,42 @@ def _spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], .
     return tuple(spread)
 
 
+def raw_spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], ...]:
+    """The bootstrap's spread before calibration: what ml/calibrate_band.py measures against."""
+    if not daily or days <= 0:
+        return ((0.0, 0.0),) * max(days, 0)
+    return _spread(daily, _horizon_bucket(days))[:days]
+
+
+@cache
+def _calibration() -> dict:
+    """The learned widening factors; none (factor 1) if the file is missing, so the engine still runs."""
+    try:
+        return json.loads(CALIBRATION_FILE.read_text())
+    except FileNotFoundError:
+        return {"history_days": [30], "cautious": [1.0], "optimistic": [1.0]}
+
+
+def widening(history_days: int) -> tuple[float, float]:
+    """(cautious, optimistic) widening for a learning window of `history_days`, interpolated between the
+    calibrated lengths. Shorter than the shortest uses the shortest's factor: under 30 days the true
+    factor is far larger and unstable (ml/README.md), and readiness already calls that forecast rough."""
+    cal = _calibration()
+    xs, hi, lo = cal["history_days"], cal["cautious"], cal["optimistic"]
+    if history_days <= xs[0]:
+        return hi[0], lo[0]
+    for i in range(1, len(xs)):
+        if history_days <= xs[i]:
+            t = (history_days - xs[i - 1]) / (xs[i] - xs[i - 1])
+            return hi[i - 1] + t * (hi[i] - hi[i - 1]), lo[i - 1] + t * (lo[i] - lo[i - 1])
+    return hi[-1], lo[-1]
+
+
 def spread(daily: tuple[float, ...], days: int) -> tuple[tuple[float, float], ...]:
     """How far below / above the expected balance the p5 / p90 balance sits after each of `days` days.
 
     `daily` is the everyday spending total of every day in the learning window, zeros included. Both
-    values are ≥ 0 when the history has any variation; with no history the band is empty (zero width)."""
-    if not daily or days <= 0:
-        return ((0.0, 0.0),) * max(days, 0)
-    return _spread(daily, _horizon_bucket(days))[:days]
+    values are ≥ 0 when the history has any variation; with no history the band is empty (zero width).
+    The 30-day calibration is applied at every horizon; ml/README.md checks it at 14 days too."""
+    cautious, optimistic = widening(len(daily))
+    return tuple((down * cautious, up * optimistic) for down, up in raw_spread(daily, days))

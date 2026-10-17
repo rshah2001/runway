@@ -38,7 +38,7 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 | Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
 | Gemini — Sam (classic voice) | 13 | 100% | 92% | 100% | 0 |
 | **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **95%** | **100%** | 0 |
-| Rule-based router (offline baseline) | 48 | 100% | 100% | 100% | — |
+| Rule-based router (offline baseline) | 55 | 100% | 100% | 100% | — |
 
 The Gemini rows are from the 42 questions before the peer-to-peer cases were added; they haven't
 been rerun on those 6 yet. Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
@@ -93,28 +93,35 @@ seed days (each seed day generates a different history).
 How does it learn? The same backtest, but the live model may only learn from the last N days before
 the cutoff, as if Runway had just met the person. Same 18 folds.
 
-| Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday found |
+| Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday in forecast |
 |---|---|---|---|---|
-| 14 | $2,700.01 | 8% | 7% | 0% |
-| 30 | $2,737.30 | 13% | 3% | 0% |
-| 60 | $198.69 | 70% | 6% | 100% |
-| 90 | $137.65 | 81% | 8% | 100% |
+| 14 | $2,700.01 | 13% | 4% | 0% |
+| 30 | **$205.81** (was $2,737.30) | 90% | 4% | 100% (provisional) |
+| 60 | $198.69 | 88% | 0% | 100% |
+| 90 | $137.65 | 91% | 1% | 100% |
 
 - **Coverage** is the share of month-4 days whose actual balance landed inside the forecast's band.
-  The band is asymmetric, p5–p90 of the balance, so a calibrated one holds about 85%; at 90 days it
-  holds 81%, slightly narrow.
+  The band is asymmetric, p5–p90 of the balance, so a calibrated one holds about 85%. On these
+  seeded personas it now holds 91%: wider than needed, on purpose (see the calibration note below).
 - **Days below the low end** is the number the safety net cares about, because it plans on
   `balance_low`. With a symmetric p10–p90 band, 13% of real days fell below the low end, and in 4 of
   18 months the real lowest day was under the forecast's cautious low. Setting the low end from p95
   spending brought that to 8% of days and 3 of 18 months. Going to p97 only saved one more month
   while widening the band for everyone, so the leftover misses come from what the band doesn't model
   (paycheck amounts, irregular P2P), not from the quantile.
-- **The cliff between 30 and 60 days is the payday.** The detector needs three paychecks on a steady
-  rhythm before it puts income in the forecast (biweekly: ~5 weeks; monthly: ~2 months). Without
-  income, the forecast misses every paycheck in month 4, which is where a $2,700 error comes from.
-  That is exactly what readiness reports: with no payday found, the status is "calibrating" or
-  "learning", never "confident", and the safety net won't act on it automatically.
-- Coverage at 14–30 days is low for the same reason: the band models everyday spending, not a
+- **Provisional payday: the 30-day cliff is gone.** The detector needs three paychecks on a steady
+  rhythm to *confirm* a payday. Before, the forecast had no income at all until then, so with 30 days
+  of history it missed every month-4 paycheck ($2,737 error). Now two matching paychecks (same payer,
+  amounts within 5%, a gap that fits weekly / every-2-weeks / monthly pay, the latest one recent) put
+  a **provisional** payday in the forecast: error at 30 days drops **92%, to $206**, almost the 60-day
+  level. Readiness says so ("I've seen 2 paychecks… I'll be sure after the 3rd") and never calls it
+  "confident".
+- **What it costs:** a payday seen twice is less certain than one seen three times. With the old,
+  uncalibrated range, 11% of real days at 30 days fell below the cautious end; the calibrated range
+  (above) brings that to 4%. Even so, anything that moves money automatically should wait for "confident": the safety net should only bridge automatically when the
+  borrower's readiness is "confident" (a suggested change for `app/safety_net.py`, owned by the backend).
+- **14 days is unchanged on purpose:** two weeks usually holds one paycheck, and one deposit doesn't fit
+  any pattern. Coverage there stays low for the same reason: the band models everyday spending, not a
   missing paycheck.
 
 **How the band is built (`app/forecast/band.py`):** a moving-block bootstrap over the daily spending
@@ -128,6 +135,39 @@ balance). Two choices matter:
 - **Weekly blocks, not single days.** Spending clusters (a weekly grocery run, a busy weekend);
   resampling whole weeks keeps those clusters, so the band isn't falsely narrow.
 
-Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled. The seed
-generator draws purchases independently each day, which flatters any bootstrap; real transaction data
-would be the real test of the band's calibration.
+Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled.
+
+**Calibrated on outside data (`ml/`).** The seed generator draws purchases independently each day,
+which is the one setting where a plain bootstrap is right. On outside data it wasn't: its cautious end
+was beaten 12–43% of the time instead of 5% (IBM card users, a real UK account, real Czech accounts),
+because it misses month-to-month swings in spending. The live band widens the bootstrap by factors
+learned with split conformal calibration (×3.3 at 30 days of history, ×2.0 at 60, ×1.6 at 90), which
+brings that to 5–11% on data it never saw (Berka at 30 days is the exception). The cost is the table above: on our own personas the band is
+now wider than they need. We calibrate to the outside data, not to our own generator. Full results in
+`ml/README.md`.
+
+
+## Tone eval
+
+*How* the agent talks, not just *what* it says. Real Gemini replies in each voice, to the same three
+questions, once with money tight (Maya's seeded data, overdraft risk) and once with money fine (Sam's,
+healthy). Every check is a plain rule on the text (`evals/tone_eval.py`), so nothing is judged by
+another model:
+
+- **Gen Z voice** (users under 30), one steady voice: no cringe phrases ("bestie", "slay", "no cap"…),
+  at most one Gen Z touch per reply, no bank-letter phrasing ("you are projected to", "leaving you"…),
+  sounds casual (uses contractions), no emoji when money is tight and at most one when it's fine.
+- **Direct and classic voices** (30–49, 50+): no Gen Z words, no emoji.
+
+| Voice | Money | Before (old prompt) | After |
+|---|---|---|---|
+| Gen Z | tight | 1/3 — read like a bank letter | **3/3** |
+| Gen Z | fine | 2/3 — piled on slang | **3/3** |
+| Direct | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
+| Classic | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
+
+The old Gen Z prompt said "not Gen Z, no slang" when money was tight and "playful Gen Z, a celebration"
+when it was fine, so the voice flipped between a bank letter and a group chat. The new one keeps one
+voice and only changes the mood. Runs on 2026-10-17, `gemini-3.8-flash`; three replies per cell is a
+small sample, so treat this as a regression check rather than a precise rate. The rules are unit-tested
+in `tests/test_evals.py`. Run it with `python -m evals.tone_eval` (needs `GEMINI_API_KEY`).

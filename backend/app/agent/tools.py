@@ -21,7 +21,7 @@ from app.forecast import engine, readiness, sources
 from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import Schedule
 from app.forecast.sources import PersonaData
-from app.schemas import Contact, Forecast, ForecastEvent, ForecastPoint, P2PSummary, PendingAction
+from app.schemas import Bridge, Contact, Forecast, ForecastEvent, ForecastPoint, P2PSummary, PendingAction
 
 PENDING: dict[str, PendingAction] = {}  # in-memory for now; moves to the DB with Tiger Data
 ACTION_PERSONA: dict[str, str] = {}  # whose money a pending action touches, until Auth0 supplies the user
@@ -415,6 +415,201 @@ def request_money(
     return result
 
 
+# ---------- family safety net (read-only) ----------
+
+# plain-words status for each bridge, so the model never has to interpret status codes
+BRIDGE_STATUS = {
+    "pending_approval": "waiting for {lender}'s OK",
+    "declined": "{lender} said no",
+    "funding": "on its way",
+    "active": "covered; goes back automatically on {due}",
+    "repaying": "going back today",
+    "repaid": "paid back on {repaid}",
+    "repay_failed": "late: couldn't go back on {due}",
+    "failed": "didn't go through; nothing moved",
+}
+
+
+def _bridge(b: Bridge) -> dict[str, Any]:
+    words = BRIDGE_STATUS.get(b.status, b.status).format(
+        lender=b.lender_name, due=day(b.due_date), repaid=day(b.repaid_on) if b.repaid_on else "payday"
+    )
+    return {"from": b.lender_name, "to": b.borrower_name, "amount": money(b.amount), "status": words, "why": b.reason}
+
+
+def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """The family safety net from this user's side: who covered them, what they lent and when it comes
+    back, the limits they set, and requests waiting for their OK.
+
+    Read-only by design. It can't approve, decline, start or change anything: those happen only in the
+    app's Family screen, from the person whose money it is.
+    """
+    from app import safety_views  # the backend's read-only view of the safety net
+
+    today = today or sources.local_today()
+    s = safety_views.summary(persona)
+    _, sched = _inputs(persona, today)
+    now = engine.forecast(start=today, schedule=sched)
+    return {
+        # tone follows the chat's own forecast, the same engine the safety net plans on
+        **_mood(now.low.balance, now.safe_floor),
+        "covered_me": [_bridge(b) for b in s.borrowed],
+        "i_lent": [_bridge(b) for b in s.lent],
+        "waiting_for_my_ok": [_bridge(b) for b in s.approvals_waiting],
+        "limits_i_set": [
+            {
+                "for": lim.borrower_name,
+                "limit": money(lim.limit),
+                "out_now": money(lim.outstanding),
+                "left": money(lim.remaining),
+                "on": lim.enabled,
+            }
+            for lim in s.limits_i_set
+        ],
+        "family_covering_me": [
+            {"who": lim.lender_name, "up_to": money(lim.limit), "on": lim.enabled} for lim in s.limits_for_me
+        ],
+        "recent": [e.message for e in s.events[:5]],
+        "can_change_here": False,
+        "where_to_act": "The Family screen in the app: approve or decline requests, and change limits there.",
+    }
+
+
+# ---------- needs vs. could-wait, until payday ----------
+
+# Which spending is a need is decided here, never by the model. Scheduled bills (rent, utilities,
+# insurance, phone, loans, the card payment) are always needs; for everyday purchases it goes by category.
+NEED_CATEGORIES = {"Groceries", "Gas", "Health", "Education", "Utilities", "Transport", "Childcare"}
+WAIT_CATEGORIES = {"Dining", "Entertainment", "Shopping", "Home", "Travel"}  # subscriptions are listed one by one
+SPEND_HISTORY_DAYS = 90
+NO_PAYDAY_DAYS = 14  # no payday learned yet: plan two weeks ahead
+
+
+def _until_payday(sched: Schedule, today: date) -> tuple[date, bool]:
+    """The next payday (exclusive end of the window), and whether it's a real learned one."""
+    paydays = [f.next_date for f in sched.regular if f.kind == "paycheck" and f.next_date > today]
+    return (min(paydays), True) if paydays else (today + timedelta(days=NO_PAYDAY_DAYS), False)
+
+
+def _usual_until(data: PersonaData, categories: set[str], today: date, days: int) -> list[tuple[str, float]]:
+    """What this person usually spends per category over `days`, from their last SPEND_HISTORY_DAYS."""
+    since = today - timedelta(days=SPEND_HISTORY_DAYS)
+    totals: dict[str, float] = {}
+    for t in data.history:
+        if t.kind == "purchase" and t.amount < 0 and since <= t.date < today and t.category in categories:
+            totals[t.category] = totals.get(t.category, 0.0) + -t.amount
+    usual = [(c, round(total / SPEND_HISTORY_DAYS * days, 2)) for c, total in totals.items()]
+    return sorted((u for u in usual if u[1] >= 1), key=lambda u: -u[1])
+
+
+def budget_suggestions(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """What's a need and what could wait until the next payday, with amounts, all computed here.
+
+    Needs: bills due before payday, plus usual spending on essentials (groceries, gas, health…).
+    Could wait: subscriptions renewing before payday (exact amounts), plus usual spending on dining,
+    entertainment, shopping and the like, estimated from the person's own last 90 days. Suggestions only:
+    nothing is paused or changed. Most everyday purchases go on the card, so holding off mostly shrinks
+    next month's card bill; it doesn't lift checking before payday, which is what a transfer is for."""
+    today = today or sources.local_today()
+    data, sched = _inputs(persona, today)
+    payday, learned = _until_payday(sched, today)
+    days = (payday - today).days
+    f = engine.forecast(days=max(days - 1, 0), start=today, schedule=sched)
+    bills = [
+        {"what": e.label, "amount": money(-e.amount), "day": day(e.date)}
+        for e in f.events
+        if e.amount < 0 and e.kind in ("bill", "card_payment")
+    ]
+    renewing = [s for s in detect_recurring(data.history, today) if s.next_date < payday]
+    usual_needs = _usual_until(data, NEED_CATEGORIES, today, days)
+    usual_wants = _usual_until(data, WAIT_CATEGORIES, today, days)
+    could_wait = [
+        *[
+            {"what": s.merchant, "amount": money(s.amount), "kind": "subscription", "day": day(s.next_date)}
+            for s in renewing
+        ],
+        *[{"what": c, "amount": money(a), "kind": "usual spending"} for c, a in usual_wants],
+    ]
+    could_wait.sort(key=lambda w: -float(w["amount"].strip("$").replace(",", "")))
+    total = sum(s.amount for s in renewing) + sum(a for _, a in usual_wants)
+    return {
+        **_low_summary(f),
+        "until": f"payday {day(payday)}" if learned else f"{day(payday)} (no payday learned yet)",
+        "days_until_payday": days,
+        "needs": {
+            "bills_before_payday": bills,
+            "usual_essentials": [{"what": c, "amount": money(a)} for c, a in usual_needs],
+        },
+        "could_wait_until_payday": could_wait,
+        "could_keep_in_your_pocket": money(total),
+        "note": "Suggestions only: nothing is paused or cancelled. Most of this is card spending, so holding off "
+        "shrinks next month's card bill; a transfer from savings is what covers a dip in checking before payday.",
+    }
+
+
+# ---------- weekly money brief ----------
+
+BRIEF_DAYS = 7
+
+
+def _purchases_between(data: PersonaData, start: date, end: date) -> float:
+    """Everything bought in [start, end), card or debit: what a person means by "what I spent"."""
+    return sum(-t.amount for t in data.history if t.kind == "purchase" and t.amount < 0 and start <= t.date < end)
+
+
+def weekly_brief(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """The facts for a weekly money brief, every one computed here: the week's low point and whether
+    it's safe, what's coming in and going out, subscriptions renewing, spending this week vs last, and
+    anything from the family safety net due this week. The model only turns them into a few sentences."""
+    from app import safety_views  # the backend's read-only view of the safety net
+
+    today = today or sources.local_today()
+    data, sched = _inputs(persona, today)
+    end = today + timedelta(days=BRIEF_DAYS - 1)
+    f = engine.forecast(days=BRIEF_DAYS - 1, start=today, schedule=sched)
+    coming = [  # plain amounts with a direction: people say "a $35 phone bill", not "a -$35 bill"
+        {
+            "day": day(e.date),
+            "label": e.label,
+            "amount": money(abs(e.amount)),
+            "in_or_out": "in" if e.amount > 0 else "out",
+        }
+        for e in f.events
+        if e.kind != "spending"
+    ]
+    renewing = [
+        {"merchant": s.merchant, "amount": money(s.amount), "day": day(s.next_date)}
+        for s in detect_recurring(data.history, today)
+        if s.next_date <= end
+    ]
+    last = _purchases_between(data, today - timedelta(days=BRIEF_DAYS), today)
+    before = _purchases_between(data, today - timedelta(days=2 * BRIEF_DAYS), today - timedelta(days=BRIEF_DAYS))
+    s = safety_views.summary(persona)
+    due = [b for b in s.borrowed + s.lent if today <= b.due_date <= end and b.status in ("active", "repaying")]
+    return {
+        **_low_summary(f),
+        **_confidence(sched),
+        "week": f"{day(today)} to {day(end)}",
+        "safe_to_spend_this_week": money(max(0.0, f.low.balance - f.safe_floor)),
+        "coming_up": coming,
+        "subscriptions_renewing": renewing,
+        "spent_last_7_days": money(last),
+        "spent_the_7_days_before": money(before),
+        "spending_vs_week_before": "more" if last > before else "less" if last < before else "the same",
+        "family_money_due_back_this_week": [
+            {"from": b.borrower_name, "to": b.lender_name, "amount": money(b.amount), "day": day(b.due_date)}
+            for b in due
+        ],
+        "family_requests_waiting_for_you": len(s.approvals_waiting),
+        # money's tight: the brief can name a couple of things that could wait (suggestions only)
+        **(
+            {"could_wait_until_payday": budget_suggestions(persona=persona, today=today)["could_wait_until_payday"][:2]}
+            if engine.status(f.low.balance, f.safe_floor) != "healthy"
+            else {}
+        ),
+    }
+
+
 def discard(action_id: str) -> None:
     """Forget a proposal that was never shown to the user, so it can never be approved."""
     PENDING.pop(action_id, None)
@@ -521,6 +716,31 @@ DECLARATIONS: list[dict[str, Any]] = [
             "required": ["contact"],
         },
     },
+    {
+        "type": "function",
+        "name": "explain_safety_net",
+        "description": "The family safety net: who covered the user's dips and when it goes back, money the user "
+        "lent and whether it came back, limits they set for family, and requests waiting for their OK. Use for "
+        "'did anyone cover me', 'did I get my money back', 'what's waiting for me'. Read-only: it cannot approve, "
+        "decline or start anything.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "budget_suggestions",
+        "description": "What's a need and what could wait until the next payday, with amounts: bills and "
+        "essentials vs subscriptions renewing and usual dining/entertainment/shopping. Use for 'what can I cut', "
+        "'how can I save', 'what are my necessities', 'tips for a tight month'. Suggestions only: changes nothing.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "weekly_brief",
+        "description": "Everything for a short brief on the user's coming week: the lowest point and whether it's "
+        "safe, paychecks and bills coming, subscriptions renewing, spending this week vs last, and family "
+        "safety-net money due back. Use for 'brief me', 'how's my week looking', 'weekly summary'.",
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 READ_TOOLS = {
@@ -528,6 +748,9 @@ READ_TOOLS = {
     "simulate_purchase": simulate_purchase,
     "find_recurring": find_recurring,
     "who_owes_me": who_owes_me,
+    "explain_safety_net": explain_safety_net,
+    "weekly_brief": weekly_brief,
+    "budget_suggestions": budget_suggestions,
 }
 WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
 

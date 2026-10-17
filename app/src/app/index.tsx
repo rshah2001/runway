@@ -14,6 +14,7 @@ import { Ring } from '@/components/rw/ring';
 import { ActRow } from '@/components/rw/rows';
 import { RunwayStrip } from '@/components/rw/runway-strip';
 import { TopBar } from '@/components/rw/top-bar';
+import { BackToQuiet, QuietToday } from '@/components/today/quiet-today';
 import { TodayHome } from '@/components/today/today-home';
 import { OptionA, OptionB } from '@/components/today/today-options';
 import { Btn, Card, CardHeader, Caps, LoadState, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
@@ -23,7 +24,7 @@ import { api } from '@/lib/api';
 import { money, monthDay, weekday, weekdayDate } from '@/lib/format';
 import { daysFromToday, isClear, nextPaycheck, payCycleDays, runwayDays, safeToSpend, upcoming, withApprovedTransfer } from '@/lib/runway';
 import { setStore, useStore } from '@/lib/store';
-import type { Forecast, PendingAction } from '@/lib/types';
+import type { Forecast, Me, PendingAction } from '@/lib/types';
 
 const KIND_LABEL: Record<string, string> = { bill: 'Bill', subscription: 'Subscription', card_payment: 'Card payment', paycheck: 'Paycheck', transfer: 'Transfer' };
 
@@ -72,7 +73,7 @@ export default function TodayScreen() {
   const f = withApprovedTransfer(forecast.data, overlay);
 
   if (v === 'a') {
-    return <HomeToday f={f} takeoff={isClear(f) ? takeoffKey : 0} refreshing={forecast.loading} onRefresh={() => { forecast.reload(); me.reload(); }} />;
+    return <HomeToday f={f} me={me.data} takeoff={isClear(f) ? takeoffKey : 0} refreshing={forecast.loading} onRefresh={() => { forecast.reload(); me.reload(); }} />;
   }
   if (v === 'b' || v === 'compare') {
     const both = v === 'compare';
@@ -152,13 +153,23 @@ export default function TodayScreen() {
   );
 }
 
-/** The Today screen (components/today/today-home.tsx; visual spec app/prototypes/today-v8.html). */
-function HomeToday({ f, takeoff, refreshing, onRefresh }: { f: Forecast; takeoff: number; refreshing: boolean; onRefresh: () => void }) {
+/**
+ * The Today screen (components/today/today-home.tsx; visual spec app/prototypes/today-v8.html), or
+ * with "Alerts only" on, one calm sentence (components/today/quiet-today.tsx) until you ask for the numbers.
+ */
+function HomeToday({ f, me, takeoff, refreshing, onRefresh }: { f: Forecast; me: Me | null; takeoff: number; refreshing: boolean; onRefresh: () => void }) {
   const wide = useWide();
+  const { peek } = useStore();
+  const quiet = !!me?.alerts_only;
   return (
     <Page onRefresh={onRefresh} refreshing={refreshing}>
       <TopBar />
-      <TodayHome f={f} wide={wide} takeoff={takeoff} />
+      {quiet && !peek ? <QuietToday f={f} me={me} /> : (
+        <>
+          {quiet && <BackToQuiet />}
+          <TodayHome f={f} wide={wide} takeoff={takeoff} />
+        </>
+      )}
       <View style={s.credit}><View style={s.dot} /><T tone="faint" style={{ fontSize: 12 }}>Balances from Capital One Nessie</T></View>
     </Page>
   );

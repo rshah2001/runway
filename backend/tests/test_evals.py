@@ -14,7 +14,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_router_baseline_is_perfect_on_every_metric() -> None:
     rows = agent_eval.run()
     failures = [r for r in rows if not (r["tool"] and r["answer"] and r["grounded"])]
-    assert len(rows) == 48 and failures == []
+    assert len(rows) == 55 and failures == []
 
 
 def test_eval_has_both_verdicts() -> None:
@@ -60,3 +60,31 @@ def test_learning_curve_gets_better_with_history_and_the_band_is_honest() -> Non
     assert 0.70 <= curve[90].coverage <= 0.95  # a p5–p90 band should hold ~85% of real days
     assert curve[90].below_low <= 0.10  # the safety net plans on the low end: it must rarely be beaten
     assert curve[90].coverage > curve[30].coverage
+    assert curve[30].payday_found == 1.0 and curve[30].mae < 400  # two paychecks are enough: no 30-day cliff
+
+
+# ---------- tone eval rules (the Gemini run is manual; the rules themselves are tested here) ----------
+from evals import tone_eval  # noqa: E402
+
+
+def _passes(voice: str, state: str, reply: str) -> dict[str, bool]:
+    return {name: rule(reply) for name, rule in tone_eval.checks_for(voice, state).items()}
+
+
+def test_tone_rules_pass_a_good_genz_reply_in_both_moods() -> None:
+    tight = "You're gonna dip below your floor on Thu Nov 5. I can move some from savings, want me to?"
+    fine = "You're good all month, tbh. Nice."
+    assert all(_passes("genz", "tight", tight).values()) and all(_passes("genz", "fine", fine).values())
+
+
+def test_tone_rules_catch_a_bank_letter_and_overdoing_it() -> None:
+    letter = "You will dip below your floor, leaving you short. I am confident in this forecast."
+    assert not _passes("genz", "tight", letter)["not a bank letter"] and not _passes("genz", "tight", letter)["casual"]
+    assert not _passes("genz", "fine", "You're fine, lowkey thriving, ngl.")["light touch"]
+    assert not _passes("genz", "fine", "You're doing great, bestie.")["no cringe"]
+    assert not _passes("genz", "tight", "You're gonna dip on Nov 5 😬")["emoji"]  # no emoji when money's tight
+
+
+def test_tone_rules_keep_slang_out_of_adult_voices() -> None:
+    assert all(_passes("direct", "tight", "Heads up: you'll come up short when rent clears.").values())
+    assert not _passes("classic", "fine", "You're in good shape, tbh.")["no Gen Z words"]
