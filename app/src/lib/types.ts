@@ -14,7 +14,8 @@ export type Me = {
   accounts: Account[];
   safe_floor: number; // what this person keeps in checking (default 300)
   alerts_only?: boolean; // Today shows one calm line and speaks up only before a dip (older servers: absent)
-  family_cover?: boolean; // false: family limits never move money to this person
+  family_cover?: boolean;
+  discreet_notifications?: boolean; // lock-screen previews carry no amounts or names // false: family limits never move money to this person
 };
 
 export type ForecastPoint = {
@@ -265,3 +266,20 @@ export type ActivityItem = {
   why: string;
   reference?: string | null; // the bank (Nessie) id of my side of the transfer
 };
+
+// ---------- Time Machine (backend/app/scenarios.py) ----------
+export type ScenarioPoint = { date: string; balance: number };
+
+/** One what-if on YOUR forecast. D is what Runway refuses to do (blocked); it names nobody. */
+export type Scenario = {
+  key: 'A' | 'B' | 'C' | 'D'; // A no help · B one supporter · C your circle · D unsafe help (blocked)
+  label: string;
+  help: number; // arrives today, goes back on payday
+  low: ScenarioPoint; // the lowest point before payday
+  covered: boolean; // the low stays at or above your cushion
+  blocked: boolean;
+  note: string;
+  points: ScenarioPoint[]; // daily balance, for the chart
+};
+
+export type Scenarios = { floor: number; payday: string | null; need: number; scenarios: Scenario[] };

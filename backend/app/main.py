@@ -45,6 +45,7 @@ from app.schemas import (
     SafetyDecision,
     SafetyLimit,
     SafetyNetSummary,
+    Scenarios,
     SetExposure,
     SetLimit,
     SetPreferences,
@@ -156,6 +157,7 @@ def me(user: OptionalUser, persona: str = PERSONA) -> Me:
             "safe_floor": prefs.floor(persona),
             "alerts_only": prefs.setting(persona, "alerts_only"),
             "family_cover": prefs.setting(persona, "family_cover"),
+            "discreet_notifications": prefs.setting(persona, "discreet_notifications"),
         }
     )
 
@@ -195,7 +197,7 @@ def set_preferences(req: SetPreferences, user: OptionalUser) -> Me:
     from app import prefs
 
     persona = _own_settings(user, req.persona)
-    for name in ("alerts_only", "family_cover"):
+    for name in ("alerts_only", "family_cover", "discreet_notifications"):
         value = getattr(req, name)
         if value is not None:
             prefs.set_setting(persona, name, value)
@@ -380,6 +382,15 @@ def _change_agreement(req: AgreementChange, user: User | None, action: str) -> S
                         safety_repo.transition(conn, b["id"], ("pending_approval",), "declined")
         conn.commit()
         return safety_views.support_summary(actor, agreements_repo.involving(conn, actor))
+
+
+@app.get("/forecast/scenarios", response_model=Scenarios)
+def forecast_scenarios(user: OptionalUser, persona: str = PERSONA) -> Scenarios:
+    """Time Machine: your own forecast with no help, one supporter, your circle, and the unsafe version
+    Runway blocks — for the Today chart. Only your own money, and amounts you can already see."""
+    from app import scenarios
+
+    return scenarios.build(scenarios.inputs_for(persona_for(user, persona)))
 
 
 @app.get("/activity", response_model=list[ActivityItem])

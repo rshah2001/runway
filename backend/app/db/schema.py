@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS money_preferences (
 ALTER TABLE money_preferences ALTER COLUMN safe_floor DROP NOT NULL;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS alerts_only boolean;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS family_cover boolean;
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS discreet_notifications boolean;
 """
 
 # Heads-up alerts (app/alerts.py): which browsers want a push, and which dips each person was told about

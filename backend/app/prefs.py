@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 DEFAULT_FLOOR = 300.0
 MAX_FLOOR = 5000.0  # a cushion, not a savings goal; also keeps a typo from freezing every bridge
 
-DEFAULTS = {"alerts_only": False, "family_cover": True}
+# discreet_notifications: lock-screen previews say "Runway has an update", never an amount or a name
+DEFAULTS = {"alerts_only": False, "family_cover": True, "discreet_notifications": True}
 
 _demo: dict[str, float] = {}  # offline / demo mode only
 _demo_settings: dict[tuple[str, str], bool] = {}
