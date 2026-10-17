@@ -22,6 +22,7 @@ class Settings:
     database_url: str
     force_mock: bool
     live_transfers: bool  # real Nessie writes on "Fix it" — keep off until approve checks the Auth0 user
+    sync_interval: int  # seconds between background Nessie → Tiger Data syncs; 0 disables
 
     @property
     def live(self) -> bool:
@@ -36,4 +37,5 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL", ""),
         force_mock=os.getenv("RUNWAY_FORCE_MOCK") == "1",
         live_transfers=os.getenv("LIVE_TRANSFERS") == "1",
+        sync_interval=int(os.getenv("SYNC_INTERVAL_SECONDS", "300")),
     )

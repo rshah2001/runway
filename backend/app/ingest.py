@@ -132,16 +132,20 @@ def sync_customer(
     return counts
 
 
-def sync_personas(slugs: list[str] | None = None) -> None:
+def sync_personas(slugs: list[str] | None = None, *, prepare: bool = True) -> None:
+    """Sync personas. `prepare=False` (the background loop) skips the schema check and the
+    aggregate refresh: startup already applied the schema, and daily_spend is real-time."""
     nessie = NessieClient.from_settings()
     with pool.connection() as conn:
-        db_schema.apply(conn)
+        if prepare:
+            db_schema.apply(conn)
         targets = [p for p in repo.personas(conn) if not slugs or p["slug"] in slugs]
         for p in targets:
             counts = sync_customer(conn, nessie, p["customer_id"])
             conn.commit()
             log.info("synced %s: %s", p["slug"], counts)
-        db_schema.refresh_daily_spend(conn)
+        if prepare:
+            db_schema.refresh_daily_spend(conn)
 
 
 if __name__ == "__main__":

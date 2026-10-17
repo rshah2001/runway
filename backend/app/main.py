@@ -3,6 +3,9 @@
 Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000/docs)
 """
 
+import asyncio
+import contextlib
+import functools
 import logging
 import os
 import threading
@@ -19,6 +22,7 @@ from app.config import get_settings
 from app.db import pool
 from app.db import schema as db_schema
 from app.forecast import engine
+from app.ingest import sync_personas
 from app.schemas import (
     ChatRequest,
     ChatResponse,
@@ -30,6 +34,7 @@ from app.schemas import (
     SimulateRequest,
     Spending,
 )
+from app.sync_loop import run_periodically
 
 log = logging.getLogger("runway")
 PERSONA = Query(data.DEFAULT_PERSONA, pattern=r"^[a-z]{1,32}$", description="demo persona slug, e.g. maya")
@@ -37,13 +42,21 @@ PERSONA = Query(data.DEFAULT_PERSONA, pattern=r"^[a-z]{1,32}$", description="dem
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if get_settings().live:
+    settings, sync_task = get_settings(), None
+    if settings.live:
         try:
             with pool.connection() as conn:
                 db_schema.apply(conn)
         except Exception:  # keep serving (reads fall back to demo data); /health shows the problem
             log.exception("could not apply the database schema at startup")
+        if settings.sync_interval > 0:
+            job = functools.partial(sync_personas, prepare=False)
+            sync_task = asyncio.create_task(run_periodically(job, settings.sync_interval, initial_delay=15))
     yield
+    if sync_task:
+        sync_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sync_task
     pool.close()
 
 

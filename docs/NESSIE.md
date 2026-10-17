@@ -42,7 +42,7 @@ cd backend
 ```
 
 Persona ids live in the Tiger Data `personas` table, so the whole team (and the server) shares one
-dataset. Re-seed with `--reset` on demo morning so "today" in the data is the real today.
+dataset. The server re-seeds all three every night at 5 am Eastern, so "today" in the data is always the real today; run `--reset` by hand only to rebuild one sooner.
 
 ## Demo personas (live)
 
