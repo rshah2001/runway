@@ -21,6 +21,7 @@ class Me(BaseModel):
     customer_id: str
     first_name: str
     accounts: list[Account]
+    safe_floor: float = 300.0  # what this person keeps in checking; every "am I okay?" uses it
 
 
 class ForecastPoint(BaseModel):
@@ -57,6 +58,10 @@ class Readiness(BaseModel):
     reasons: list[str]  # plain English, safe to show as-is
     rolling_error: float | None = None  # $: how far off its week-ahead forecasts were, on average, lately
     rolling_error_days: int = 0  # how many recent days that average covers
+    # where that average comes from: "saved" = forecasts the app really showed, kept in Tiger Data and
+    # checked once the day passed; "replay" = the engine re-run on past days (until enough are saved)
+    rolling_error_source: Literal["saved", "replay"] | None = None
+    band_coverage: float | None = None  # 0–1: share of checked days the real balance was inside the range
     left_out: list[LeftOut] = Field(default_factory=list)  # one-offs kept out of the spending rate
 
 
@@ -84,7 +89,7 @@ class Recurring(BaseModel):
 
 class PendingAction(BaseModel):
     id: str
-    kind: Literal["transfer", "reschedule_bill"]
+    kind: Literal["transfer", "reschedule_bill", "p2p_request"]  # p2p_request: ask a contact to pay you back
     description: str
     amount: float | None = None
     status: Literal["awaiting_approval", "approved", "declined", "executed", "failed"] = "awaiting_approval"
@@ -244,6 +249,11 @@ class SafetyDecision(BaseModel):
     due_date: date | None
     executed: bool  # False = dry run (real writes off) or nothing to do
     bridge: Bridge | None
+
+
+class SetSafeFloor(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in: you set your own
+    amount: float = Field(ge=0, le=5000)
 
 
 class SetLimit(BaseModel):

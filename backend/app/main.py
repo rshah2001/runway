@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import data, safety_views
+from app import data, forecast_history, safety_views
 from app.agent import chat as agent
 from app.auth.deps import OptionalUser, persona_for, require_owner
 from app.auth.tokens import User
@@ -42,6 +42,7 @@ from app.schemas import (
     SafetyLimit,
     SafetyNetSummary,
     SetLimit,
+    SetSafeFloor,
     SimulateRequest,
     Spending,
 )
@@ -68,10 +69,18 @@ def authorize_money(user: User | None, owner: str | None) -> None:
 
 
 def background_pass() -> None:
-    """Every interval: pull Nessie into Tiger Data, then let the safety net act (repayments,
-    push approvals, new bridges) — the last part only when real writes are on."""
+    """Every interval: pull Nessie into Tiger Data, save today's forecasts and score past ones (once a
+    day per persona), then let the safety net act (repayments, push approvals, new bridges) — the last
+    part only when real writes are on."""
     sync_personas(prepare=False)
-    from app import safety_net
+    try:
+        forecast_history.run()
+    except Exception:  # the track record is informational: it must never hold up the safety net
+        log.exception("forecast history pass failed")
+    from app import demo, safety_net
+
+    if demo.held():  # a demo reset paused automatic bridges so the dip is still there on stage
+        return
 
     safety_net.tick()
 
@@ -112,6 +121,10 @@ def health() -> dict:
         # public identifiers (they ship in the website too) — lets anyone check the server and the
         # app agree on which Auth0 tenant and API a sign-in token must come from
         report["auth"] = {"issuer": cfg.issuer, "audience": cfg.audience, "linked_logins": len(cfg.personas)}
+        from app import auth0_ciba
+
+        ciba = auth0_ciba.config()  # never the secret: only whether push approvals are on, and for how many
+        report["auth"]["push_approvals"] = {"on": ciba is not None, "lenders": len(ciba.users) if ciba else 0}
     return report
 
 
@@ -122,11 +135,37 @@ def personas() -> list[Persona]:
 
 @app.get("/me", response_model=Me)
 def me(user: OptionalUser, persona: str = PERSONA) -> Me:
+    from app import prefs
+
     persona = persona_for(user, persona)
     try:
-        return data.me(persona)
+        return data.me(persona).model_copy(update={"safe_floor": prefs.floor(persona)})
     except data.PersonaNotFound:
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
+
+
+@app.put("/me/safe-floor", response_model=Me)
+def set_safe_floor(req: SetSafeFloor, user: OptionalUser) -> Me:
+    """Set how much you keep in checking. Only for yourself: signed in, the request's persona is
+    ignored; with sign-in configured, an anonymous caller gets 401 (it changes when money moves)."""
+    from app import prefs
+
+    if user is not None:
+        persona = persona_for(user, "")
+    elif auth_config() is not None:
+        raise HTTPException(401, "Sign in to change this.", headers={"WWW-Authenticate": "Bearer"})
+    else:  # sign-in off (CI, offline demo): only the listed demo people
+        persona = req.persona
+        if persona not in {p.slug for p in data.personas()}:  # nothing is saved for someone who doesn't exist
+            raise HTTPException(404, f"Unknown persona '{persona}'")
+        # the floor decides when family money moves, so it follows the money rule: with real
+        # transfers on, an anonymous caller never changes it
+        authorize_money(None, persona)
+    try:
+        prefs.set_floor(persona, req.amount)
+    except prefs.FloorOutOfRange as e:
+        raise HTTPException(422, str(e)) from None
+    return me(user, persona)
 
 
 @app.get("/spending", response_model=Spending)
@@ -277,8 +316,9 @@ def run_safety_net(
                 bridge=None,
             )
         ]
-    from app import safety_net
+    from app import demo, safety_net
 
+    demo.release()  # running it by hand is the live moment: automatic passes resume after it
     return [safety_views.decision(d, b) for d, b in safety_net.run([persona] if persona else None)]
 
 
@@ -325,6 +365,68 @@ def decline_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
     return _bridge_action(bridge_id, approve=False, user=user)
 
 
+@app.post("/safety-net/bridges/{bridge_id}/repay", response_model=Bridge)
+def repay_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
+    """The borrower pays a bridge back early (a real Nessie move back to the lender). Only the
+    borrower can, and never if it would take them under the amount they keep."""
+    if not get_settings().live:
+        b = next((x for x in safety_views.demo_summary("maya").borrowed if x.id == bridge_id), None)
+        if b is None:
+            raise HTTPException(409, "That bridge isn't waiting to be paid back.")
+        authorize_money(user, b.borrower)
+        return b.model_copy(update={"status": "repaid"})
+    from app import safety_net
+    from app.db import pool, safety_repo
+
+    with pool.connection() as conn:
+        borrower = (safety_repo.bridge(conn, bridge_id) or {}).get("borrower_slug")
+    if borrower is None:
+        raise HTTPException(404, "No such bridge.")
+    authorize_money(user, borrower)  # only the borrower pays back
+    if not _live_writes():
+        raise HTTPException(503, "Real transfers are switched off, so nothing can be paid back right now.")
+    try:
+        return safety_views.bridge(safety_net.repay_now(bridge_id))
+    except safety_net.RepayRefused as e:
+        raise HTTPException(409, str(e)) from None
+
+
+# ---------- demo controls ----------
+# A signed-in demo login (Maya, Jordan or Sam) can rebuild the demo and pause automatic bridges, so
+# the story can be rehearsed and is fresh for the judges. Only the demo personas are ever touched.
+
+
+def _demo_user(user: User | None) -> None:
+    from app import demo
+
+    if user is None:
+        raise HTTPException(
+            401, "Sign in with a demo account to reset the demo.", headers={"WWW-Authenticate": "Bearer"}
+        )
+    if persona_for(user, "") not in demo.DEMO_PERSONAS:
+        raise HTTPException(403, "Only the demo accounts can reset the demo.")
+    if not get_settings().live:
+        raise HTTPException(503, "The demo reset needs the live Nessie connection.")
+
+
+@app.post("/demo/reset", status_code=202)
+def demo_reset(user: OptionalUser) -> dict:
+    from app import demo
+
+    _demo_user(user)
+    if not demo.start_reset():
+        raise HTTPException(409, "A reset is already running.")
+    return demo.status()
+
+
+@app.get("/demo/status")
+def demo_status(user: OptionalUser) -> dict:
+    from app import demo
+
+    _demo_user(user)
+    return demo.status()
+
+
 @app.get("/forecast", response_model=Forecast)
 def forecast(user: OptionalUser, days: int = Query(30, ge=1, le=365), persona: str = PERSONA) -> Forecast:
     return engine.forecast(days=days, persona=persona_for(user, persona))  # days bounded: cost is linear
@@ -346,6 +448,18 @@ def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
 
 
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
+APPROVABLE_KINDS = ("transfer", "p2p_request")
+
+
+def _execute(action_id: str, action: PendingAction) -> None:
+    """Carry out an approved action through the same data function its own route uses."""
+    # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
+    persona = agent.persona_of(action_id)
+    if action.kind == "p2p_request":
+        contact_id, memo = agent.p2p_details(action_id) or ("", "")
+        data.p2p_request(persona, contact_id, action.amount or 0, memo)  # as POST /p2p/requests: nothing moves
+        return
+    data.move_savings_to_checking(action.amount or 0, action.description, persona)
 
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
@@ -358,12 +472,14 @@ def approve(action_id: str, user: OptionalUser) -> PendingAction:
             raise HTTPException(404, "No such pending action")
         if action.status != "awaiting_approval":
             raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
-        if action.kind != "transfer" or not action.amount or action.amount <= 0:
-            raise HTTPException(422, "Only positive transfers can be approved right now")
+        if action.kind not in APPROVABLE_KINDS or not action.amount or action.amount <= 0:
+            raise HTTPException(422, "Only positive transfers and requests can be approved right now")
         action.status = "approved"  # claimed: a concurrent approve now gets 409
     try:
-        # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
-        data.move_savings_to_checking(action.amount, action.description, agent.persona_of(action_id))
+        _execute(action_id, action)
+    except (data.PersonaNotFound, data.ContactNotFound) as e:
+        action.status = "failed"  # the contact or persona is gone: retrying can't help
+        raise HTTPException(404, "Unknown persona or contact") from e
     except data.TransferNotMade as e:
         action.status = "awaiting_approval"  # nothing moved, so a retry is safe
         log.warning("transfer not made: %s", e)

@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from app import auth0_ciba
+from app import auth0_ciba, prefs
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
 from app.db import pool, repo, safety_repo
@@ -32,7 +32,7 @@ from app.nessie.moves import TransferNotMade, move_money
 
 log = logging.getLogger(__name__)
 
-SAFE_FLOOR = Decimal("300")  # same floor as the forecast engine
+SAFE_FLOOR = Decimal("300")  # the default floor; each person can set their own (app/prefs.py)
 ROUND_TO = 10  # bridges are whole tens: a $92.18 gap becomes a $100 bridge
 MAX_BRIDGE = Decimal("1000")
 MAX_DAYS_TO_PAYDAY = 31  # "it comes back" means by the next payday, and that must be soon
@@ -64,6 +64,7 @@ class Decision:
     shortfall_date: date | None = None
     low_balance: Decimal | None = None
     due_date: date | None = None
+    floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
 
 
 def _md(d: date) -> str:
@@ -79,9 +80,14 @@ def _money(x: Decimal) -> str:
 
 
 def decide(
-    b: Projection, helpers: list[Helper], today: date, *, has_open_bridge: bool = False, floor: Decimal = SAFE_FLOOR
+    b: Projection, helpers: list[Helper], today: date, *, has_open_bridge: bool = False, floor: Decimal | None = None
 ) -> Decision:
-    """What the agent should do for borrower `b` today. Pure — no I/O."""
+    """What the agent should do for borrower `b` today. Pure — no I/O.
+
+    Everyone is measured against their own floor (what they keep in checking): the borrower's says
+    whether there's a dip and how much it takes; each helper's says whether helping keeps *them* safe.
+    `floor` overrides the borrower's (tests)."""
+    floor = b.floor if floor is None else floor
     name = b.first_name
     if has_open_bridge:
         return Decision(b.slug, "already_covered", f"{name} already has a bridge in progress.")
@@ -95,7 +101,7 @@ def decide(
         return Decision(b.slug, "none", f"{name} stays above {_money(floor)} until payday.")
     short_day, short_bal = low
     need = Decimal(math.ceil((floor - short_bal) / ROUND_TO) * ROUND_TO)
-    base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday)
+    base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday, floor=floor)
     gap = f"{name} would drop to {_money(short_bal)} on {_md(short_day)}, before payday on {_md(b.next_payday)}"
 
     if need > MAX_BRIDGE:
@@ -110,7 +116,7 @@ def decide(
         if not h.enabled or h.is_borrowing:
             continue
         h_low = h.projection.low(today, b.next_payday + timedelta(days=1))
-        if h_low is not None and h_low[1] - need >= floor:  # helping must keep the helper safe too
+        if h_low is not None and h_low[1] - need >= h.projection.floor:  # helping keeps the helper above *their* floor
             safe.append((h, h_low[1]))
     if not safe:
         return Decision(b.slug, "no_safe_helper", f"{gap}. Nobody in the family can cover it safely.", need, **base)
@@ -288,6 +294,7 @@ def act(decision: Decision) -> dict | None:
                 "shortfall_date": decision.shortfall_date,
                 "due_date": decision.due_date,
                 "approval_channel": None,
+                "borrower_floor": decision.floor,
             },
         )
         b = safety_repo.bridge(conn, bridge_id)
@@ -326,6 +333,82 @@ def decline(bridge_id: str) -> dict | None:
     return b
 
 
+class RepayRefused(Exception):
+    """An early repayment that isn't allowed; the message is safe to show the borrower."""
+
+
+def _checking_balance(conn, persona: dict) -> Decimal:
+    return next(
+        Decimal(a["balance"])
+        for a in repo.accounts_with_balances(conn, persona["customer_id"])
+        if a["id"] == persona["checking_id"]
+    )
+
+
+def _repay_floor(conn, b: dict) -> Decimal:
+    """What repaying a bridge must leave the borrower with: the LOWER of their floor when they were
+    helped and their floor now. Raising it after being helped can't stall paying the family back;
+    lowering it lets the money go back sooner."""
+    now = Decimal(str(prefs.floor(b["borrower_slug"], conn, strict=True)))
+    then = b.get("borrower_floor")
+    return now if then is None else min(now, Decimal(str(then)))
+
+
+def _pay_back(b: dict, *, early: bool) -> dict | None:
+    """Move a bridge's money borrower → lender. Claims the bridge first (active / repay_failed →
+    repaying), so on-time and early repayments can never both happen. None if it was already claimed
+    or the transfer failed (the bridge then goes to repay_failed, to be retried on payday)."""
+    with pool.connection() as conn:
+        claimed = safety_repo.transition(conn, b["id"], ("active", "repay_failed"), "repaying")
+        conn.commit()
+        if claimed is None:
+            return None
+        borrower, lender = repo.persona(conn, b["borrower_slug"]), repo.persona(conn, b["lender_slug"])
+    amount = float(b["amount"])
+    try:
+        t_id, d_id = _move(
+            borrower,
+            lender,
+            amount,
+            f"Safety net repayment to {b['lender_name']}",
+            f"Repaid by {b['borrower_name']} (safety net)",
+        )
+    except Exception:
+        log.exception("repayment of %s failed", b["id"])
+        with pool.connection() as conn:
+            safety_repo.transition(conn, b["id"], ("repaying",), "repay_failed")
+            conn.commit()
+        return None
+    with pool.connection() as conn:
+        row = safety_repo.transition(
+            conn,
+            b["id"],
+            ("repaying",),
+            "repaid",
+            repaid_at=datetime.now(LOCAL_TZ),
+            back_transfer_id=t_id,
+            back_deposit_id=d_id,
+        )
+        if early:
+            _both(
+                conn,
+                b,
+                "repaid",
+                f"✅ You paid {b['lender_name']} back ${amount:,.0f} early.",
+                f"💸 {b['borrower_name']} paid you back ${amount:,.0f} early.",
+            )
+        else:
+            _both(
+                conn,
+                b,
+                "repaid",
+                f"✅ Repaid {b['lender_name']} ${amount:,.0f} from your paycheck.",
+                f"💸 You got your ${amount:,.0f} back from {b['borrower_name']}.",
+            )
+        conn.commit()
+    return row
+
+
 def repay_due(today: date | None = None) -> list[dict]:
     """On (or after) the due date, pay each lender back — but never push the borrower under the floor."""
     today, done = today or _today(), []
@@ -333,13 +416,9 @@ def repay_due(today: date | None = None) -> list[dict]:
         due = [b for b in safety_repo.outstanding_bridges(conn) if b["due_date"] <= today and b["status"] != "repaying"]
     for b in due:
         with pool.connection() as conn:
-            borrower, lender = repo.persona(conn, b["borrower_slug"]), repo.persona(conn, b["lender_slug"])
-            bal = next(
-                Decimal(a["balance"])
-                for a in repo.accounts_with_balances(conn, borrower["customer_id"])
-                if a["id"] == borrower["checking_id"]
-            )
-            if bal - Decimal(b["amount"]) < SAFE_FLOOR:  # paycheck not in yet: wait
+            borrower = repo.persona(conn, b["borrower_slug"])
+            keep = _repay_floor(conn, b)
+            if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:  # paycheck not in yet: wait
                 if (today - b["due_date"]).days >= REPAY_GRACE_DAYS and b["status"] == "active":
                     safety_repo.transition(conn, b["id"], ("active",), "repay_failed")
                     _both(
@@ -352,45 +431,30 @@ def repay_due(today: date | None = None) -> list[dict]:
                     )
                     conn.commit()
                 continue
-            claimed = safety_repo.transition(conn, b["id"], ("active", "repay_failed"), "repaying")
-            conn.commit()
-        if claimed is None:
-            continue
-        amount = float(b["amount"])
-        try:
-            t_id, d_id = _move(
-                borrower,
-                lender,
-                amount,
-                f"Safety net repayment to {b['lender_name']}",
-                f"Repaid by {b['borrower_name']} (safety net)",
-            )
-        except Exception:
-            log.exception("repayment of %s failed", b["id"])
-            with pool.connection() as conn:
-                safety_repo.transition(conn, b["id"], ("repaying",), "repay_failed")
-                conn.commit()
-            continue
-        with pool.connection() as conn:
-            row = safety_repo.transition(
-                conn,
-                b["id"],
-                ("repaying",),
-                "repaid",
-                repaid_at=datetime.now(LOCAL_TZ),
-                back_transfer_id=t_id,
-                back_deposit_id=d_id,
-            )
-            _both(
-                conn,
-                b,
-                "repaid",
-                f"✅ Repaid {b['lender_name']} ${amount:,.0f} from your paycheck.",
-                f"💸 You got your ${amount:,.0f} back from {b['borrower_name']}.",
-            )
-            conn.commit()
-        done.append(row)
+        row = _pay_back(b, early=False)
+        if row is not None:
+            done.append(row)
     return done
+
+
+def repay_now(bridge_id: str) -> dict:
+    """The borrower pays a bridge back before payday. Refused (RepayRefused) if the bridge isn't out,
+    or if paying now would take the borrower under the floor — the dip the bridge was there to stop."""
+    with pool.connection() as conn:
+        b = safety_repo.bridge(conn, bridge_id)
+        if b is None or b["status"] not in ("active", "repay_failed"):
+            raise RepayRefused("That bridge isn't waiting to be paid back.")
+        borrower = repo.persona(conn, b["borrower_slug"])
+        keep = _repay_floor(conn, b)
+        if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:
+            raise RepayRefused(
+                f"Paying back now would take you under {_money(keep)}, the amount you keep. "
+                f"It goes back automatically on payday, {_wmd(b['due_date'])}."
+            )
+    row = _pay_back(b, early=True)
+    if row is None:
+        raise RepayRefused("That didn't go through — we're checking with the bank. It's retried on payday.")
+    return row
 
 
 def poll_push_approvals() -> None:

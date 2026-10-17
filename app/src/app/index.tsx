@@ -1,10 +1,10 @@
-// Today — owner: an2thu. Rings (runway · safe to spend · payday) → forecast + lowest point → the runway
-// (with the takeoff) → upcoming bills and pay. Chat opens from the floating button (components/rw/chat.tsx).
-// Visual spec: app/prototypes/runway.html.
+// Today — owner: an2thu. The balance and one status line → three tiles → the 30-day line with what-if
+// and the fix → upcoming bills and pay (components/today/today-home.tsx). Chat opens from the floating
+// button (components/rw/chat.tsx). Visual spec: app/prototypes/today-v8.html.
+// ?v=classic keeps the old rings screen; ?v=b / ?v=compare the runway option.
 import { useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { AccountButton } from '@/components/login/account-button';
 import { ApprovalCard } from '@/components/rw/approval-card';
@@ -13,7 +13,8 @@ import { Swoosh } from '@/components/rw/icons';
 import { Ring } from '@/components/rw/ring';
 import { ActRow } from '@/components/rw/rows';
 import { RunwayStrip } from '@/components/rw/runway-strip';
-import { Glows, TodayInteractive } from '@/components/today/today-interactive';
+import { TopBar } from '@/components/rw/top-bar';
+import { TodayHome } from '@/components/today/today-home';
 import { OptionA, OptionB } from '@/components/today/today-options';
 import { Btn, Card, CardHeader, Caps, LoadState, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
 import { C, MAX_WIDTH } from '@/constants/runway';
@@ -33,8 +34,9 @@ export default function TodayScreen() {
   // the interactive Today is the default; ?v=classic keeps the old rings screen, ?v=b / ?v=compare the runway option
   const v = param ?? 'a';
   const store = useStore();
-  const forecast = useLoad(() => api.forecast(30));
-  const me = useLoad(() => api.me());
+  const version = String(useStore().dataVersion); // money moved anywhere: re-fetch
+  const forecast = useLoad(() => api.forecast(30), version);
+  const me = useLoad(() => api.me(), version);
 
   // What the screen shows lags the store until Today is on screen, so an approval made on Ask
   // plays its takeoff here instead of finishing invisibly in the background.
@@ -70,7 +72,7 @@ export default function TodayScreen() {
   const f = withApprovedTransfer(forecast.data, overlay);
 
   if (v === 'a') {
-    return <InteractiveToday f={f} name={me.data?.first_name} refreshing={forecast.loading} onRefresh={() => { forecast.reload(); me.reload(); }} />;
+    return <HomeToday f={f} takeoff={isClear(f) ? takeoffKey : 0} refreshing={forecast.loading} onRefresh={() => { forecast.reload(); me.reload(); }} />;
   }
   if (v === 'b' || v === 'compare') {
     const both = v === 'compare';
@@ -150,25 +152,14 @@ export default function TodayScreen() {
   );
 }
 
-/** Option A, interactive (components/today/today-interactive.tsx), in a scroll view that drives its 3D reveals. */
-function InteractiveToday({ f, name, refreshing, onRefresh }: { f: Forecast; name?: string; refreshing: boolean; onRefresh: () => void }) {
+/** The Today screen (components/today/today-home.tsx; visual spec app/prototypes/today-v8.html). */
+function HomeToday({ f, takeoff, refreshing, onRefresh }: { f: Forecast; takeoff: number; refreshing: boolean; onRefresh: () => void }) {
   const wide = useWide();
-  const { height } = useWindowDimensions();
-  const scrollY = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler((e) => { scrollY.set(e.contentOffset.y); });
   return (
-    <Page scroll={false} backdrop={<Glows />}>
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.text2} />}>
-        {!wide && (
-          <View style={s.top}>
-            <View style={s.brand}><Swoosh /><Caps size={20} style={{ letterSpacing: 7, fontFamily: 'BarlowCondensed_500Medium' }}>Runway</Caps></View>
-            <AccountButton />
-          </View>
-        )}
-        <TodayInteractive f={f} name={name} wide={wide} scrollY={scrollY} viewport={height} />
-        <View style={s.credit}><View style={s.dot} /><T tone="faint" style={{ fontSize: 13 }}>Balances from Capital One Nessie</T></View>
-      </Animated.ScrollView>
+    <Page onRefresh={onRefresh} refreshing={refreshing}>
+      <TopBar />
+      <TodayHome f={f} wide={wide} takeoff={takeoff} />
+      <View style={s.credit}><View style={s.dot} /><T tone="faint" style={{ fontSize: 12 }}>Balances from Capital One Nessie</T></View>
     </Page>
   );
 }

@@ -12,6 +12,7 @@ export type Me = {
   customer_id: string;
   first_name: string;
   accounts: Account[];
+  safe_floor: number; // what this person keeps in checking (default 300)
 };
 
 export type ForecastPoint = {
@@ -40,6 +41,10 @@ export type Readiness = {
   reasons: string[]; // plain English, safe to show as-is
   rolling_error?: number | null; // $: how far off its week-ahead forecasts were, on average, lately
   rolling_error_days?: number; // how many recent days that average covers
+  // where that average comes from: 'saved' = forecasts the app really showed, kept in Tiger Data and
+  // checked once the day passed; 'replay' = the engine re-run on past days (until enough are saved)
+  rolling_error_source?: 'saved' | 'replay' | null;
+  band_coverage?: number | null; // 0–1: share of checked days the real balance was inside the range
   left_out?: LeftOut[]; // one-offs kept out of the spending rate
 };
 
@@ -61,7 +66,7 @@ export type Recurring = {
 
 export type PendingAction = {
   id: string;
-  kind: 'transfer' | 'reschedule_bill';
+  kind: 'transfer' | 'reschedule_bill' | 'p2p_request'; // p2p_request: ask a contact to pay you back
   description: string;
   amount: number | null;
   status: 'awaiting_approval' | 'approved' | 'declined' | 'executed' | 'failed'; // failed = check with the bank, never retry
@@ -165,6 +170,15 @@ export type Bridge = {
 };
 
 export type SafetyEvent = { at: string; kind: string; message: string; bridge_id: string | null };
+
+/** GET /demo/status: the demo reset, and how long automatic bridges are paused for the live demo. */
+export type DemoStatus = {
+  state: 'idle' | 'running' | 'done' | 'failed';
+  started: string | null;
+  finished: string | null;
+  error: string | null; // the kind of failure only
+  hold_until: string | null;
+};
 
 export type SafetyNetSummary = {
   persona: string;

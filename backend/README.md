@@ -22,7 +22,8 @@ backend/
 │   ├── config.py          live vs demo mode
 │   ├── data.py            what the routes call: live data or demo fallback
 │   ├── ingest.py          Nessie → Tiger Data sync (python -m app.ingest)
-│   ├── db/                Tiger Data: pool, schema (hypertable + continuous aggregate), repo queries
+│   ├── db/                Tiger Data: pool, schema (hypertables + continuous aggregates), repo queries
+│   ├── forecast_history.py  saves each day's forecast in Tiger Data and scores it once the day has passed
 │   ├── nessie/client.py   real Nessie client (integer cents, retries)
 │   ├── nessie/demo.py     demo data for keyless runs
 │   ├── forecast/engine.py MOCK schedule → real engine (port of prototype) + ML

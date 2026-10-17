@@ -103,20 +103,35 @@ def assess(
     )
 
 
+def track_record(card: ReportCard) -> str:
+    """The report card in one plain sentence that says where it comes from: forecasts Runway saved
+    and later checked, or a replay of its engine on past days. Never the LLM's words."""
+    if card.source == "saved":
+        sentence = (
+            f"The {card.lead_days}-day-ahead forecasts I saved were off by ${card.mean_abs_error:,.2f} on average "
+            f"over the last {card.days_checked} days I could check"
+        )
+        if card.band_coverage is not None:
+            sentence += f", and your real balance landed inside my range {card.band_coverage:.0%} of the time"
+        return sentence + "."
+    return (
+        f"Replayed on your history, my {card.lead_days}-day-ahead forecasts were off by "
+        f"${card.mean_abs_error:,.2f} on average over the last {card.days_checked} days."
+    )
+
+
 def with_report_card(ready: Readiness, card: ReportCard | None) -> Readiness:
     """Readiness plus how its recent forecasts actually did. Informational: a dollar error means
     different things for different balances, so it doesn't change the status."""
     if card is None:
         return ready
-    reason = (
-        f"My {card.lead_days}-day-ahead forecasts were off by ${card.mean_abs_error:,.2f} on average "
-        f"over the last {card.days_checked} days."
-    )
     return ready.model_copy(
         update={
             "rolling_error": card.mean_abs_error,
             "rolling_error_days": card.days_checked,
-            "reasons": [*ready.reasons, reason],
+            "rolling_error_source": card.source,
+            "band_coverage": card.band_coverage,
+            "reasons": [*ready.reasons, track_record(card)],
         }
     )
 

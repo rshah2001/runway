@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '@/components/login/login-screen';
+import { ApprovalSheet } from '@/components/rw/approval-sheet';
 import { ChatLauncher } from '@/components/rw/chat';
 import { C } from '@/constants/runway';
 import { bootSession } from '@/lib/account';
@@ -44,6 +45,7 @@ export default function RootLayout() {
         <>
           <AppTabs />
           <ChatLauncher />
+          <ApprovalSheet />
         </>
       )}
     </ThemeProvider>
