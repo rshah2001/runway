@@ -50,9 +50,10 @@ from your history before it predicts, and it should tell you how sure it is.
    reach checking through the card-payment bill, so they're never counted twice.
 
 **Measured, not claimed** (backtest: learn from months 1–3, predict month 4, 18 folds):
-learning everyday spending cuts the daily balance error by **61%** versus bills alone ($160 vs $408),
-and **19%** versus "repeat last month" ($197). The agent: **100% tool selection, 98% correct
-answers, 100% of dollar figures traceable to the engine** on 42 questions.
+learning everyday spending cuts the daily balance error by **66%** versus bills alone ($138 vs $408),
+and **16%** versus "repeat last month" ($163). The agent: **100% tool selection, 95% correct
+answers, 100% of dollar figures traceable to the engine** on 42 questions with Gemini (48 offline,
+including peer-to-peer).
 
 **What we're adding** (Patil-Hemangi's round 2, `docs/TEAM_PROMPTS.md`):
 - **A calibration period, like Whoop.** Until Runway has seen ~30 days of spending and two paychecks
