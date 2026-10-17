@@ -51,6 +51,7 @@ class Helper:
     enabled: bool
     is_borrowing: bool  # someone who owes money right now never lends (no chains)
     exposure_remaining: Decimal = guardian.DEFAULT_EXPOSURE  # their total cap across everyone, minus what's out
+    automatic: bool = True  # False: this supporter asked to approve every time ('approval' mode)
 
     @property
     def remaining(self) -> Decimal:
@@ -85,6 +86,20 @@ def _wmd(d: date) -> str:
 
 def _money(x: Decimal) -> str:
     return f"${x:,.2f}".replace(".00", "")
+
+
+def _capacity(h: Helper, today: date, end: date) -> guardian.Capacity:
+    """A supporter's safe room; nothing automatic if they asked to approve every time."""
+    cap = guardian.capacity(
+        h.projection.days_low or h.projection.days,
+        h.projection.floor,
+        start=today,
+        end=end,
+        pair_remaining=h.remaining,
+        exposure_remaining=h.exposure_remaining,
+        confident=h.projection.confident,
+    )
+    return cap if h.automatic else guardian.Capacity(Decimal(0), "approval_only", cap.cash_room)
 
 
 def decide(
@@ -125,22 +140,7 @@ def decide(
 
     # Network Guardian: each supporter's SAFE room over the whole time the money is out
     end = b.next_payday + timedelta(days=REPAY_GRACE_DAYS)
-    caps = [
-        (
-            h,
-            guardian.capacity(
-                h.projection.days_low or h.projection.days,
-                h.projection.floor,
-                start=today,
-                end=end,
-                pair_remaining=h.remaining,
-                exposure_remaining=h.exposure_remaining,
-                confident=h.projection.confident,
-            ),
-        )
-        for h in helpers
-        if h.enabled and not h.is_borrowing
-    ]
+    caps = [(h, _capacity(h, today, end)) for h in helpers if h.enabled and not h.is_borrowing]
     names = {h.projection.slug: h.projection.first_name for h, _ in caps}
     held = tuple(
         (h.projection.slug, h.projection.floor, c.bound)
@@ -223,6 +223,7 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
             enabled=lim["enabled"],
             is_borrowing=lim["lender_slug"] in owing,
             exposure_remaining=_exposure_limit(conn, lim["lender_slug"]) - lent_out.get(lim["lender_slug"], Decimal(0)),
+            automatic=consented[lim["lender_slug"]].get("mode", "auto") == "auto",
         )
         for lim in safety_repo.limits(conn, borrower=borrower_slug)
         if lim["lender_slug"] in consented
@@ -437,6 +438,8 @@ def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, v
     if lent + amount > _exposure_limit(conn, lender):
         return False
     if auto:
+        if agreements_repo.get(conn, lender, borrower).get("mode", "auto") != "auto":  # asked to approve every time
+            return False
         lim = next(iter(safety_repo.limits(conn, lender=lender, borrower=borrower)), None)
         if lim is None or not lim["enabled"] or Decimal(lim["limit_amount"]) - Decimal(lim["outstanding"]) < amount:
             return False

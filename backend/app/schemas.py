@@ -323,12 +323,39 @@ class SupportAgreement(BaseModel):
     limit: float | None  # the supporter's own cap for this person (None until they set one)
     outstanding: float  # supporter view: owed to me; recipient view: what I owe them
     version: int
+    mode: Literal["auto", "approval"] = "auto"  # approval: the supporter wants to be asked every time
 
 
 class SupportSummary(BaseModel):
     persona: str
     supporting: list[SupportAgreement]  # people I may help
     supporters: list[SupportAgreement]  # people who may help me
+    exposure_limit: float = 500  # the most I let Runway have out across everyone I support
+    committed: float = 0  # what I have out (or promised) right now as a supporter
+
+
+class ActivityItem(BaseModel):
+    """One support transfer or repayment, from ONE person's side — with a plain why (app/activity.py)."""
+
+    id: str
+    date: date
+    kind: Literal["received", "provided", "repaid_by_me", "repaid_to_me", "waiting", "pending_my_ok", "problem"]
+    title: str
+    amount: float
+    status: str
+    why: str
+    reference: str | None = None  # the bank (Nessie) id of the viewer's own side of the transfer
+
+
+class SetSupportMode(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # the supporter (ignored when signed in)
+    recipient: str = Field(pattern=PERSONA_SLUG)
+    mode: Literal["auto", "approval"]
+
+
+class SetExposure(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in
+    limit: float = Field(ge=0, le=5000)
 
 
 class AgreementChange(BaseModel):

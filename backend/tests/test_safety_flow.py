@@ -244,6 +244,7 @@ def fresh_rows(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(safety_net.safety_repo, "open_bridges", lambda conn: rows["outstanding"])
     monkeypatch.setattr(safety_net.safety_repo, "limits", lambda conn, lender, borrower: [rows["limit"]])
     monkeypatch.setattr(safety_net, "_exposure_limit", lambda conn, slug: rows["cap"])
+    monkeypatch.setattr(safety_net.agreements_repo, "get", lambda conn, s, r: {"mode": rows.get("mode", "auto")})
     return rows
 
 
@@ -299,3 +300,9 @@ def test_a_repayment_that_would_cause_a_new_dip_waits(repay_world) -> None:
 
     repay_world["projection"] = proj("maya", 350, after_payday=350)  # 350 - 100 < 300 within the week
     assert not safety_net._safe_to_repay(None, B, MAYA, D(300), date(2026, 11, 8))
+
+
+def test_a_supporter_who_asks_to_approve_every_time_is_never_moved_automatically(fresh_rows) -> None:
+    fresh_rows["mode"] = "approval"
+    assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+    assert safety_net._still_safe(None, "sam", "maya", D(90), False, 1)  # asking them is still fine

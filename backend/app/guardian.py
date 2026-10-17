@@ -27,7 +27,7 @@ from typing import Literal
 STEP = Decimal(5)  # capacities and needs are whole fives: $91.60 short → $95
 DEFAULT_EXPOSURE = Decimal(500)  # a supporter's total cap across everyone, unless they set their own
 
-Bound = Literal["cushion", "pair_limit", "exposure", "low_confidence", "no_forecast"]
+Bound = Literal["cushion", "pair_limit", "exposure", "low_confidence", "no_forecast", "approval_only"]
 
 
 @dataclass(frozen=True)

@@ -45,3 +45,11 @@ def test_nobody_outside_an_agreement_can_stop_it() -> None:
 def test_a_recipient_cannot_set_a_supporters_limit() -> None:
     body = {"lender": "sam", "borrower": "maya", "limit": 1000}
     assert client.put("/safety-net/limits", json=body, headers=as_("maya")).status_code == 403
+
+
+def test_only_you_set_your_own_support_mode_and_cap() -> None:
+    r = client.put("/support/mode", json={"recipient": "maya", "mode": "approval"}, headers=as_("sam"))
+    assert r.status_code == 200  # Sam sets his own mode for Maya (demo mode: echoes the summary)
+    cap = client.put("/support/exposure", json={"limit": 250}, headers=as_("sam")).json()
+    assert cap["persona"] == "sam" and cap["exposure_limit"] == 250
+    assert client.put("/support/exposure", json={"limit": 99999}, headers=as_("sam")).status_code == 422

@@ -20,6 +20,8 @@ const ICON: Record<string, { d: string; fill?: boolean; circles?: [number, numbe
   spending: { d: 'M5 20v-7M10 20V5M15 20v-9M20 20v-4' },
   // two linked rings: people who agreed to look out for each other
   circles: { d: '', circles: [[9, 12, 5.5], [15, 12, 5.5]] },
+  // a clock face: what happened, and when
+  activity: { d: 'M12 7v5l3 2', circles: [[12, 12, 8.5]] },
 };
 
 export default function AppTabs() {
@@ -30,6 +32,7 @@ export default function AppTabs() {
         <TabTrigger name="today" href="/" asChild><Tab icon="today" wide={wide}>Today</Tab></TabTrigger>
         <TabTrigger name="spending" href="/spending" asChild><Tab icon="spending" wide={wide}>Spending</Tab></TabTrigger>
         <TabTrigger name="circles" href="/circles" asChild><Tab icon="circles" wide={wide}>Circles</Tab></TabTrigger>
+        <TabTrigger name="activity" href="/activity" asChild><Tab icon="activity" wide={wide}>Activity</Tab></TabTrigger>
       </Bar>
     </TabList>
   );

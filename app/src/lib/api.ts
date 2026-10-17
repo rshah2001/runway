@@ -1,4 +1,5 @@
 import type {
+  ActivityItem,
   Bridge,
   ChatResponse,
   DemoStatus,
@@ -73,6 +74,11 @@ export const api = {
   support: (persona = currentPersona()) => request<SupportSummary>(`/support?persona=${persona}`),
   supportConsent: (supporter: string, recipient: string, persona = currentPersona()) =>
     request<SupportSummary>('/support/consent', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
+  supportMode: (recipient: string, mode: 'auto' | 'approval', persona = currentPersona()) =>
+    request<SupportSummary>('/support/mode', { method: 'PUT', body: JSON.stringify({ persona, recipient, mode }) }),
+  supportExposure: (limit: number, persona = currentPersona()) =>
+    request<SupportSummary>('/support/exposure', { method: 'PUT', body: JSON.stringify({ persona, limit }) }),
+  activity: (persona = currentPersona()) => request<ActivityItem[]>(`/activity?persona=${persona}`),
   supportRevoke: (supporter: string, recipient: string, persona = currentPersona()) =>
     request<SupportSummary>('/support/revoke', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
   setSafetyLimit: (lender: string, borrower: string, limit: number, enabled = true) =>

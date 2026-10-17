@@ -64,6 +64,14 @@ def revoke(conn: psycopg.Connection, supporter: str, recipient: str, actor: str)
     )
 
 
+def set_mode(conn: psycopg.Connection, supporter: str, recipient: str, mode: str) -> None:
+    conn.execute(
+        """UPDATE support_agreements SET mode = %s, version = version + 1, updated_at = now()
+           WHERE supporter = %s AND recipient = %s""",
+        (mode, supporter, recipient),
+    )
+
+
 def bump(conn: psycopg.Connection, supporter: str, recipient: str) -> None:
     conn.execute(
         """UPDATE support_agreements SET version = version + 1, updated_at = now()

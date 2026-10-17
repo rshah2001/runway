@@ -266,6 +266,9 @@ CREATE TABLE IF NOT EXISTS support_agreement_events (   -- the audit trail: who 
 CREATE INDEX IF NOT EXISTS support_agreement_events_pair ON support_agreement_events (supporter, recipient, at DESC);
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS support_exposure_limit numeric(12, 2)
     CHECK (support_exposure_limit >= 0 AND support_exposure_limit <= 5000);
+-- 'approval': the supporter wants to be asked every time, whatever the amount
+ALTER TABLE support_agreements ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'auto'
+    CHECK (mode IN ('auto', 'approval'));
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS agreement_version integer;
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS decision_id text;
 

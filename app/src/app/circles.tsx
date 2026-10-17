@@ -217,7 +217,44 @@ function PeopleISupport({ d, sup, onAgree, onSaved }: {
         })}
       </List>
       <Fine>Runway only ever moves up to your limit, and only when your own bills stay covered. Set $0 to pause.</Fine>
+      <ExposureCap sup={sup} onSaved={onSaved} />
     </>
+  );
+}
+
+const CAP_STEP = 100;
+
+/** The most I let Runway have out at once across everyone I support (money already out counts). */
+function ExposureCap({ sup, onSaved }: { sup: SupportSummary | null; onSaved: () => void }) {
+  const [value, setValue] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const cap = value ?? sup?.exposure_limit ?? 500;
+  async function save(next: number) {
+    const prev = cap;
+    setValue(next);
+    setSaving(true);
+    try {
+      await api.supportExposure(next);
+      onSaved();
+    } catch {
+      setValue(prev);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <List style={{ marginTop: 12 }}>
+      <Row first left={<Avatar tint="#7cb8ff"><Icon name="shield" size={18} color="#7cb8ff" /></Avatar>}
+        title="Most out at once"
+        sub={`Across everyone you support · ${money(sup?.committed ?? 0, 0)} out now`}
+        right={
+          <View style={s.stepper}>
+            <Step label="−" disabled={saving || cap <= 0} onPress={() => save(Math.max(0, cap - CAP_STEP))} a11y="Lower the most out at once" />
+            <Text style={s.stepValue}>{money(cap, 0)}</Text>
+            <Step label="+" disabled={saving || cap >= 5000} onPress={() => save(Math.min(5000, cap + CAP_STEP))} a11y="Raise the most out at once" />
+          </View>
+        } />
+    </List>
   );
 }
 
@@ -231,6 +268,35 @@ function Pill({ label, onPress }: { label: string; onPress: () => void }) {
 
 function StateDot({ on }: { on: boolean }) {
   return <View style={[s.dot, { backgroundColor: on ? C.green : C.text3 }]} accessibilityLabel={on ? 'Active' : 'Not active'} />;
+}
+
+/** Supporter's choice: let Runway move up to my limit, or ask me before every transfer. */
+function AskFirst({ a, onChanged }: { a: SupportAgreement; onChanged: () => void }) {
+  const [on, setOn] = useState(a.mode === 'approval');
+  const [saving, setSaving] = useState(false);
+  async function toggle() {
+    const next = !on;
+    setOn(next);
+    setSaving(true);
+    try {
+      await api.supportMode(a.recipient, next ? 'approval' : 'auto');
+      onChanged();
+    } catch {
+      setOn(!next);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <PressableScale onPress={toggle} disabled={saving} accessibilityRole="switch" accessibilityState={{ checked: on }}
+      accessibilityLabel="Ask me before every transfer" style={s.switchRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={s.switchTitle}>Ask me before every transfer</Text>
+        <Text style={s.seeText}>{on ? 'On: nothing moves until you approve it.' : 'Off: Runway may move up to your limit when it’s safe for you.'}</Text>
+      </View>
+      <View style={[s.track, on && s.trackOn, saving && { opacity: 0.6 }]}><View style={[s.knob, on && s.knobOn]} /></View>
+    </PressableScale>
+  );
 }
 
 /**
@@ -287,6 +353,7 @@ function ConsentSheet({ a, onClose, onDone }: { a: SupportAgreement | null; onCl
             </View>
           ))}
         </View>
+        {x && !recipient && x.i_agreed && <AskFirst a={x} onChanged={onDone} />}
         {failed && <Text style={[s.askBody, { color: C.red }]}>Couldn’t save that. Please try again.</Text>}
         <View style={s.askBtns}>
           {x?.state === 'active' || x?.i_agreed ? (

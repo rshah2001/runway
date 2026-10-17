@@ -42,13 +42,22 @@ def set_limit(conn: psycopg.Connection, lender: str, borrower: str, amount: floa
     )
 
 
-def seed_limit(conn: psycopg.Connection, lender: str, borrower: str, amount: float) -> None:
+def seed_limit(conn: psycopg.Connection, lender: str, borrower: str, amount: float, enabled: bool = True) -> None:
     """Default limit for the demo — never overwrites one a lender has changed."""
     conn.execute(
-        """INSERT INTO safety_limits (lender_slug, borrower_slug, limit_amount) VALUES (%s, %s, %s)
+        """INSERT INTO safety_limits (lender_slug, borrower_slug, limit_amount, enabled) VALUES (%s, %s, %s, %s)
            ON CONFLICT DO NOTHING""",
-        (lender, borrower, amount),
+        (lender, borrower, amount, enabled),
     )
+
+
+def committed_by(conn: psycopg.Connection, lender: str) -> float:
+    """Everything this supporter has committed right now (waiting, being sent, or out)."""
+    row = conn.execute(
+        "SELECT COALESCE(sum(amount), 0) AS total FROM bridges WHERE lender_slug = %s AND status = ANY(%s)",
+        (lender, list(OPEN)),
+    ).fetchone()
+    return float(row["total"])
 
 
 def limits(conn: psycopg.Connection, *, lender: str | None = None, borrower: str | None = None) -> list[Row]:

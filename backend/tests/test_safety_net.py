@@ -114,3 +114,9 @@ def test_a_supporter_whose_forecast_is_unsure_is_only_ever_asked() -> None:
     unsure = replace(sam, projection=replace(sam.projection, confident=False))
     d = decide(proj("maya", 208), [unsure], TODAY)
     assert d.action == "needs_approval" and d.lender == "sam"
+
+
+def test_approval_only_supporters_are_asked_never_auto_moved() -> None:
+    sam = helper("sam", 9000, 500)
+    d = decide(proj("maya", 208), [replace(sam, automatic=False)], TODAY)
+    assert d.action == "needs_approval" and d.lender == "sam" and not d.held
