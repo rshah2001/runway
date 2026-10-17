@@ -71,6 +71,7 @@ jobs:
       cancel-in-progress: false
     env:
       HOST: ${{ vars.VULTR_HOST }}
+      PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -95,4 +96,5 @@ jobs:
         run: |
           ssh "deploy@$HOST" 'cd /opt/runway/deploy && docker compose --env-file ../.env up -d --build --remove-orphans && docker image prune -f'
       - name: Smoke test
-        run: curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "http://$HOST/api/health"
+        # hit the public address (the domain once SITE_ADDRESS is set — the bare IP stops serving then)
+        run: curl -fsS --retry 10 --retry-delay 5 --retry-all-errors "${PUBLIC_API_URL:-http://$HOST/api}/health"

@@ -47,9 +47,12 @@ Then re-run the workflow (or push) to restart with the new values.
 ## Adding the domain (GoDaddy Registry)
 
 1. Point an **A record** for the domain at the server IP.
-2. In `/opt/runway/.env` set `SITE_ADDRESS=yourdomain.xyz` — Caddy fetches HTTPS certificates itself.
-3. `gh variable set PUBLIC_API_URL --body "https://yourdomain.xyz/api"` and redeploy.
-4. In `.github/workflows/ci.yml`, change the smoke test URL to `https://$HOST/...` or keep using the IP.
+2. In `/opt/runway/.env` set `SITE_ADDRESS="yourdomain.xyz, www.yourdomain.xyz"` — Caddy fetches HTTPS
+   certificates itself. After this the bare IP no longer serves the site; use the domain.
+3. `gh variable set PUBLIC_API_URL --body "https://yourdomain.xyz/api"` and redeploy. The post-deploy
+   smoke test uses `PUBLIC_API_URL`, so it follows automatically.
+
+**Live:** https://sixsevenbucksleft.vip (API: https://sixsevenbucksleft.vip/api, docs: /api/docs).
 
 ## Teammates
 
@@ -57,7 +60,7 @@ Point the app at the shared server to see backend changes ~1 minute after they m
 
 ```bash
 # app/.env
-EXPO_PUBLIC_API_URL=http://<SERVER_IP>/api
+EXPO_PUBLIC_API_URL=https://sixsevenbucksleft.vip/api
 ```
 
 ## Troubleshooting
