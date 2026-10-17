@@ -2,7 +2,7 @@
 // (Tiger Data continuous aggregate) → subscriptions (GET /recurring) → the latest purchases.
 // Visual spec: app/prototypes/today-v8.html (Spending tab).
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Amount, Avatar, Fine, List, Row, SectionLabel } from '@/components/rw/list';
 import { PageTitle, TopBar } from '@/components/rw/top-bar';
@@ -92,26 +92,59 @@ export default function SpendingScreen() {
 }
 
 /** Spending per day across the whole month, so the axis is honest; today in white. */
+/**
+ * Spending per day this month. Tap a bar (or hover it on the website) to see that day: the total and
+ * what was bought. Tap it again, or the summary, to go back to the month. Future days are drawn flat.
+ */
 function Daily({ d, month, isNow }: { d: Spending; month: string; isNow: boolean }) {
+  const [picked, setPicked] = useState<number | null>(null);
   const [y, m] = month.split('-').map(Number);
   const daysIn = new Date(y, m, 0).getDate();
   const lastDay = isNow ? new Date().getDate() : daysIn;
   const byDay = new Map(d.daily.map((x) => [Number(x.date.slice(8, 10)), x.spent]));
   const max = Math.max(1, ...d.daily.map((x) => x.spent));
+  const bought = picked ? d.transactions.filter((t) => Number(t.date.slice(8, 10)) === picked) : [];
+  const pickedDate = picked ? `${y}-${String(m).padStart(2, '0')}-${String(picked).padStart(2, '0')}` : null;
   return (
     <List style={{ paddingVertical: 14 }}>
-      <Text style={s.dailySub}>{d.transactions.length} purchases · about {money(d.total / Math.max(1, lastDay), 0)} a day</Text>
+      <PressableScale onPress={() => setPicked(null)} accessibilityRole="button" accessibilityLabel="Show the whole month">
+        <Text style={s.dailySub}>
+          {picked && pickedDate
+            ? `${weekdayDate(pickedDate)} · ${money(byDay.get(picked) ?? 0, 0)} · ${bought.length} ${bought.length === 1 ? 'purchase' : 'purchases'}`
+            : `${d.transactions.length} purchases · about ${money(d.total / Math.max(1, lastDay), 0)} a day`}
+        </Text>
+      </PressableScale>
       <View style={s.bars} accessibilityLabel="Daily spending">
         {Array.from({ length: daysIn }, (_, i) => {
           const day = i + 1, v = byDay.get(day) ?? 0, future = day > lastDay, today = isNow && day === lastDay;
-          return <View key={day} style={[s.bar, { height: future ? 4 : `${Math.max(4, (v / max) * 100)}%`,
-            backgroundColor: future ? C.line : today ? '#fff' : C.slate, opacity: future || today ? 1 : 0.55 }]} />;
+          const on = picked === day;
+          const color = future ? C.line : on || (today && !picked) ? '#fff' : C.slate;
+          const opacity = future ? 1 : on ? 1 : picked ? 0.3 : today ? 1 : 0.55;
+          return (
+            <Pressable key={day} disabled={future} onPress={() => setPicked(on ? null : day)}
+              onHoverIn={() => !future && setPicked(day)}
+              accessibilityRole="button" accessibilityLabel={`${monthName(month, 'short')} ${day}: ${money(v, 0)}`}
+              style={s.barHit}>
+              <View style={[s.bar, { height: future ? 4 : `${Math.max(4, (v / max) * 100)}%`, backgroundColor: color, opacity }]} />
+            </Pressable>
+          );
         })}
       </View>
       <View style={s.axis}>
         <Text style={s.axisText}>{monthName(month, 'short')} 1</Text>
         <Text style={s.axisText}>{monthName(month, 'short')} {daysIn}</Text>
       </View>
+      {picked !== null && (
+        <View style={s.dayList}>
+          {bought.length === 0 ? <Text style={s.dailySub}>Nothing bought that day.</Text> : bought.map((t, k) => (
+            <View key={`${t.merchant}-${k}`} style={s.dayRow}>
+              <Text style={s.dayMerchant} numberOfLines={1}>{t.merchant}</Text>
+              <Text style={s.dayCat}>{t.category}</Text>
+              <Amount>{money(t.amount)}</Amount>
+            </View>
+          ))}
+        </View>
+      )}
     </List>
   );
 }
@@ -173,7 +206,12 @@ const s = StyleSheet.create({
   fill: { height: '100%', borderRadius: 4 },
   dailySub: { fontFamily: F.body, fontSize: 14, color: C.text2 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 72, marginTop: 14 },
-  bar: { flex: 1, borderRadius: 2, minHeight: 2 },
+  barHit: { flex: 1, height: '100%', justifyContent: 'flex-end' },
+  bar: { width: '100%', borderRadius: 2, minHeight: 2 },
+  dayList: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line, gap: 8 },
+  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dayMerchant: { flex: 1, fontFamily: F.bodySemi, fontSize: 14, color: C.text },
+  dayCat: { fontFamily: F.body, fontSize: 13, color: C.text2 },
   axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   axisText: { fontFamily: F.body, fontSize: 12, color: C.text3 },
 });
