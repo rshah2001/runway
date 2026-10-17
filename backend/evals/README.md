@@ -194,3 +194,29 @@ Defence in depth, measured layer by layer (Oct 18 seeded data):
 Why the last row holds: the tools never return another person's data (the persona is injected
 server-side; the model can't choose it), so there is nothing to leak — the guard (`app/agent/privacy.py`)
 exists so the model never *improvises* about someone else, and says plainly why.
+
+## Guardian eval
+
+*Does every safety-net decision keep every promise?* `python -m evals.guardian_eval`
+
+**The demo on the real engine:** every day Oct 18–22, Maya's $135 → Sam $90 + Emma $45; Jordan protected
+(his own cushion). **2,000 generated networks** (1–4 supporters, random forecasts that may dip inside the
+lending window, cushions, limits, money already out, exposure caps, confidence; fixed seed), each decision
+checked against the safety net's promises:
+
+| Invariant | Violations |
+|---|---|
+| pair limit (share ≤ limit − already out) | **0** |
+| exposure (share ≤ total cap − committed) | **0** |
+| cushion (supporter's cautious balance stays ≥ their cushion all window) | **0** |
+| no overshoot (shares ≤ need) | **0** |
+| confidence (nothing automatic on an unsure forecast) | **0** |
+| deterministic (same inputs → same decision) | **0** |
+
+Outcomes: 842 decisions moved money automatically; **1,160 authorized-but-unsafe transfers blocked**
+(a limit allowed it, the supporter's own forecast didn't); 77 needs split across supporters; 29% of need
+covered automatically — the rest goes to a supporter's approval or stays uncovered, by design, on a
+deliberately harsh generator (needs up to $400 against limits from $25).
+
+**The checker is not vacuous:** a mutant Guardian that ignores the cushion produces **163** cushion
+violations; one that ignores the pair limit produces **663** pair-limit violations. 300 scenarios run in CI.

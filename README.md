@@ -87,6 +87,7 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 | **Tone** (Gen Z voice stays itself when money is tight or fine; rule-based checks on real Gemini replies) | **3/6 → 6/6** |
 | **Privacy** (13 attacks incl. prompt injection + 2 controls; fails on any of the other person's real figures) | **15/15** guard + router · **15/15** guard + Gemini · **15/15 Gemini with the guard OFF** |
 | **Demo scenario** (Guardian on the real engine, Oct 18–22) | Maya $135 → Sam $90 + Emma $45, Jordan $0, every day |
+| **Guardian invariants** (2,000 generated networks: limit, exposure, cushion, overshoot, confidence, determinism) | **0 violations** · 1,160 authorized-but-unsafe transfers blocked · mutants caught (163 / 663) |
 
 ## Design choices and trade-offs
 
