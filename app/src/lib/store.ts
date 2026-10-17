@@ -23,6 +23,8 @@ type State = {
    * limit, what you keep, a demo reset). Every screen keys its loads on it, so they all re-fetch.
    */
   dataVersion: number;
+  /** Alerts-only is on but the user asked to see the numbers this once (Today's "Show my numbers"). */
+  peek: boolean;
 };
 
 /** What the approval sheet shows: the agent's proposal plus the facts Today read off the forecast. */
@@ -33,7 +35,7 @@ export type ApprovalRequest = {
   facts: [label: string, value: string][];
 };
 
-let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [], dataVersion: 0 };
+let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [], dataVersion: 0, peek: false };
 const listeners = new Set<() => void>();
 
 /** Money moved (or a money setting changed): every screen re-fetches what it shows. */

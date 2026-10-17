@@ -1,0 +1,19 @@
+{
+  "method": "split conformal widening of the bootstrap spread at a 30-day horizon",
+  "fit_on": "IBM TabFormer, 1259 training users, 2015 onward",
+  "history_days": [
+    30,
+    60,
+    90
+  ],
+  "cautious": [
+    3.328,
+    1.954,
+    1.611
+  ],
+  "optimistic": [
+    1.702,
+    1.364,
+    1.193
+  ]
+}
