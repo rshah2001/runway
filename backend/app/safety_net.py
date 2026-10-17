@@ -544,6 +544,10 @@ def act(decision: Decision) -> dict | None:
         except psycopg.errors.UniqueViolation:  # the database's own one-open-bridge-per-pair rule
             conn.rollback()
             return None
+        # the audit trail: what was decided and why, in the same transaction as the bridges it created
+        safety_repo.record_decision(
+            conn, decision_id, decision, total if auto else Decimal(0), guardian.ALGORITHM_VERSION
+        )
         if not auto:
             b = safety_repo.bridge(conn, ids[0])
             channel = _request_approval(conn, b)
@@ -862,6 +866,10 @@ def run(slugs: list[str] | None = None) -> list[tuple[Decision, dict | None]]:
             try:
                 with pool.connection() as conn:
                     decision = plan(conn, slug)
+                    if decision.action == "no_safe_helper" and writes_enabled():  # once a day per person
+                        day_id = f"dec-{slug}-{_today():%Y%m%d}-none"
+                        safety_repo.record_decision(conn, day_id, decision, Decimal(0), guardian.ALGORITHM_VERSION)
+                        conn.commit()
                 out.append((decision, act(decision) if writes_enabled() else None))
             except Exception:
                 log.exception("safety net pass failed for %s", slug)

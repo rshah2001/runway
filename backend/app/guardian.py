@@ -24,6 +24,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+ALGORITHM_VERSION = "guardian-1.2"  # stored on every decision, so an old decision can be explained later
 STEP = Decimal(5)  # capacities and needs are whole fives: $91.60 short → $95
 DEFAULT_EXPOSURE = Decimal(500)  # a supporter's total cap across everyone, unless they set their own
 
