@@ -226,7 +226,12 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
    (`app/src/components/login/account-menu.tsx`): "Hide my balance" is **on-device only** (store it locally,
    blur/replace amounts on your own screens) and must say so; "Discreet notifications" is a real setting:
    `api.setPreferences({ discreet_notifications })`, read from `api.me().discreet_notifications` (default on).
-4. **My Circles cards** — when the circles API lands (Claude will add it to this file + `lib/api.ts`).
+4. **My Circles cards** (API is live): `api.circles()` → `[{ id, name, made_by_me, my_state: 'invited'|'active',
+   members: [{ slug, name, state }] }]`; `api.createCircle(name)`; `api.circleAction(id, 'invite'|'remove'|
+   'accept'|'decline'|'leave', slug?)`. Show a card per circle (name, member avatars, "Invited" state with
+   Accept/Decline). Only active members invite; only the creator removes. Membership never shows money —
+   support still comes from agreements (My supporters / People I support). Demo: Maya sees "Family" and
+   "Weekend crew"; Jordan has an invitation to "Weekend crew".
 5. Keep going on the circle map from branch `ui/circle-chart` (`components/rw/circle-map.tsx` only).
 
 ## Patil-Hemangi — AI + Auth0 (`backend/app/agent/`, `backend/evals/`, Auth0 tenant)
@@ -250,7 +255,7 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
 ## Claude (with rshah2001) — backend, in this order
 
 1. ✅ `GET /forecast/scenarios` + `discreet_notifications` (this PR)
-2. Named Circles: tables + invite / accept / decline / leave / remove API (+ add the calls to `lib/api.ts`)
+2. ✅ Named Circles: tables + invite / accept / decline / leave / remove API + `lib/api.ts` calls
 3. Recipient limits: "max I can owe at once", "allow several supporters"
 4. Demo 6: a demo-only "payday now" (real Nessie paycheck deposit → safe repayment) + a deferred case
 5. A `support_decisions` record of every decision and its reasons

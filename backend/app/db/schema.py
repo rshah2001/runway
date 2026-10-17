@@ -287,6 +287,8 @@ UPDATE bridges SET status = 'declined', status_changed_at = now()
 WHERE status = 'pending_approval' AND agreement_version IS NULL;
 """
 
+from app.circles import SCHEMA as CIRCLES  # noqa: E402 (named circles live with their rules)
+
 HYPERTABLE = """
 SELECT create_hypertable('transactions', by_range('ts', INTERVAL '7 days'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS transactions_customer_ts ON transactions (customer_id, ts DESC);
@@ -414,6 +416,7 @@ def apply(conn: psycopg.Connection) -> None:
             JOURNAL,
             MONEY_PREFS,
             AGREEMENTS,
+            CIRCLES,
             ALERTS,
             HYPERTABLE,
             DAILY_SPEND,

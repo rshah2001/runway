@@ -349,6 +349,32 @@ class ActivityItem(BaseModel):
     reference: str | None = None  # the bank (Nessie) id of the viewer's own side of the transfer
 
 
+class CircleMember(BaseModel):
+    slug: str
+    name: str
+    state: Literal["invited", "active"]
+
+
+class CircleView(BaseModel):
+    """A named circle as one member sees it: names and who's in — never anything about money."""
+
+    id: str
+    name: str
+    made_by_me: bool
+    my_state: Literal["invited", "active"]
+    members: list[CircleMember]
+
+
+class NewCircle(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in
+    name: str = Field(min_length=1, max_length=40)
+
+
+class CirclePerson(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # who is acting (ignored when signed in)
+    slug: str | None = Field(None, pattern=PERSONA_SLUG)  # the person invited / removed
+
+
 class ScenarioPoint(BaseModel):
     date: date
     balance: float

@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -31,8 +32,11 @@ from app.schemas import (
     Bridge,
     ChatRequest,
     ChatResponse,
+    CirclePerson,
+    CircleView,
     Forecast,
     Me,
+    NewCircle,
     P2PPayment,
     P2PRequest,
     P2PSend,
@@ -382,6 +386,53 @@ def _change_agreement(req: AgreementChange, user: User | None, action: str) -> S
                         safety_repo.transition(conn, b["id"], ("pending_approval",), "declined")
         conn.commit()
         return safety_views.support_summary(actor, agreements_repo.involving(conn, actor))
+
+
+# ---------- named circles (membership only — never money; app/circles.py) ----------
+@app.get("/circles", response_model=list[CircleView])
+def circles_mine(user: OptionalUser, persona: str = PERSONA) -> list[CircleView]:
+    return safety_views.circles_for(persona_for(user, persona))
+
+
+def _circle_act(user: User | None, persona: str, act) -> list[CircleView]:
+    actor = _own_settings(user, persona)
+    if not get_settings().live:
+        return safety_views.circles_for(actor)
+    from app import circles
+    from app.db import pool
+
+    with pool.connection() as conn:
+        try:
+            act(circles, conn, actor)
+        except circles.CircleRefused as e:
+            raise HTTPException(403, str(e)) from None
+        conn.commit()
+    return safety_views.circles_for(actor)
+
+
+@app.post("/circles", response_model=list[CircleView])
+def circle_create(req: NewCircle, user: OptionalUser) -> list[CircleView]:
+    return _circle_act(user, req.persona, lambda c, conn, me: c.create(conn, me, req.name))
+
+
+@app.post("/circles/{circle_id}/{action}", response_model=list[CircleView])
+def circle_change(circle_id: str, action: str, req: CirclePerson, user: OptionalUser) -> list[CircleView]:
+    """invite / remove (need `slug`), accept / decline / leave (your own membership)."""
+    if not re.fullmatch(r"circle-[a-z0-9-]{1,40}", circle_id):
+        raise HTTPException(404, "Unknown circle")
+    known = {p.slug for p in data.personas()}
+    if action in ("invite", "remove") and req.slug not in known:
+        raise HTTPException(404, "Unknown person")
+    acts = {
+        "invite": lambda c, conn, me: c.invite(conn, me, circle_id, req.slug),
+        "remove": lambda c, conn, me: c.remove(conn, me, circle_id, req.slug),
+        "accept": lambda c, conn, me: c.answer(conn, me, circle_id, True),
+        "decline": lambda c, conn, me: c.answer(conn, me, circle_id, False),
+        "leave": lambda c, conn, me: c.leave(conn, me, circle_id),
+    }
+    if action not in acts:
+        raise HTTPException(404, "Unknown action")
+    return _circle_act(user, req.persona, acts[action])
 
 
 @app.get("/forecast/scenarios", response_model=Scenarios)
