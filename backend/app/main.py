@@ -3,17 +3,50 @@
 Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000/docs)
 """
 
+import logging
 import os
+from contextlib import asynccontextmanager
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import data
 from app.agent import chat as agent
+from app.config import get_settings
+from app.db import pool
+from app.db import schema as db_schema
 from app.forecast import engine
-from app.nessie import client as nessie
-from app.schemas import ChatRequest, ChatResponse, Forecast, Me, PendingAction, Recurring, SimulateRequest
+from app.schemas import (
+    ChatRequest,
+    ChatResponse,
+    Forecast,
+    Me,
+    PendingAction,
+    Persona,
+    Recurring,
+    SimulateRequest,
+    Spending,
+)
 
-app = FastAPI(title="Runway API")
+log = logging.getLogger("runway")
+PERSONA = Query(data.DEFAULT_PERSONA, pattern=r"^[a-z]{1,32}$", description="demo persona slug, e.g. maya")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if get_settings().live:
+        try:
+            with pool.connection() as conn:
+                db_schema.apply(conn)
+        except Exception:  # keep serving (reads fall back to demo data); /health shows the problem
+            log.exception("could not apply the database schema at startup")
+    yield
+    pool.close()
+
+
+app = FastAPI(title="Runway API", lifespan=lifespan)
 
 # only the app's own origins may call the API; set CORS_ORIGINS (comma-separated) when deploying
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8081,http://localhost:19006").split(",")
@@ -22,12 +55,32 @@ app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True}
+    return data.health()
+
+
+@app.get("/personas", response_model=list[Persona])
+def personas() -> list[Persona]:
+    return data.personas()
 
 
 @app.get("/me", response_model=Me)
-def me() -> Me:
-    return nessie.get_me()
+def me(persona: str = PERSONA) -> Me:
+    try:
+        return data.me(persona)
+    except data.PersonaNotFound:
+        raise HTTPException(404, f"Unknown persona '{persona}'") from None
+
+
+@app.get("/spending", response_model=Spending)
+def spending(
+    month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM, default this month"),
+    persona: str = PERSONA,
+) -> Spending:
+    month = month or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m")
+    try:
+        return data.spending(month, persona)
+    except data.PersonaNotFound:
+        raise HTTPException(404, f"Unknown persona '{persona}'") from None
 
 
 @app.get("/forecast", response_model=Forecast)
@@ -53,13 +106,20 @@ def agent_chat(req: ChatRequest) -> ChatResponse:
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
 def approve(action_id: str) -> PendingAction:
     # TODO(auth): require the Auth0 user (Depends) and check action.owner_id == user.id before
-    # anything else. Until then this only moves money between the mock demo accounts.
+    # anything else, and take the persona from the user instead of the default.
     action = agent.PENDING.get(action_id)
     if action is None:
         raise HTTPException(404, "No such pending action")
     if action.status != "awaiting_approval":
         raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
+    if action.kind != "transfer" or not action.amount or action.amount <= 0:
+        raise HTTPException(422, "Only positive transfers can be approved right now")
     action.status = "approved"
-    nessie.create_transfer("demo-sav", "demo-chk", action.amount or 0, action.description)
+    try:
+        data.move_savings_to_checking(action.amount, action.description)
+    except Exception as e:
+        action.status = "awaiting_approval"  # nothing moved; let the user retry
+        log.exception("transfer failed")
+        raise HTTPException(503, "The bank didn't accept the transfer — try again") from e
     action.status = "executed"
     return action

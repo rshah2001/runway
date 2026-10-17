@@ -50,3 +50,25 @@ export type ChatResponse = {
   tool_calls: string[];
   pending_action: PendingAction | null;
 };
+
+export type Persona = { slug: string; first_name: string; story: string };
+
+export type CategorySpend = { category: string; spent: number; purchases: number };
+
+export type DailySpend = { date: string; spent: number };
+
+export type SpendingTransaction = {
+  date: string;
+  merchant: string;
+  category: string;
+  amount: number; // positive = money spent
+  account: string;
+};
+
+export type Spending = {
+  month: string; // 'YYYY-MM'
+  total: number;
+  categories: CategorySpend[]; // biggest first
+  daily: DailySpend[]; // from the Tiger Data continuous aggregate in live mode
+  transactions: SpendingTransaction[]; // newest first
+};

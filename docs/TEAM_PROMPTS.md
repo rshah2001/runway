@@ -71,7 +71,10 @@ then .venv/bin/pytest (tests must stay green) and .venv/bin/uvicorn app.main:app
 
 Build, in order:
 1. forecast/engine.py: replace the mock schedule with a real engine — port buildEvents + project
-   from prototype/index.html to typed Python. Keep the public function signatures.
+   from prototype/index.html to typed Python. Keep the public function signatures. Real data is
+   already in Tiger Data: use backend/app/db/repo.py (accounts_with_balances, transactions, bills,
+   daily_spend — see "For the forecast engine" in docs/ARCHITECTURE.md). Maya / Jordan / Sam have
+   4 months of history each; months 1–3 vs 4 is your backtest split.
 2. Recurring detector: group purchases by merchant, find stable interval + amount → recurring().
 3. agent/chat.py: Gemini tool calling (get_forecast, simulate_purchase, find_recurring,
    propose_transfer). Check the current Google Gen AI SDK docs, don't rely on memory. Cap message

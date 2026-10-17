@@ -71,3 +71,36 @@ class ChatResponse(BaseModel):
     reply: str
     tool_calls: list[str] = []
     pending_action: PendingAction | None = None
+
+
+class Persona(BaseModel):
+    slug: str
+    first_name: str
+    story: str
+
+
+class CategorySpend(BaseModel):
+    category: str
+    spent: float
+    purchases: int
+
+
+class DailySpend(BaseModel):
+    date: date
+    spent: float
+
+
+class SpendingTransaction(BaseModel):
+    date: date
+    merchant: str
+    category: str
+    amount: float  # positive = money spent
+    account: str
+
+
+class Spending(BaseModel):
+    month: str  # "YYYY-MM"
+    total: float
+    categories: list[CategorySpend]  # biggest first
+    daily: list[DailySpend]  # from the Tiger Data continuous aggregate in live mode
+    transactions: list[SpendingTransaction]  # newest first
