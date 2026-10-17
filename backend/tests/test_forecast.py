@@ -55,11 +55,17 @@ def test_regular_flows_repeat_on_their_cadence() -> None:
     assert [(e.date, e.amount) for e in f.events if e.label == "Rent split"] == [(date(2026, 11, 3), -300)]
 
 
-def test_everyday_spending_is_booked_weekly_and_adds_up() -> None:
+def test_everyday_spending_is_booked_daily_and_adds_up() -> None:
     f = engine.forecast(days=20, start=TODAY, schedule=_schedule(spend=FLAT_10))
     spend = [e for e in f.events if e.kind == "spending"]
-    assert [e.date for e in spend] == [TODAY, TODAY + timedelta(days=7), TODAY + timedelta(days=14)]
+    assert [e.date for e in spend] == [TODAY + timedelta(days=i) for i in range(21)]
     assert sum(e.amount for e in spend) == pytest.approx(-10 * 21)  # every day of the window, no more
+
+
+def test_today_only_loses_todays_spending_not_the_whole_week() -> None:
+    f = engine.forecast(days=20, start=TODAY, schedule=_schedule(spend=FLAT_10))
+    assert f.points[0].balance == pytest.approx(1000 - 10)
+    assert f.points[6].balance == pytest.approx(1000 - 70)
 
 
 def test_simulated_purchase_lowers_every_later_day_by_its_amount() -> None:

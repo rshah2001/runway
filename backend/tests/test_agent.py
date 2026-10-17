@@ -51,6 +51,12 @@ def test_forecast_tool_reports_the_engines_low_point() -> None:
     assert r["status"] == "overdraft_risk" and r["below_safety_floor"] is True
 
 
+def test_forecast_tool_says_the_real_balance_and_lists_only_scheduled_flows() -> None:
+    r = tools.get_forecast(persona="maya", today=TODAY)
+    assert r["balance_today"] == tools.money(engine.schedule_for("maya", TODAY).start_balance)
+    assert r["upcoming"] and all("Everyday spending" not in u["label"] for u in r["upcoming"])
+
+
 def test_unsafe_purchase_says_when_it_becomes_safe_and_what_would_cover_it() -> None:
     r = tools.simulate_purchase(180, "friday", "Concert", persona="maya", today=TODAY)
     assert r["verdict"] == "not_safe" and r["first_safe_day"]

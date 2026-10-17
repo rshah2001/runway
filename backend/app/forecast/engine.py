@@ -71,14 +71,15 @@ def _regular_flows(schedule: Schedule, end: date) -> Iterator[ForecastEvent]:
 
 
 def _everyday_spend(schedule: Schedule, start: date, end: date) -> Iterator[ForecastEvent]:
-    """Learned everyday spending, booked as one estimate per week so the event list stays readable."""
+    """Learned everyday spending, booked on the day it is expected. Booking a week's estimate up front
+    would take money out of today's balance that hasn't been spent yet and pull the low point earlier.
+    Lists meant for people (the app's "Coming up", the agent's `upcoming`) leave these events out."""
     d = start
     while d <= end:
-        days = min(7, (end - d).days + 1)
-        amount = round(schedule.spend.total(d, days), 2)
+        amount = round(schedule.spend.expected(d), 2)
         if amount > 0:
             yield ForecastEvent(date=d, amount=-amount, label="Everyday spending (estimate)", kind="spending")
-        d += timedelta(days=7)
+        d += timedelta(days=1)
 
 
 def build_events(schedule: Schedule, start: date, end: date) -> list[ForecastEvent]:

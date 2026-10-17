@@ -56,15 +56,18 @@ seed days (each seed day generates a different history).
 
 | Spend model | MAE, daily checking balance | MAPE, month-4 everyday spend |
 |---|---|---|
-| Weekday means, 90 days | $158.65 | 22.7% |
-| Flat daily mean, 90 days (live) | $160.07 | 23.5% |
-| Last 30 days repeated (naive) | $197.30 | 33.9% |
+| Weekday means, 90 days | $133.60 | 22.7% |
+| Flat daily mean, 90 days (live) | $136.95 | 23.5% |
+| Last 30 days repeated (naive) | $163.09 | 33.9% |
 | No everyday spending (bills only) | $407.91 | 100.0% |
 
 **Reading it honestly:**
 
-- Learning everyday spend from 90 days cuts the balance error by 61% against ignoring it, and by 19%
+- Learning everyday spend from 90 days cuts the balance error by 66% against ignoring it, and by 16%
   against repeating last month.
+- Everyday spending is booked on the day it's expected. An earlier version booked each week's
+  estimate on the week's first day, which took unspent money out of "today" and moved the low point;
+  fixing that cut the live model's error from $160 to $137.
 - Weekday means and the flat mean tie (within 1%): the seed generator draws purchases independently
   of the weekday, so there is no weekday pattern to find. The live forecast uses the simpler flat mean;
   real transaction data would be the test of whether the weekday model earns its place.
