@@ -45,6 +45,7 @@ def test_live_spend_model_beats_the_naive_baselines() -> None:
         ("Not safely — you'd drop to $71.61 on Thu Nov 5.", False),
         ("You can buy it on Fri Nov 6, but your balance already dips below your floor on Thu Nov 5.", True),
         ("I would hold off on the $120.00 concert for tomorrow.", False),
+        ("I would advise against purchasing the $6,500.00 concert ticket tomorrow, as it would drop.", False),
     ],
 )
 def test_verdict_grader_reads_the_first_sentence(reply: str, says_safe: bool) -> None:

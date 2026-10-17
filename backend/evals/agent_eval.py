@@ -28,7 +28,9 @@ from app.schemas import ChatResponse  # noqa: E402
 
 TODAY = date(2026, 10, 16)  # fixed so ground truth never drifts
 # a "no" verdict. Words like "below" don't count: a correct "yes" may still warn about an existing dip.
-NEGATIVE = re.compile(r"\b(not|no|can't|cannot|isn't|aren't|shouldn't|won't|wouldn't|hold off|wait|skip|pass on)\b")
+NEGATIVE = re.compile(
+    r"\b(not|no|can't|cannot|isn't|aren't|shouldn't|won't|wouldn't|hold off|wait|skip|pass on|advise against)\b"
+)
 # sentence end: ., ! or ? not inside a number (so "$35.00" doesn't end the sentence), or a dash
 SENTENCE_END = re.compile(r"(?<!\d)[.!?]|[.!?](?!\d)|—")
 

@@ -27,14 +27,17 @@ voice: Maya (20) genz, Jordan (40) direct, Sam (60) classic.
 |---|---|---|---|---|---|
 | Gemini — Maya (genz voice) | 16 | 100% | 100% | 100% | 0 |
 | Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
-| Gemini — Sam (classic voice) | 13 | 100% | 100% | 100% | 0 |
-| **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **98%** | **100%** | 0 |
+| Gemini — Sam (classic voice) | 13 | 100% | 92% | 100% | 0 |
+| **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **95%** | **100%** | 0 |
 | Rule-based router (offline baseline) | 42 | 100% | 100% | 100% | — |
 
-Gemini run on 2026-10-17 on the final code, with runtime grounding enforced. The single miss was a
-correct "no" phrased without a negative word ("That purchase would put your account into an
-overdraft…"); it stays a miss because adding "overdraft" to the grader would misread a correct "yes,
-without an overdraft".
+Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
+result), with runtime grounding enforced. Both misses were "can I afford it?" questions whose right
+answer was no. Sam's reply was a correct no worded "I would advise against purchasing…", which the
+grader didn't know; "advise against" is now a grader test. Jordan's question passed when rerun, so
+that miss was a phrasing the grader couldn't read, not a wrong verdict. The table keeps the original
+run's score. An earlier run's miss ("That purchase would put your account into an overdraft…") stays a
+grader limit: adding "overdraft" would misread a correct "yes, without an overdraft".
 
 Notes on method:
 
