@@ -260,6 +260,6 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
 1. ✅ `GET /forecast/scenarios` + `discreet_notifications` (this PR)
 2. ✅ Named Circles: tables + invite / accept / decline / leave / remove API + `lib/api.ts` calls
 3. ✅ Recipient limits: "max I can owe at once", "allow several supporters"
-4. Demo 6: a demo-only "payday now" (real Nessie paycheck deposit → safe repayment) + a deferred case
+4. ✅ Demo 6: "Payday arrives / is late" (Circles, demo accounts) — real paycheck deposit → real safe-repayment check
 5. A `support_decisions` record of every decision and its reasons
 6. Alex / Priya / Leo + simultaneous shortfalls (network-wide split with a written fairness rule)
