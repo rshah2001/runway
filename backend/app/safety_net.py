@@ -281,7 +281,7 @@ def _request_approval(conn, b: dict) -> str:
     cfg = auth0_ciba.config()
     if cfg and b["lender_slug"] in cfg.users:
         try:
-            msg = f"Approve {int(b['amount'])} for {b['borrower_name']} back {b['due_date']:%b %d}"
+            msg = f"Approve {int(b['amount'])} support for {b['borrower_name']}"  # lock-screen safe: no dates
             req_id = auth0_ciba.start(cfg, cfg.users[b["lender_slug"]], msg)
             safety_repo.transition(
                 conn,
@@ -331,8 +331,9 @@ def act(decision: Decision) -> dict | None:
                 b,
                 "approval_needed",
                 f"Asked {b['lender_name']} to approve ${decision.amount:,.0f} — it's over their auto limit.",
-                f"🔔 {b['borrower_name']} needs ${decision.amount:,.0f} before {_md(decision.shortfall_date)} "
-                f"(over your auto limit). Approve {where} — it comes back {_md(decision.due_date)}.",
+                # the supporter learns who and how much — never when or why someone runs short
+                f"🔔 {b['borrower_name']} could use ${decision.amount:,.0f} of support (over your auto limit). "
+                f"Approve {where} — expected back {_md(decision.due_date)}.",
             )
         conn.commit()
     return _fund(bridge_id) if decision.action == "auto_bridge" else b

@@ -372,6 +372,9 @@ def run_safety_net(
         persona = persona_for(user, persona or "")
     elif data.writes_enabled():
         authorize_money(None, persona)
+    # signed out: only the one demo persona asked about — never everyone, which would report each
+    # person's low balance to an anonymous visitor
+    persona = persona or data.DEFAULT_PERSONA
     if not get_settings().live:
         demo = safety_views.demo_summary("maya").borrowed[0]
         return [
@@ -391,7 +394,7 @@ def run_safety_net(
     from app import demo, safety_net
 
     demo.release()  # running it by hand is the live moment: automatic passes resume after it
-    return [safety_views.decision(d, b) for d, b in safety_net.run([persona] if persona else None)]
+    return [safety_views.decision(d, b) for d, b in safety_net.run([persona])]
 
 
 def _bridge_action(bridge_id: str, approve: bool, user: User | None) -> Bridge:
