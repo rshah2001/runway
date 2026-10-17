@@ -56,3 +56,37 @@ def test_no_history_means_no_range_and_no_cautious_low() -> None:
 def test_horizons_share_a_cached_band() -> None:
     daily = tuple(float(i % 9) for i in range(90))
     assert band.spread(daily, 20) == band.spread(daily, 31)[:20]
+
+
+# ---------- calibration (ml/calibrate_band.py → band_calibration.json) ----------
+
+
+def test_calibration_file_is_shipped_and_only_widens() -> None:
+    cal = band._calibration()
+    assert cal["history_days"] == sorted(cal["history_days"])
+    assert all(f >= 1.0 for f in cal["cautious"] + cal["optimistic"])
+
+
+def test_widening_interpolates_between_calibrated_lengths() -> None:
+    cal = band._calibration()
+    (x0, x1), (h0, h1) = cal["history_days"][:2], cal["cautious"][:2]
+    assert band.widening(x0)[0] == pytest.approx(h0)
+    assert band.widening((x0 + x1) // 2)[0] == pytest.approx(h0 + (h1 - h0) * ((x0 + x1) // 2 - x0) / (x1 - x0))
+    assert band.widening(5) == band.widening(x0)  # shorter histories use the shortest calibrated factor
+    assert band.widening(365) == band.widening(cal["history_days"][-1])
+
+
+def test_calibrated_spread_is_the_raw_bootstrap_widened() -> None:
+    daily = tuple(float(i % 9) for i in range(90))
+    cautious, optimistic = band.widening(90)
+    for (down, up), (raw_down, raw_up) in zip(band.spread(daily, 30), band.raw_spread(daily, 30), strict=True):
+        assert down == pytest.approx(raw_down * cautious) and up == pytest.approx(raw_up * optimistic)
+
+
+def test_missing_calibration_file_means_no_widening(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(band, "CALIBRATION_FILE", tmp_path / "missing.json")
+    band._calibration.cache_clear()
+    try:
+        assert band.widening(90) == (1.0, 1.0)
+    finally:
+        band._calibration.cache_clear()
