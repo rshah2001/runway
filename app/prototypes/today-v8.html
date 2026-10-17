@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1215">
+<title>Runway — Home v8 (main's Today, v7's look)</title>
+<link rel="icon" href="data:,">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- PROTOTYPE ONLY. Today keeps everything on main (#32): greeting, balance that follows the chart,
+     status pill, three tiles, the answer + family callouts, 30-day line with what-if chips, the fix,
+     Coming up linked to the chart. Restyled in the v7 look, with v7's pill bar, chat sheet,
+     approval sheet, Family and Spending tabs as they were.
+     Numbers: the mock engine's forecast for the fictional persona "Maya" on Sat Oct 17. Sam's are illustrative. -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100%}
+  body{background:#cfd2d6;font:16px/1.45 "Barlow",-apple-system,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;gap:14px;padding:20px 16px;-webkit-text-size-adjust:100%}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+  /* demo controls — outside the phone */
+  .picker{display:flex;gap:4px;padding:4px;border-radius:999px;background:#1a1d20}
+  .picker button{padding:7px 16px;border-radius:999px;font-size:13px;font-weight:600;color:#9aa4ad}
+  .picker button.on{background:#fff;color:#111}
+  .hint{font-size:12px;color:#5b636b;text-align:center;max-width:390px}
+
+  .device{position:relative;width:390px;height:844px;border-radius:54px;overflow:hidden;background:#0f1215;box-shadow:0 0 0 10px #111,0 0 0 11px #2a2a2e,0 40px 80px -20px rgba(0,0,0,.45)}
+  .screen{position:absolute;inset:0;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain}.screen::-webkit-scrollbar{display:none}
+  @media (max-width:500px){body{padding:10px 0 0;background:#0f1215}.hint{display:none}.device{width:100%;height:calc(100dvh - 54px);border-radius:0;box-shadow:none}}
+
+  .rw{--card:#1b2024;--card2:#252b30;--line:#2a3035;--t2:#a7b0b8;--t3:#6f7a85;--red:#ff6b5e;--green:#46d483;--blue:#4b9dff;--amber:#f5b83d;
+      --eo:cubic-bezier(.23,1,.32,1);--sheet:cubic-bezier(.32,.72,0,1);
+      min-height:100%;color:#fff;padding:56px 18px 130px;background:linear-gradient(180deg,#1a1f24 0%,#0f1215 40%)}
+  .top{display:flex;justify-content:space-between;align-items:center}
+  .brand{display:flex;align-items:center;gap:8px;font:600 15px "Barlow Condensed";letter-spacing:.32em}
+  .avatar{width:36px;height:36px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-weight:700;font-size:14px}
+  .press{transition:transform 120ms var(--eo)}.press:active{transform:scale(.97)}
+
+  /* 1 · where you stand */
+  .status{margin-top:34px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--red);transition:color 400ms}
+  .pill::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+  .status.ok .pill{color:var(--green)}
+  h1{font-size:34px;line-height:1.08;font-weight:700;letter-spacing:-.025em;margin-top:8px}
+  h1 em{font-style:normal;color:var(--red);transition:color 400ms}
+  .status.ok h1 em{color:var(--green)}
+  .sub{font-size:16px;color:var(--t2);margin-top:8px;max-width:31ch}
+  .swap{animation:swap 420ms var(--eo) both}
+  @keyframes swap{from{opacity:0;transform:translateY(6px)}}
+
+  /* 2 · where it's heading */
+  .chart{margin-top:22px;position:relative;touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:crosshair}
+  .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+  .axis{display:flex;justify-content:space-between;font-size:12px;color:var(--t3);margin-top:6px}
+  .trust{font-size:12px;color:var(--t3);margin-top:10px}
+  .tip{position:absolute;top:-6px;transform:translate(-50%,-100%);padding:8px 11px;border-radius:12px;background:#fff;color:#111;font-size:13px;line-height:1.3;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 120ms;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .tip b{font-size:15px}.tip span{display:block;color:#5b636b;font-size:12px}
+  .tip.on{opacity:1}
+
+  /* 3 · how to fix it */
+  .fix{margin-top:22px;padding:16px;border-radius:22px;background:var(--card)}
+  .fix .row{display:flex;align-items:center;gap:12px}
+  .ic{flex:0 0 40px;height:40px;border-radius:12px;display:grid;place-items:center}
+  .fix small{display:block;font-size:13px;color:var(--t2);font-weight:500}
+  .fix b{display:block;font-size:18px;line-height:1.25}
+  .fix .note{font-size:14px;color:var(--t2);margin-top:10px}
+  .cta{margin-top:14px;width:100%;height:52px;border-radius:999px;background:#fff;color:#111;font-size:17px;font-weight:700}
+  .cta[disabled]{opacity:.6}
+  .other{margin-top:8px;width:100%;font-size:14px;color:var(--t2);font-weight:600;padding:8px}
+  .alts{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms var(--eo)}
+  .alts.open{grid-template-rows:1fr}
+  .alts>div{overflow:hidden;display:flex;flex-direction:column;gap:8px}
+  .alts.open>div{padding-top:4px}
+  .alt{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:var(--card2);text-align:left;width:100%}
+  .alt b{display:block;font-size:15px}.alt span{display:block;font-size:13px;color:var(--t2)}
+  .alt .go{margin-left:auto;font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;background:#fff;color:#111;flex:0 0 auto}
+  .alt .go.wait{background:transparent;color:var(--t2);border:1px solid var(--line)}
+  .done{display:flex;align-items:center;gap:12px}
+  .done .undo{margin-left:auto;font-size:14px;font-weight:600;color:var(--t2);padding:6px 4px}
+
+  /* coming up */
+  h2{font:600 13px "Barlow Condensed";letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin:28px 2px 10px}
+  .list{border-radius:20px;background:var(--card);padding:4px 14px}
+  .item{display:flex;align-items:center;gap:12px;padding:12px 0;width:100%;text-align:left}
+  .item+.item{border-top:1px solid var(--line)}
+  .item .when{font-size:13px;color:var(--t2)} .item .what{font-weight:600}
+  .item .amt{margin-left:auto;font:700 18px "Barlow Condensed";letter-spacing:.02em}
+  .in{color:var(--green)}
+
+  /* family + spending tabs */
+  .page-title{font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:30px}
+  .page-sub{color:var(--t2);margin-top:6px;font-size:15px}
+  .person{display:flex;align-items:center;gap:12px;padding:12px 0}
+  .person+.person{border-top:1px solid var(--line)}
+  .person .av{width:38px;height:38px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-weight:700;color:var(--t2)}
+  .person .what{font-weight:600}.person .when{font-size:13px;color:var(--t2)}
+  .stepper{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .stepper button{width:32px;height:32px;border-radius:50%;background:var(--card2);font-size:18px;font-weight:700}
+  .stepper b{min-width:56px;text-align:center;font:700 18px "Barlow Condensed"}
+  .fine{font-size:12px;color:var(--t3);margin:10px 2px 0}
+  .bar{height:8px;border-radius:4px;background:var(--card2);margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;border-radius:4px}
+
+  /* tab bar + chat (the app's floating pill) */
+  .dock{position:absolute;left:28px;right:28px;bottom:20px;display:flex;align-items:center;gap:10px;z-index:5}
+  .dock::before{content:'';position:absolute;left:-28px;right:-28px;bottom:-20px;height:110px;background:linear-gradient(to top,#0f1215 45%,rgba(15,18,21,0));pointer-events:none;z-index:-1}
+  .tabs{flex:1;display:flex;height:50px;padding:4px;border-radius:999px;background:rgba(32,37,41,.92);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);border:1px solid rgba(255,255,255,.06)}
+  .tabs button{flex:1;border-radius:999px;display:grid;place-items:center;color:#8a949d;transition:background-color 200ms,color 200ms}
+  .tabs button.on{background:#0f1215;color:#fff}
+  .chatb{width:50px;height:50px;flex:0 0 50px;border-radius:50%;background:#e9ecef;color:#111;display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+
+  /* sheets: approval + chat. Rise from the bottom, leave the same way. */
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity 300ms;z-index:10}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:11;background:#1b2024;border-radius:28px 28px 0 0;padding:10px 20px 34px;transform:translateY(105%);transition:transform 420ms var(--sheet);color:#fff;max-height:86%;display:flex;flex-direction:column}
+  .sheet.on{transform:none}
+  .grab{width:38px;height:5px;border-radius:3px;background:#3a4147;margin:0 auto 16px}
+  .sheet h3{font-size:22px;font-weight:700;letter-spacing:-.01em}
+  .sheet .lead{color:#a7b0b8;font-size:15px;margin-top:4px}
+  .facts{margin-top:16px;border-radius:16px;background:#252b30;padding:2px 14px}
+  .fact{display:flex;justify-content:space-between;padding:11px 0;font-size:15px}
+  .fact+.fact{border-top:1px solid #2f363c}
+  .fact span{color:#a7b0b8}.fact b{font-weight:600}
+  .safe{display:flex;gap:8px;align-items:center;font-size:13px;color:#a7b0b8;margin-top:14px}
+  .btns{display:flex;gap:10px;margin-top:16px}
+  .btns button{flex:1;height:52px;border-radius:999px;font-weight:700;font-size:16px}
+  .btns .no{border:1px solid #2f363c;color:#a7b0b8}
+  .btns .yes{background:#fff;color:#111}
+
+  .msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:220px;padding:4px 0 12px}
+  .msg{max-width:84%;padding:10px 13px;border-radius:18px;font-size:15px;line-height:1.35;animation:swap 300ms var(--eo) both}
+  .msg.me{align-self:flex-end;background:#4b9dff;color:#fff;border-bottom-right-radius:6px}
+  .msg.bot{align-self:flex-start;background:#252b30;border-bottom-left-radius:6px}
+  .msg.bot small{display:block;color:#6f7a85;font-size:11px;margin-top:4px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .ask{display:flex;gap:8px;margin-top:12px}
+  .ask input{flex:1;min-width:0;height:46px;border-radius:999px;border:1px solid #2f363c;background:#252b30;color:#fff;font:inherit;font-size:15px;padding:0 16px;outline:none}
+  .ask input:focus{border-color:#4b9dff}
+  .ask button{width:46px;height:46px;border-radius:50%;background:#fff;color:#111;display:grid;place-items:center;flex:0 0 46px}
+  .ask button:disabled{opacity:.35}
+  .chips button{padding:9px 13px;border-radius:999px;background:#252b30;font-size:14px;font-weight:600}
+
+  /* takeoff — the one celebration moment */
+  .chart .plane{position:absolute;left:0;top:0;width:26px;height:26px;display:block;margin:-13px 0 0 -13px;color:#fff;pointer-events:none;opacity:0;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+
+  /* v8 · main's Today content in the v7 look */
+  .hero{margin-top:30px;text-align:center;display:flex;flex-direction:column;align-items:center}
+  .hello{font-size:22px;font-weight:700;letter-spacing:-.01em}
+  .today-d{font-size:15px;color:var(--t2);margin-top:2px}
+  .bal-l{font:600 13px "Barlow Condensed";letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin-top:6px}
+  .bal{font:700 64px/1 "Barlow Condensed";letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums;transition:color 200ms}
+  .bal.low{color:var(--red)}
+  .evline{font-size:14px;color:var(--t2);min-height:20px;margin-top:4px}
+  .spill{cursor:pointer;display:inline-flex;align-items:center;gap:7px;margin-top:12px;padding:7px 13px;border-radius:999px;font-size:14px;font-weight:600;color:var(--red);background:rgba(255,107,94,.13);transition:color 300ms,background-color 300ms}
+  .spill::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+  .spill.ok{color:var(--green);background:rgba(70,212,131,.13)}
+  .spill .chev{margin-left:2px;transition:transform 300ms var(--eo)}
+  .spill.open .chev{transform:rotate(180deg)}
+  .why{display:grid;grid-template-rows:0fr;width:100%;transition:grid-template-rows 360ms var(--eo)}
+  .why.open{grid-template-rows:1fr}
+  .why>div{overflow:hidden}
+  .why-card{margin-top:12px;padding:14px 16px;border-radius:20px;background:var(--card);text-align:left;opacity:0;transform:translateY(-6px) scale(.98);transform-origin:top center;transition:opacity 260ms,transform 360ms var(--eo)}
+  .why:not(.open) .why-card{visibility:hidden;transition:opacity 260ms,transform 360ms var(--eo),visibility 0s 360ms}
+  .why.open .why-card{opacity:1;transform:none}
+  .why-card p{font-size:15px;color:var(--t2)}.why-card p b{color:#fff}
+  .why-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);margin-top:10px}
+  .why-row+.why-row{margin-top:0}
+  .why-row b{display:block;font-size:15px}.why-row span{display:block;font-size:13px;color:var(--t2)}
+  .why-row em{font:700 18px "Barlow Condensed";font-style:normal;color:var(--red)}
+  .why-foot{border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+  .x{width:30px;height:30px;border-radius:50%;background:var(--card2);color:var(--t2);display:grid;place-items:center;flex:0 0 30px}
+  #news{overflow:hidden;transition:height 300ms var(--eo),opacity 200ms,margin-top 300ms var(--eo)}
+  #news.gone{height:0!important;opacity:0;margin-top:0!important}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:22px}
+  .tile{background:var(--card);border-radius:18px;padding:12px;text-align:center}
+  .tile small{display:block;font:600 11px "Barlow Condensed";letter-spacing:.12em;text-transform:uppercase;color:var(--t2)}
+  .tile b{display:block;font:700 24px/1.1 "Barlow Condensed";margin-top:6px}
+  .tile span{display:block;font-size:12px;color:var(--t2);margin-top:2px}
+  .tile.bad b{color:var(--red)}
+  .note-card{display:flex;gap:12px;align-items:flex-start;margin-top:10px;padding:14px;border-radius:20px;background:var(--card)}
+  .note-card:first-child{margin-top:0}
+  .note-card b{display:block;font-size:16px;line-height:1.3}
+  .note-card p{font-size:14px;color:var(--t2);margin-top:3px}
+  .card{background:var(--card);border-radius:22px;padding:16px}
+  .card .chart{margin-top:6px}
+  .whatif{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .whatif span{font-size:14px;color:var(--t2);margin-right:2px}
+  .whatif button{padding:7px 14px;border-radius:999px;background:var(--card2);font-size:14px;font-weight:600;transition:background-color 150ms,color 150ms}
+  .whatif button.on{background:#fff;color:#111}
+  .custom{display:inline-flex;align-items:center;gap:2px;height:33px;padding:0 12px;border-radius:999px;background:#fff;color:#111;font-size:14px;font-weight:600}
+  .custom input{width:52px;border:0;outline:0;background:none;font:inherit;color:#111}
+  .fixnote{font-size:13px;color:var(--t2);margin-top:10px;text-align:center}
+  .item{transition:background-color 150ms}.item.lit{background:rgba(255,255,255,.06);margin:0 -14px;padding:12px 14px;width:calc(100% + 28px)}
+  .credit{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12px;color:var(--t3);margin-top:22px}
+  .credit::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--t3)}
+
+  @media (prefers-reduced-motion:reduce){.sheet,.scrim,.alts,.swap,.msg,.why,.why-card,#news,.chev{transition:none;animation:none}}
+</style>
+</head>
+<body>
+<div class="picker" id="picker">
+  <button data-who="maya" class="on">Signed in as Maya</button>
+  <button data-who="sam">Signed in as Sam</button>
+</div>
+<p class="hint">Drag across the chart · Fix it · Other ways · Undo · Family tab · chat button</p>
+
+<div class="device">
+  <div class="screen" id="screen"><div class="rw" id="app"></div></div>
+  <div class="dock">
+    <div class="tabs" id="tabs">
+      <button data-tab="home" class="on press" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 3 10.5V21h6v-6h6v6h6V10.5z"/></svg></button>
+      <button data-tab="spending" class="press" aria-label="Spending"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20v-6M10 20V8M15 20v-9M20 20V4"/></svg></button>
+      <button data-tab="family" class="press" aria-label="Family"><svg width="24" height="22" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="18" cy="9" r="2.8"/><path d="M17 14.6c3 .1 5.3 1.9 6 5.4"/></svg></button>
+    </div>
+    <button class="chatb press" id="chatBtn" aria-label="Ask Runway"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+
+<script>
+/* ---------- data: Maya's forecast from the mock engine, Sat Oct 17 → Mon Nov 16 (checking, end of day) ---------- */
+const MAYA = [529,529,529,494,494,208,988,901,901,901,901,901,901,901,814,164,164,164,164,102,913,826,826,826,826,826,718,718,681,681,681];
+const SAM = [2310,2310,2210,2210,2210,2170,2170,2270,2270,2190,2190,2190,2190,2190,2150,2150,1980,1980,1980,1980,3120,3120,3050,3050,3050,3050,2990,2990,2990,2950,2950];
+const EVENTS = { 0: 'Everyday spending', 3: 'Phone bill −$35', 5: 'Credit card payment −$286', 6: 'Paycheck +$780', 15: 'Rent −$650', 19: 'Electric + internet −$62', 20: 'Paycheck +$780', 26: 'Car insurance −$108' };
+const CUSHION = 300;
+const day = (i) => new Date(2026, 9, 17 + i); // calendar days, so the Nov 1 clock change can't shift a date
+const md = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const wmd = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const $ = (n) => '$' + Math.round(n).toLocaleString();
+const shift = (base, moves) => base.map((b, i) => b + moves.reduce((s, [from, amt]) => s + (i >= from ? amt : 0), 0));
+
+/* The fixes. In the app, amounts + resulting forecasts come from the backend (the LLM never does math). */
+const FIX = {
+  savings: { title: 'Move $200 from savings', short: 'Moved $200 from savings', moves: [[0, 200]],
+    facts: [['From', 'Savings · $1,150 → $950'], ['To', 'Checking'], ['When', 'Today'], ['Lowest point after', '$302 on Thu, Nov 5']],
+    lead: "Covers both dips. You'll be okay all month." },
+  sam: { title: 'Let Sam cover $100', short: 'Sam covered $100', moves: [[0, 100], [6, -100]],
+    facts: [['From', 'Sam · within the $100 he set'], ['When', 'Today'], ['Goes back', 'Fri, Oct 23, after your paycheck'], ['Still tight', 'Sun, Nov 1 (rent)']],
+    lead: 'Gets you to payday. Sam already agreed to this, so nobody has to ask.' },
+};
+
+/* ---------- state ---------- */
+const S = { who: 'maya', tab: 'home', applied: null, askedAlex: false, alts: false, samLimit: 100, spend: 0, customOpen: false, pillOpen: false, newsHidden: { maya: false, sam: false } };
+let shown = MAYA.slice();          // what the chart is drawing right now (animates toward target)
+const base = () => S.who === 'sam' ? SAM : S.applied ? shift(MAYA, FIX[S.applied].moves) : MAYA;
+const target = () => S.spend ? shift(base(), [[0, -S.spend]]) : base();   // what-if: less in checking from today on
+
+/* ---------- chart: 30 days, the $300 cushion dashed, below-cushion stretches in red ---------- */
+const W = 354, H = 150, PAD = 8;
+let scale;
+function makeScale(series) {
+  // a big what-if can go below $0, so the floor of the chart can too
+  const m = Math.min(CUSHION, ...series), lo = m < 0 ? m - 60 : Math.max(0, m - 80), hi = Math.max(...series) * 1.04, n = MAYA.length; // series may hold several forecasts (range only)
+  return { x: (i) => (i / (n - 1)) * W, y: (v) => PAD + (1 - (v - lo) / (hi - lo)) * (H - PAD * 2) };
+}
+function drawChart(series) {
+  const svg = document.getElementById('svg');
+  if (!svg) return;
+  const { x, y } = scale, ok = series.every((v) => v >= CUSHION + 0.5);
+  const path = series.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  svg.querySelector('.area').setAttribute('d', `${path}L${W},${H}L0,${H}Z`);
+  svg.querySelectorAll('.line').forEach((l) => l.setAttribute('d', path));
+  svg.querySelector('.main').setAttribute('stroke', ok ? 'var(--green)' : '#e9ecef');
+  svg.querySelector('#fillTop').setAttribute('stop-color', ok ? '#46d483' : '#ffffff');
+  svg.querySelector('#cush').setAttribute('y', y(CUSHION));
+  ['c1', 'c2'].forEach((id) => { const l = svg.querySelector('#' + id); l.setAttribute('y1', y(CUSHION)); l.setAttribute('y2', y(CUSHION)); });
+  svg.querySelector('.ctext').setAttribute('y', y(CUSHION) - 6);
+  svg.querySelector('.today').setAttribute('cy', y(series[0]));
+  // a red dot on the bottom of each dip
+  const dots = [];
+  series.forEach((v, i) => { if (v < CUSHION && !(series[i - 1] < v && series[i - 1] < CUSHION) && !(series[i + 1] < v)) dots.push(i); });
+  svg.querySelector('.dips').innerHTML = dots.map((i) => `<circle cx="${x(i)}" cy="${y(series[i])}" r="4.5" fill="var(--red)" stroke="#0f1215" stroke-width="2"/>`).join('');
+}
+function chartHTML() {
+  return `<div class="chart" id="chart">
+    <svg id="svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance for the next 30 days. Drag to read a day.">
+      <defs>
+        <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop id="fillTop" offset="0" stop-opacity=".16"/><stop offset="1" stop-opacity="0"/></linearGradient>
+        <clipPath id="below"><rect id="cush" x="0" width="${W}" height="${H}"/></clipPath>
+      </defs>
+      <path class="area" fill="url(#fill)"/>
+      <line id="c1" x1="0" x2="${W}" stroke="#6f7a85" stroke-dasharray="3 5" stroke-width="1.2"/>
+      <line id="c2" x1="0" x2="0" stroke="none"/>
+      <text class="ctext" x="${W}" text-anchor="end" fill="#6f7a85" font-size="11" font-family="Barlow">$300 cushion</text>
+      <path class="line main"/>
+      <path class="line" stroke="var(--red)" clip-path="url(#below)"/>
+      <circle class="today" cx="0" r="4.5" fill="#fff" stroke="#0f1215" stroke-width="2"/>
+      <g class="dips"></g>
+      <line class="scrub" y1="0" y2="${H}" stroke="#fff" stroke-opacity=".35" stroke-width="1" visibility="hidden"/>
+      <circle class="scrubdot" r="5" fill="#fff" visibility="hidden"/>
+    </svg>
+    <div class="tip" id="tip"></div>
+    <svg class="plane" id="plane" viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+  </div>
+  <div class="axis"><span>Today</span><span>${md(day(15))}</span><span>${md(day(30))}</span></div>`;
+}
+
+/* Animate the line from what's on screen to the new forecast — interruptible: starts from `shown`, not the old target. */
+let anim;
+function morphTo(next, ms = 700, then) {
+  cancelAnimationFrame(anim);
+  const from = shown.slice(), t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+  const step = (now) => {
+    const t = reduce ? 1 : Math.min(1, (now - t0) / ms);
+    shown = from.map((v, i) => v + (next[i] - v) * ease(t));
+    drawChart(shown);
+    if (t < 1) anim = requestAnimationFrame(step); else { shown = next.slice(); then?.(); }
+  };
+  anim = requestAnimationFrame(step);
+}
+
+/* Takeoff: the $300 cushion is the runway. Once every day clears it, the plane rolls along it and lifts off. */
+function takeoff() {
+  const plane = document.getElementById('plane'), svg = document.getElementById('svg');
+  if (!plane || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const k = svg.getBoundingClientRect().width / W, ground = scale.y(CUSHION) * k - 12, run = W * k;
+  const t0 = performance.now(), ms = 1400;
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / ms), e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const lift = Math.pow(Math.max(0, (e - .55) / .45), 2);          // wheels up after ~half the roll
+    const px = e * run, py = ground - lift * 90;
+    plane.style.opacity = t < .08 ? t / .08 : t > .85 ? (1 - t) / .15 : 1;
+    plane.style.transform = `translate(${px}px,${py}px) rotate(${90 - lift * 30}deg)`;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* Drag across the chart to read any day. */
+let showDay = () => {}, hideDay = () => {};
+function wireScrub() {
+  const chart = document.getElementById('chart'), svg = document.getElementById('svg'), tip = document.getElementById('tip');
+  const line = svg.querySelector('.scrub'), dot = svg.querySelector('.scrubdot');
+  const show = (e) => {
+    const r = svg.getBoundingClientRect();
+    showDay(Math.max(0, Math.min(shown.length - 1, Math.round(((e.clientX - r.left) / r.width) * (shown.length - 1)))));
+  };
+  showDay = (i) => {
+    const r = svg.getBoundingClientRect(), k = r.width / W;
+    const x = scale.x(i), y = scale.y(shown[i]), v = shown[i];
+    line.setAttribute('x1', x); line.setAttribute('x2', x); dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    line.setAttribute('visibility', 'visible'); dot.setAttribute('visibility', 'visible');
+    dot.setAttribute('fill', v < CUSHION ? 'var(--red)' : '#fff');
+    const ev = S.who === 'maya' ? EVENTS[i] : null;
+    tip.innerHTML = `<b style="color:${v < CUSHION ? '#d9443a' : '#111'}">${$(v)}</b> · ${i ? wmd(day(i)) : 'Today'}${ev ? `<span>${ev}</span>` : ''}`;
+    tip.style.left = Math.max(70, Math.min(r.width - 70, x * k)) + 'px';
+    tip.classList.add('on');
+    heroFollow(i);
+  };
+  const hide = hideDay = () => { heroFollow(null); tip.classList.remove('on'); line.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); };
+  chart.addEventListener('pointerdown', (e) => { chart.setPointerCapture(e.pointerId); show(e); });
+  chart.addEventListener('pointermove', show);
+  chart.addEventListener('pointerup', hide); chart.addEventListener('pointerleave', hide); chart.addEventListener('pointercancel', hide);
+}
+
+/* ---------- home ---------- */
+const ICON = {
+  savings: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',
+  person: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c1-4 3.8-6 7-6s6 2 7 6"/></svg>',
+  ask: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  shield: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6z"/></svg>',
+};
+const topBar = () => `<div class="top"><div class="brand"><svg width="22" height="12" viewBox="0 0 22 12"><path d="M1 11C8 11 15 7 21 1" fill="none" stroke="#ff6b5e" stroke-width="2.6" stroke-linecap="round"/></svg>RUNWAY</div><div class="avatar">${S.who === 'sam' ? 'S' : 'M'}</div></div>`;
+
+/* Everything main's Today shows (greeting, balance, pill, tiles, answer, family news, chart + what-if + fix,
+   Coming up), in the v7 look. In the app all of these come straight off GET /forecast. */
+const PAY = { maya: [6, 780], sam: [20, 1140] };   // next paycheck: day index, amount
+const FAMILY_NEWS = { maya: ['Sam covered you $100', 'It goes back to Sam on Fri, Oct 23, after your paycheck.'],
+                      sam: ['You covered Maya $100', 'It comes back to you on Fri, Oct 23.'] };
+const lowOf = (s) => s.reduce((m, v, i) => (v < s[m] ? i : m), 0);
+const longDay = (d) => d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+function heroHTML() {
+  const s = target(), first = s.findIndex((v) => v < CUSHION);
+  const you = S.spend ? 'You’d be' : 'You’re';
+  const chev = `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+  const pill = `<button class="spill ${first < 0 ? 'ok' : ''} ${S.pillOpen ? 'open' : ''} press" id="pill" data-pill aria-expanded="${S.pillOpen}">
+      ${first < 0 ? `${you} covered all month` : first === 0 ? `${S.spend ? 'You’d be' : 'You’re'} under $300 today` : `${you} fine until ${wmd(day(first))}`}${chev}</button>
+    <div class="why ${S.pillOpen ? 'open' : ''}"><div>${whyHTML(s, first)}</div></div>`;
+  return `<div class="hero swap">
+    <div class="bal" id="bal">${$(s[0])}</div>
+    <div class="bal-l" id="balL">${S.spend ? `If you spend ${$(S.spend)} today` : 'In checking'}</div>
+    <div class="evline" id="evl">&nbsp;</div>
+    ${pill}</div>`;
+}
+
+function tilesHTML() {
+  const s = target(), [pi, pa] = PAY[S.who], lo = lowOf(s), spare = Math.max(0, Math.floor(s[lo] - CUSHION));
+  return `<div class="tiles">
+    <div class="tile"><small>Next payday</small><b>${$(pa)}</b><span>${wmd(day(pi))}</span></div>
+    <div class="tile"><small>Spare today</small><b>${$(spare)}</b><span>${spare > 0 ? 'after bills' : 'wait for payday'}</span></div>
+    <div class="tile ${s[lo] < CUSHION ? 'bad' : ''}"><small>Lowest point</small><b>${$(s[lo])}</b><span>${md(day(lo))}</span></div></div>`;
+}
+
+/* What's behind the pill: each day you'd drop under the cushion and what causes it, then the low point. */
+function whyHTML(s, first) {
+  const lo = lowOf(s);
+  if (first < 0) return `<div class="why-card"><p>Your lowest point is <b>${$(s[lo])}</b> on ${wmd(day(lo))}, still above the <b>$300</b> you keep for surprises.</p>
+    ${S.applied ? '<p class="why-foot">Thanks to the $200 you moved from savings today.</p>' : ''}</div>`;
+  const drops = s.map((v, i) => i).filter((i) => s[i] < CUSHION && (i === 0 || s[i - 1] >= CUSHION));
+  const rows = drops.map((i) => `<div class="why-row"><div><b>${wmd(day(i))}</b><span>${(S.who === 'maya' && EVENTS[i]) || 'Everyday spending'}</span></div><em>${$(s[i])}</em></div>`).join('');
+  return `<div class="why-card">
+    <p>You go under the <b>$300</b> you keep for surprises ${drops.length === 1 ? 'once' : `${drops.length} times`} this month:</p>
+    ${rows}
+    <p class="why-foot">Lowest: <b style="color:var(--red)">${$(s[lo])}</b> on ${wmd(day(lo))}${S.who === 'maya' && EVENTS[lo] ? ` (${EVENTS[lo]})` : ''}.</p>
+    ${S.who === 'maya' && !S.applied ? '<button class="cta press" data-fix="savings" style="margin-top:12px;height:46px;font-size:16px">Cover this dip</button>' : ''}</div>`;
+}
+
+function notesHTML() {
+  const s = target(), first = s.findIndex((v) => v < CUSHION), lo = lowOf(s), you = S.spend ? 'You’d be' : 'You’re';
+  const a = first < 0
+    ? [`${you} covered all month.`, `Your balance stays above the $300 you like to keep.`, 'var(--green)', ICON.check]
+    : [`${you} fine until ${longDay(day(first))}.`, `Then your balance drops to ${$(s[lo])} on ${md(day(lo))}, below the $300 you like to keep.`, 'var(--red)', ICON.ask.replace('M12 19V5M6 11l6-6 6 6', 'M12 5v14M6 13l6 6 6-6')];
+  const [t, d] = FAMILY_NEWS[S.who];
+  if (S.newsHidden[S.who]) return '';
+  return `<div style="margin-top:22px" id="news">
+    <div class="note-card"><div class="ic" style="background:rgba(75,157,255,.15);color:#7cb8ff">${ICON.person}</div><div style="flex:1"><b>${t}</b><p>From your family · ${d}</p></div>
+      <button class="x press" data-dismiss aria-label="Dismiss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div></div>`;
+}
+
+function fixHTML() {
+  if (S.who === 'sam') return '';
+  if (S.applied) return `<div class="done swap" style="margin-top:16px">
+      <div class="ic" style="background:rgba(70,212,131,.15);color:var(--green)">${ICON.check}</div>
+      <div><small style="display:block;font-size:13px;color:var(--t2)">Done · approved just now</small><b>${FIX.savings.short}</b></div>
+      <button class="undo press" data-undo>Undo</button></div>`;
+  if (target().every((v) => v >= CUSHION)) return '';
+  return `<button class="cta press" data-fix="savings">Cover this dip</button>
+    <p class="fixnote">We’ll suggest moving money from savings. Nothing moves until you say yes.</p>`;
+}
+
+/* Custom what-if: a chip that turns into a small dollar field; Enter (or leaving it) applies, Esc cancels. */
+const PRESETS = [20, 50, 100];
+function customHTML() {
+  if (S.customOpen) return `<form class="custom" id="customForm"><span>$</span><input id="customIn" inputmode="decimal" placeholder="0" aria-label="Custom amount" value="${S.spend && !PRESETS.includes(S.spend) ? S.spend : ''}"></form>`;
+  const on = S.spend && !PRESETS.includes(S.spend);
+  return `<button class="press ${on ? 'on' : ''}" data-custom>${on ? $(S.spend) : 'Custom'}</button>`;
+}
+function wireCustom() {
+  const f = document.getElementById('customForm'), i = document.getElementById('customIn');
+  if (!f) return;
+  i.focus(); i.select();
+  const done = (apply) => {
+    if (!S.customOpen) return;
+    S.customOpen = false;
+    const v = Math.round(Number(i.value.replace(/[^0-9.]/g, '')));
+    if (apply) S.spend = v > 0 ? Math.min(v, 5000) : 0;
+    const y = document.getElementById('screen').scrollTop; render(); document.getElementById('screen').scrollTop = y; morphTo(target(), 450);
+  };
+  f.addEventListener('submit', (e) => { e.preventDefault(); done(true); });
+  i.addEventListener('blur', () => done(true));
+  i.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } });
+}
+
+function chartCardHTML() {
+  return `<h2>Next 30 days</h2><div class="card">${chartHTML()}
+    <div class="whatif"><span>What if I spend today:</span>${[20, 50, 100].map((n) =>
+      `<button class="press ${S.spend === n ? 'on' : ''}" data-spend="${n}">${$(n)}</button>`).join('')}
+      ${customHTML()}</div>
+    ${fixHTML()}</div>`;
+}
+
+const ROWS = {
+  maya: [[3, 'Phone bill', -35], [5, 'Credit card payment', -286], [6, 'Paycheck', 780]],
+  sam: [[6, 'Back from Maya', 100], [16, 'Electric bill', -170]],
+};
+function comingHTML() {
+  return `<h2>Coming up</h2><div class="list">${ROWS[S.who].map(([i, w, a]) =>
+    `<div class="item" data-day="${i}"><div><div class="what">${w}</div><div class="when">${wmd(day(i))}</div></div><div class="amt ${a > 0 ? 'in' : ''}">${a > 0 ? '+' : '−'}${$(Math.abs(a))}</div></div>`).join('')}</div>`;
+}
+
+function homeHTML() {
+  return `${topBar()}${heroHTML()}${tilesHTML()}${notesHTML()}${chartCardHTML()}${comingHTML()}
+    <p class="credit">Balances from Capital One Nessie</p>`;
+}
+
+/* The big number follows the cursor (main's behaviour); null = back to today. */
+function heroFollow(i) {
+  const bal = document.getElementById('bal'), l = document.getElementById('balL'), ev = document.getElementById('evl');
+  if (!bal) return;
+  if (i === null || i === 0) {
+    bal.textContent = $(shown[0]); bal.classList.remove('low');
+    l.textContent = S.spend ? `If you spend ${$(S.spend)} today` : 'In checking'; ev.innerHTML = '&nbsp;';
+  } else {
+    bal.textContent = $(shown[i]); bal.classList.toggle('low', shown[i] < CUSHION);
+    l.textContent = wmd(day(i)); ev.textContent = (S.who === 'maya' && EVENTS[i]) || 'Everyday spending only';
+  }
+  document.querySelectorAll('.item[data-day]').forEach((r) => r.classList.toggle('lit', Number(r.dataset.day) === i));
+}
+
+/* ---------- family: where the safety-net detail lives now ---------- */
+function familyHTML() {
+  if (S.who === 'sam') return `${topBar()}<h1 class="page-title">Family</h1>
+    <p class="page-sub">How much Runway may move from you, without asking, to cover someone until their payday.</p>
+    <h2>Your limits</h2><div class="list">
+      <div class="person"><div class="av">M</div><div><div class="what">Maya</div><div class="when">$100 with her now · back Fri</div></div>
+        <div class="stepper"><button class="press" data-lim="-50" aria-label="Lower Maya's limit">−</button><b>$${S.samLimit}</b><button class="press" data-lim="50" aria-label="Raise Maya's limit">+</button></div></div>
+      <div class="person"><div class="av">J</div><div><div class="what">Jordan</div><div class="when">Nothing out</div></div>
+        <div class="stepper"><button disabled style="opacity:.4">−</button><b>$300</b><button disabled style="opacity:.4">+</button></div></div>
+    </div>
+    <p class="fine">Only you can change these. Over the limit, Runway asks you on your phone first.</p>
+    <h2>Recent</h2><div class="list">
+      <div class="person"><div class="av" style="color:var(--green)">${ICON.shield}</div><div><div class="what">You covered Maya $100</div><div class="when">Today · comes back Fri, Oct 23</div></div></div>
+      <div class="person"><div class="av" style="color:var(--green)">${ICON.check}</div><div><div class="what">Jordan paid you back $150</div><div class="when">Oct 9</div></div></div>
+    </div>`;
+  return `${topBar()}<h1 class="page-title">Family</h1>
+    <p class="page-sub">People who agreed to cover you until payday. Nobody has to ask.</p>
+    <h2>Covering you</h2><div class="list">
+      <div class="person"><div class="av">S</div><div><div class="what">Sam</div><div class="when">${S.applied === 'sam' ? '$100 with you now · goes back Fri' : 'Up to $100'}</div></div><div class="amt" style="margin-left:auto;font:700 18px 'Barlow Condensed'">$${S.applied === 'sam' ? 0 : 100} left</div></div>
+      <div class="person"><div class="av">J</div><div><div class="what">Jordan</div><div class="when">Up to $50</div></div><div class="amt" style="margin-left:auto;font:700 18px 'Barlow Condensed'">$50 left</div></div>
+    </div>
+    <p class="fine">They set these limits. Money always goes back on your next payday.</p>
+    <h2>Owes you</h2><div class="list">
+      <div class="person"><div class="av">A</div><div><div class="what">Alex</div><div class="when">${S.askedAlex ? 'Asked today' : 'Groceries split'}</div></div><div class="amt in" style="margin-left:auto;font:700 18px 'Barlow Condensed'">$45</div></div>
+    </div>`;
+}
+
+function spendingHTML() {
+  const cats = [['Food & drink', 212, '#ff6b5e'], ['Shopping', 148, '#f5b83d'], ['Transport', 96, '#4b9dff'], ['Subscriptions', 41, '#46d483']];
+  return `${topBar()}<h1 class="page-title">Spending</h1><p class="page-sub">October so far · $497</p>
+    <h2>Where it went</h2><div class="list" style="padding:8px 14px 12px">${cats.map(([c, v, col]) =>
+      `<div style="padding:8px 0"><div style="display:flex;justify-content:space-between"><span class="what" style="font-weight:600">${c}</span><b style="font:700 17px 'Barlow Condensed'">$${v}</b></div><div class="bar"><i style="width:${v / 2.2}%;background:${col}"></i></div></div>`).join('')}</div>
+    <p class="fine">Unchanged from the current app. Shown so the tab bar goes somewhere.</p>`;
+}
+
+/* ---------- sheets ---------- */
+const sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim');
+function openSheet(html) { sheet.innerHTML = '<div class="grab"></div>' + html; sheet.classList.add('on'); scrim.classList.add('on'); }
+function closeSheet() { sheet.classList.remove('on'); scrim.classList.remove('on'); }
+scrim.addEventListener('click', closeSheet);
+
+function approveSheet(kind) {
+  const f = FIX[kind];
+  openSheet(`<h3>${f.title}</h3><p class="lead">${f.lead}</p>
+    <div class="facts">${f.facts.map(([k, v]) => `<div class="fact"><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+    <div class="safe">${ICON.shield}Nothing moves until you approve. You can undo it today.</div>
+    <div class="btns"><button class="no press" data-close>Not now</button><button class="yes press" data-approve="${kind}">Approve</button></div>`);
+}
+
+const CHAT = {
+  'Can I afford $180 Friday?': 'Not safely. After rent on Nov 1 you would be down to <b>−$78</b> by Nov 5. After Fix it, you could spend about <b>$2</b> more and stay above $300.',
+  'Why Oct 22?': 'Your credit card payment of <b>$286</b> lands Thu, Oct 22, a day before your <b>$780</b> paycheck. That leaves <b>$208</b>.',
+  'What subscriptions do I have?': 'iCloud+ <b>$9.99</b>, Spotify <b>$11.99</b> and Netflix <b>$15.49</b>: <b>$37.47</b> a month.',
+};
+function chatSheet() {
+  openSheet(`<h3>Ask Runway</h3><p class="lead">Every number comes from your forecast, never guessed.</p>
+    <div class="msgs" id="msgs"><div class="msg bot">Hi Maya. Ask me anything about your money.</div></div>
+    <div class="chips">${Object.keys(CHAT).map((q) => `<button class="press" data-q="${q}">${q}</button>`).join('')}</div>
+    <form class="ask" id="askForm"><input id="askIn" placeholder="Ask about your money" autocomplete="off" aria-label="Your question">
+      <button class="press" id="askGo" aria-label="Send" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></form>`);
+  const f = document.getElementById('askForm'), i = document.getElementById('askIn'), go = document.getElementById('askGo');
+  i.addEventListener('input', () => { go.disabled = !i.value.trim(); });
+  f.addEventListener('submit', (e) => { e.preventDefault(); const q = i.value.trim(); if (!q) return; i.value = ''; go.disabled = true; ask(q); });
+}
+
+/* Prototype answers: the three known questions, a few keywords, otherwise an honest placeholder.
+   In the app every reply comes from the agent, with numbers from the forecast tools. */
+function reply(q) {
+  const k = q.toLowerCase();
+  if (CHAT[q]) return CHAT[q];
+  if (/afford|spend|buy/.test(k)) return CHAT['Can I afford $180 Friday?'];
+  if (/subscri|netflix|spotify/.test(k)) return CHAT['What subscriptions do I have?'];
+  if (/why|dip|oct 22|thursday|low/.test(k)) return CHAT['Why Oct 22?'];
+  if (/payday|paycheck|paid/.test(k)) return 'Your next paycheck is <b>$780</b> on <b>Fri, Oct 23</b>.';
+  if (/balance|checking|how much/.test(k)) return `You have <b>${$(shown[0])}</b> in checking today.`;
+  return 'In the app, the agent answers this from your forecast. This demo only knows a few questions: try affording something, subscriptions, payday or why Oct 22.';
+}
+const known = (q) => !reply(q).startsWith('In the app');
+function ask(q) {
+  const m = document.getElementById('msgs');
+  const esc = q.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  m.insertAdjacentHTML('beforeend', `<div class="msg me">${esc}</div>`);
+  m.scrollTop = m.scrollHeight;
+  setTimeout(() => { m.insertAdjacentHTML('beforeend', `<div class="msg bot">${reply(q)}${known(q) ? '<small>From your forecast</small>' : ''}</div>`); m.scrollTop = m.scrollHeight; }, 500);
+}
+
+/* ---------- render + wiring ---------- */
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = S.tab === 'home' ? homeHTML() : S.tab === 'family' ? familyHTML() : spendingHTML();
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
+  document.querySelectorAll('#picker button').forEach((b) => b.classList.toggle('on', b.dataset.who === S.who));
+  if (S.tab === 'home') {
+    scale = makeScale(S.who === 'sam' ? [...SAM, ...shift(SAM, [[0, -Math.max(100, S.spend)]])] : [...shift(MAYA, FIX.savings.moves), ...shift(MAYA, [[0, -Math.max(100, S.spend)]])]);  // room for the what-if, custom included
+    document.querySelectorAll('.item[data-day]').forEach((r) => {
+      r.addEventListener('pointerenter', () => showDay(Number(r.dataset.day)));
+      r.addEventListener('pointerdown', () => showDay(Number(r.dataset.day)));
+      r.addEventListener('pointerleave', () => hideDay());
+    });
+    drawChart(shown);
+    wireScrub();
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.who) { S.who = d.who; S.tab = 'home'; S.alts = false; S.spend = 0; shown = target().slice(); render(); }
+  else if (d.tab) { S.tab = d.tab; render(); document.getElementById('screen').scrollTop = 0; }
+  else if (d.fix) approveSheet(d.fix);
+  else if (d.close !== undefined) closeSheet();
+  else if (d.approve) {
+    t.textContent = 'Confirming with Auth0…'; t.disabled = true;
+    setTimeout(() => {
+      closeSheet(); S.applied = S.applied === 'sam' && d.approve === 'savings' ? 'savings' : d.approve; S.alts = false;
+      S.spend = 0; const y = document.getElementById('screen').scrollTop; render(); document.getElementById('screen').scrollTop = y;  // stay on the chart so the takeoff is seen
+      morphTo(target(), 800, () => { if (target().every((v) => v >= CUSHION)) takeoff(); });
+    }, 900);
+  }
+  else if (d.undo !== undefined) { S.applied = null; S.spend = 0; render(); morphTo(target(), 600); }
+  else if (d.pill !== undefined) {
+    S.pillOpen = !S.pillOpen; t.classList.toggle('open', S.pillOpen); t.setAttribute('aria-expanded', S.pillOpen);
+    document.querySelector('.why').classList.toggle('open', S.pillOpen);
+  }
+  else if (d.dismiss !== undefined) {
+    const n = document.getElementById('news');
+    n.style.height = n.offsetHeight + 'px'; n.offsetHeight; n.classList.add('gone');
+    setTimeout(() => { S.newsHidden[S.who] = true; const y = document.getElementById('screen').scrollTop; render(); document.getElementById('screen').scrollTop = y; }, 320);
+  }
+  else if (d.custom !== undefined) { S.customOpen = true; const y = document.getElementById('screen').scrollTop; render(); document.getElementById('screen').scrollTop = y; wireCustom(); }
+  else if (d.spend) { S.spend = S.spend === Number(d.spend) ? 0 : Number(d.spend); const y = document.getElementById('screen').scrollTop; render(); document.getElementById('screen').scrollTop = y; morphTo(target(), 450); }
+  else if (d.alts !== undefined) { S.alts = !S.alts; document.querySelector('.alts').classList.toggle('open', S.alts); t.textContent = S.alts ? 'Hide other ways' : 'Other ways'; }
+  else if (d.alex !== undefined) { S.askedAlex = true; render(); }
+  else if (d.lim) { S.samLimit = Math.max(0, Math.min(1000, S.samLimit + Number(d.lim))); render(); }
+  else if (d.q) ask(d.q);
+});
+document.getElementById('chatBtn').addEventListener('click', chatSheet);
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+render();
+</script>
+</body>
+</html>
