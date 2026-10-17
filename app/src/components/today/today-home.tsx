@@ -11,6 +11,7 @@
  * Every number comes from GET /forecast, GET /me and GET /safety-net. The fix is the agent's
  * proposal (POST /agent/chat "Fix it"); nothing moves until the user approves it in the sheet.
  */
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition, useReducedMotion } from 'react-native-reanimated';
@@ -24,10 +25,10 @@ import { BalanceChart } from '@/components/today/today-interactive';
 import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
-import { money, monthDay, plain, weekdayDate } from '@/lib/format';
+import { money, monthDay, weekdayDate } from '@/lib/format';
 import { isClear, nextPaycheck, runwayDays, safeToSpend, upcoming } from '@/lib/runway';
-import { setStore, useStore } from '@/lib/store';
-import type { Forecast, ForecastEvent, Me } from '@/lib/types';
+import { useStore } from '@/lib/store';
+import type { Forecast, ForecastEvent, Me, SafetyNetSummary, SupportSummary } from '@/lib/types';
 
 const WHAT_IFS = [20, 50, 100];
 const CUSTOM_MAX = 5000;
@@ -49,6 +50,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
   const store = useStore();
   const me = useLoad(() => api.me(), String(store.dataVersion));
   const family = useLoad(() => api.safetyNet(), String(store.dataVersion));
+  const support = useLoad(() => api.support(), String(store.dataVersion));
   const [spend, setSpend] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
   const [rowDate, setRowDate] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
 
   const hero = <Hero view={view} spend={spend} point={point} open={open} onToggle={() => setOpen(!open)} />;
   const details = open ? <Details view={view} f={f} spend={spend} me={me.data} approved={store.approvedAmount} /> : null;
-  const note = family.data?.events.find((e) => !store.dismissed.includes(e.at));
+  const net = safetyNetLine(family.data, support.data);
 
   const chart = (
     <View>
@@ -73,19 +75,18 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
       </View>
     </View>
   );
-  const notes = note ? (
-    <Animated.View exiting={FadeOut.duration(200)} layout={EASE} style={{ marginTop: 14 }}>
-      <View style={s.note}>
-        <Avatar tint={C.blue}><Icon name="shield" size={18} color="#7cb8ff" /></Avatar>
+  const notes = net ? (
+    <Animated.View entering={FadeIn.duration(200)} layout={EASE} style={{ marginTop: 14 }}>
+      <SectionLabel>Your safety net</SectionLabel>
+      <PressableScale onPress={() => router.navigate('/circles')} accessibilityRole="button"
+        accessibilityLabel={`${net.title}. Manage protection`} style={s.note}>
+        <Avatar tint={net.tint}><Icon name="shield" size={18} color={net.tint} /></Avatar>
         <View style={{ flex: 1 }}>
-          <Text style={s.noteTitle}>{plain(note.message)}</Text>
-          <Text style={s.noteSub}>From your family</Text>
+          <Text style={s.noteTitle}>{net.title}</Text>
+          <Text style={s.noteSub}>{net.sub}</Text>
         </View>
-        <PressableScale onPress={() => setStore({ dismissed: [...store.dismissed, note.at] })} style={s.x}
-          accessibilityRole="button" accessibilityLabel="Dismiss">
-          <Icon name="close" size={14} color={C.text2} />
-        </PressableScale>
-      </View>
+        <Text style={s.manage}>Manage</Text>
+      </PressableScale>
     </Animated.View>
   ) : null;
   const coming = <ComingUp f={f} selected={point?.date ?? null} onFocus={setRowDate} />;
@@ -341,6 +342,42 @@ function ComingUp({ f, selected, onFocus }: { f: Forecast; selected: string | nu
   );
 }
 
+const STILL_OUT = ['funding', 'active', 'repaying', 'repay_failed', 'reconcile'];
+
+/**
+ * The one-line state of MY safety net — only my own side: what I received and owe, or what I gave and
+ * am owed, or who's ready to help. Never anyone else's money.
+ */
+function safetyNetLine(d: SafetyNetSummary | null, sup: SupportSummary | null): { title: string; sub: string; tint: string } | null {
+  if (!d || !sup) return null;
+  const borrowed = d.borrowed.filter((b) => STILL_OUT.includes(b.status));
+  const lent = d.lent.filter((b) => STILL_OUT.includes(b.status));
+  if (borrowed.length) {
+    const total = borrowed.reduce((t, b) => t + b.amount, 0);
+    const who = borrowed.length === 1 ? borrowed[0].lender_name : `${borrowed.length} people`;
+    return { title: `Your safety net is active: ${money(total, 0)} from ${who}`, sub: 'Repayment is expected after your next verified payday.', tint: C.green };
+  }
+  if (d.approvals_waiting.length) {
+    const b = d.approvals_waiting[0];
+    return { title: `${b.borrower_name} could use ${money(b.amount, 0)} of support`, sub: 'Over your automatic limit — it’s your call.', tint: C.amber };
+  }
+  if (lent.length) {
+    const total = lent.reduce((t, b) => t + b.amount, 0);
+    const who = lent.map((b) => b.borrower_name).join(' and ');
+    return { title: `Your support is active: ${money(total, 0)} with ${who}`, sub: `Expected back ${weekdayDate(lent[0].due_date)}.`, tint: '#7cb8ff' };
+  }
+  const offers = [...sup.supporters, ...sup.supporting].filter((a) => !a.i_agreed && a.they_agreed);
+  if (offers.length) return { title: 'Someone is waiting for your answer', sub: 'Review a Quiet Support Agreement.', tint: C.amber };
+  const ready = sup.supporters.filter((a) => a.state === 'active');
+  if (ready.length) {
+    return { title: 'Your trusted circle is ready', sub: `${ready.length === 1 ? ready[0].supporter_name : `${ready.length} people`} agreed to cover a short gap — without seeing your money.`, tint: C.green };
+  }
+  if (sup.supporting.some((a) => a.state === 'active')) {
+    return { title: 'You’re someone’s safety net', sub: 'Runway only uses your help when your own bills stay covered.', tint: '#7cb8ff' };
+  }
+  return null;
+}
+
 const s = StyleSheet.create({
   wideRow: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
 
@@ -370,6 +407,7 @@ const s = StyleSheet.create({
   noteTitle: { fontFamily: F.bodySemi, fontSize: 15, lineHeight: 20, color: C.text },
   noteSub: { fontFamily: F.body, fontSize: 13, color: C.text2, marginTop: 3 },
   x: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  manage: { fontFamily: F.bodySemi, fontSize: 13, color: C.text2, alignSelf: 'center' },
 
   card: { backgroundColor: C.card, borderRadius: 22, padding: 16 },
   whatIf: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 },

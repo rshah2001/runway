@@ -15,6 +15,7 @@ import type {
   SafetyLimit,
   SafetyNetSummary,
   Spending,
+  SupportSummary,
 } from './types';
 import { authHeader } from './auth';
 import { currentPersona } from './session';
@@ -68,6 +69,12 @@ export const api = {
   p2pSettle: (requestId: string) => request<P2PRequest>(`/p2p/requests/${requestId}/settle`, { method: 'POST' }),
   // family safety net
   safetyNet: (persona = currentPersona()) => request<SafetyNetSummary>(`/safety-net?persona=${persona}`),
+  // Quiet Support Agreements: each person says yes (or stops) for their own side only
+  support: (persona = currentPersona()) => request<SupportSummary>(`/support?persona=${persona}`),
+  supportConsent: (supporter: string, recipient: string, persona = currentPersona()) =>
+    request<SupportSummary>('/support/consent', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
+  supportRevoke: (supporter: string, recipient: string, persona = currentPersona()) =>
+    request<SupportSummary>('/support/revoke', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
   setSafetyLimit: (lender: string, borrower: string, limit: number, enabled = true) =>
     request<SafetyLimit>('/safety-net/limits', { method: 'PUT', body: JSON.stringify({ lender, borrower, limit, enabled }) }),
   runSafetyNet: (persona?: string) =>
