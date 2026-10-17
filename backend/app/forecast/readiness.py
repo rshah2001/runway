@@ -119,3 +119,23 @@ def with_report_card(ready: Readiness, card: ReportCard | None) -> Readiness:
             "reasons": [*ready.reasons, reason],
         }
     )
+
+
+def _how_long(days: int) -> str:
+    return f"{days // 30} months" if days >= 60 else f"{days} days"
+
+
+def confidence_note(ready: Readiness) -> str:
+    """One plain sentence on how sure the forecast is, for the agent to say in its own voice. Written
+    here, not by the model, so the figures in it are the engine's."""
+    if ready.status == "confident":
+        return f"I've watched {_how_long(ready.days_of_history)} of your money, so I'm sure of this."
+    if ready.status == "learning" and ready.days_of_history < CONFIDENT_SPEND_DAYS:
+        day = f"day {ready.days_of_history} of {CONFIDENT_SPEND_DAYS}"
+        return f"I'm still learning your money, {day}, so take this as a rough guide."
+    if ready.status == "learning":
+        return "I haven't locked onto your payday yet, so take this as a rough guide."
+    return (
+        f"I've only known your money for {_how_long(ready.days_of_history)} and haven't learned your payday yet, "
+        "so this is a sketch, not a forecast."
+    )
