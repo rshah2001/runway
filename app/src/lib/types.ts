@@ -42,11 +42,33 @@ export type PendingAction = {
   kind: 'transfer' | 'reschedule_bill';
   description: string;
   amount: number | null;
-  status: 'awaiting_approval' | 'approved' | 'declined' | 'executed';
+  status: 'awaiting_approval' | 'approved' | 'declined' | 'executed' | 'failed'; // failed = check with the bank, never retry
 };
 
 export type ChatResponse = {
   reply: string;
   tool_calls: string[];
   pending_action: PendingAction | null;
+};
+
+export type Persona = { slug: string; first_name: string; story: string };
+
+export type CategorySpend = { category: string; spent: number; purchases: number };
+
+export type DailySpend = { date: string; spent: number };
+
+export type SpendingTransaction = {
+  date: string;
+  merchant: string;
+  category: string;
+  amount: number; // positive = money spent
+  account: string;
+};
+
+export type Spending = {
+  month: string; // 'YYYY-MM'
+  total: number;
+  categories: CategorySpend[]; // biggest first
+  daily: DailySpend[]; // from the Tiger Data continuous aggregate in live mode
+  transactions: SpendingTransaction[]; // newest first
 };

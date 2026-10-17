@@ -19,12 +19,33 @@ backend/
 ├── app/
 │   ├── main.py            routes (thin — delegate to modules)
 │   ├── schemas.py         the API contract (mirror in app/src/lib/types.ts)
-│   ├── nessie/client.py   MOCK → real Nessie client
+│   ├── config.py          live vs demo mode
+│   ├── data.py            what the routes call: live data or demo fallback
+│   ├── ingest.py          Nessie → Tiger Data sync (python -m app.ingest)
+│   ├── db/                Tiger Data: pool, schema (hypertable + continuous aggregate), repo queries
+│   ├── nessie/client.py   real Nessie client (integer cents, retries)
+│   ├── nessie/demo.py     demo data for keyless runs
 │   ├── forecast/engine.py MOCK schedule → real engine (port of prototype) + ML
 │   └── agent/chat.py      MOCK keyword rules → Gemini tool calling + Auth0 approval
-├── seed/                  (todo) create demo personas in Nessie
+├── seed/                  demo personas → Nessie (python -m seed)
 └── evals/                 (todo) forecast backtest + agent accuracy suite
 ```
+
+## Live mode vs demo mode
+
+With `NESSIE_API_KEY` and `DATABASE_URL` in the repo-root `.env`, the API serves **live data**
+(Nessie → Tiger Data). Without them — CI, or a teammate with no keys — it serves built-in demo data
+with the same shapes. `GET /health` says which (`"mode": "live"` or `"demo"`). Tests always run in demo mode.
+
+## Seed + sync (live mode)
+
+```bash
+.venv/bin/python -m seed               # create Maya / Jordan / Sam in Nessie + Tiger Data (never duplicates)
+.venv/bin/python -m seed --reset maya  # rebuild a persona for today
+.venv/bin/python -m app.ingest         # re-sync Nessie → Tiger Data
+```
+
+See `docs/NESSIE.md` for how the current Nessie API behaves (integer cents, no transfer payee, …).
 
 Try it: `POST /agent/chat {"message": "can I afford $180?"}`, then `{"message": "fix it"}`, then
 approve the returned action at `POST /actions/{id}/approve`.

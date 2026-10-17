@@ -14,8 +14,28 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_health() -> None:
-    assert client.get("/health").json() == {"ok": True}
+def test_health_reports_demo_mode() -> None:
+    assert client.get("/health").json() == {"ok": True, "mode": "demo"}
+
+
+def test_personas_list_the_three_demo_stories() -> None:
+    slugs = [p["slug"] for p in client.get("/personas").json()]
+    assert slugs == ["maya", "jordan", "sam"]
+
+
+def test_spending_shape_and_totals_add_up() -> None:
+    body = client.get("/spending?month=2026-10").json()
+    assert body["month"] == "2026-10"
+    assert body["total"] == pytest.approx(sum(c["spent"] for c in body["categories"]))
+    spent = [c["spent"] for c in body["categories"]]
+    assert spent == sorted(spent, reverse=True)  # biggest category first
+    dates = [t["date"] for t in body["transactions"]]
+    assert dates == sorted(dates, reverse=True)  # newest first
+
+
+@pytest.mark.parametrize("query", ["month=2026-13", "month=oct", "persona=Maya", "persona=../etc"])
+def test_spending_rejects_bad_input(query: str) -> None:
+    assert client.get(f"/spending?{query}").status_code == 422
 
 
 def test_me_has_accounts() -> None:
@@ -69,3 +89,9 @@ def test_cors_only_allows_app_origins() -> None:
     blocked = client.get("/health", headers={"Origin": "https://evil.example"})
     assert allowed.headers.get("access-control-allow-origin") == "http://localhost:8081"
     assert "access-control-allow-origin" not in blocked.headers
+
+
+def test_live_transfers_are_off_by_default() -> None:
+    from app.config import get_settings
+
+    assert get_settings().live_transfers is False  # real money moves only after Auth0 lands

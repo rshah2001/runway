@@ -27,34 +27,29 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/me` | customer + accounts (from Auth0 user → Nessie customer id) |
+| GET | `/me?persona=maya` | customer + accounts with live balances (later: from the Auth0 user) |
 | GET | `/forecast?days=30` | `{ points: [{date, balance}], low: {date, balance}, events: [...] }` |
 | POST | `/simulate` `{amount, date, label}` | same shape as `/forecast`, with the purchase applied |
 | GET | `/recurring` | `[{merchant, amount, interval_days, next_date}]` |
-| GET | `/spending?month=YYYY-MM` | category totals + transactions *(todo — not in the mock yet)* |
+| GET | `/personas` | demo personas (`maya`, `jordan`, `sam`) |
+| GET | `/spending?month=YYYY-MM&persona=maya` | category totals, daily spend (continuous aggregate), transactions |
 | POST | `/agent/chat` `{message}` | `{reply, tool_calls, pending_action?}` |
 | POST | `/actions/{id}/approve` | executes the Nessie call, returns the new forecast |
 
-## Tiger Data schema (draft)
+## Tiger Data schema (live — source of truth: `backend/app/db/schema.py`)
 
-```sql
-CREATE TABLE transactions (
-  ts          TIMESTAMPTZ NOT NULL,
-  account_id  TEXT        NOT NULL,
-  kind        TEXT        NOT NULL,   -- purchase | deposit | withdrawal | transfer | bill
-  merchant_id TEXT,
-  category    TEXT,
-  amount      NUMERIC(12,2) NOT NULL, -- negative = money out
-  nessie_id   TEXT UNIQUE
-);
-SELECT create_hypertable('transactions', 'ts');
+| Object | Kind | Purpose |
+|---|---|---|
+| `transactions` | **hypertable** (7-day chunks, compressed after 180 days, segmented by customer) | every purchase, deposit, transfer and paid bill — signed amounts |
+| `daily_spend` | **continuous aggregate** (real-time, refreshed every 15 min) | per-day, per-category spend → Spending screen + forecast |
+| `accounts` | table | opening balance + time; live balance = opening + transactions since |
+| `bills` | table | upcoming recurring bills — the forecast's scheduled outflows |
+| `personas`, `merchants` | tables | demo persona ids, merchant categories |
 
-CREATE MATERIALIZED VIEW daily_spend
-WITH (timescaledb.continuous) AS
-SELECT time_bucket('1 day', ts) AS day, account_id, category, SUM(-amount) AS spent
-FROM transactions WHERE amount < 0
-GROUP BY day, account_id, category;
-```
+**For the forecast engine and agent** (`backend/app/db/repo.py` — no SQL needed):
+`accounts_with_balances(conn, customer_id)`, `transactions(conn, customer_id, since, until)`,
+`bills(conn, customer_id)`, `daily_spend(conn, customer_id, start, end)`; get a connection with
+`with pool.connection() as conn:` and the customer with `repo.persona(conn, "maya")`.
 
 ## Stack
 
