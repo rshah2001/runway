@@ -85,19 +85,35 @@ PUSH_HOSTS = (
 )
 
 
-def allowed_endpoint(endpoint: str) -> bool:
+def canonical_endpoint(endpoint: str) -> str | None:
+    """The endpoint rebuilt from its parsed parts if it's a browser push service, else None. Anything
+    two URL parsers could read differently (backslashes, user@host, whitespace, control characters)
+    is refused, and only the rebuilt URL is ever stored or sent to."""
     from urllib.parse import urlsplit
 
+    if any(c in endpoint for c in "\\@") or any(ord(c) <= 32 or ord(c) == 127 for c in endpoint):
+        return None
     u = urlsplit(endpoint)
+    if u.scheme != "https" or u.username or u.password or u.fragment:
+        return None
+    try:
+        port = u.port
+    except ValueError:
+        return None
     host = (u.hostname or "").lower()
-    if u.scheme != "https" or u.port not in (None, 443):
-        return False
-    return any(host == h.lstrip(".") if not h.startswith(".") else host.endswith(h) for h in PUSH_HOSTS)
+    if port not in (None, 443) or not any(host.endswith(h) if h.startswith(".") else host == h for h in PUSH_HOSTS):
+        return None
+    return f"https://{host}{u.path or '/'}" + (f"?{u.query}" if u.query else "")
+
+
+def allowed_endpoint(endpoint: str) -> bool:
+    return canonical_endpoint(endpoint) is not None
 
 
 def subscribe(slug: str, endpoint: str, p256dh: str, auth: str) -> None:
     """Remember this browser for `slug` (re-subscribing the same browser just updates it)."""
-    if not allowed_endpoint(endpoint):
+    endpoint = canonical_endpoint(endpoint) or ""
+    if not endpoint:
         raise ValueError("not a browser push service")
     if not get_settings().live:
         _demo_subs[endpoint] = {"slug": slug, "endpoint": endpoint, "p256dh": p256dh, "auth": auth}
@@ -140,17 +156,28 @@ def _forget(endpoint: str) -> None:
 # ---------- sending ----------
 def send(sub: dict, payload: dict, keys: Vapid) -> bool:
     """Push one notification to one browser. False if it didn't go (a dead subscription is dropped)."""
+    import requests
     from pywebpush import WebPushException, webpush
 
+    endpoint = canonical_endpoint(sub["endpoint"])
+    if endpoint is None:  # stored before the rules tightened, or tampered with: never send
+        _forget(sub["endpoint"])
+        return False
+    session = requests.Session()
+    session.max_redirects = 0  # a push service never redirects; following one could reach anywhere
     try:
         webpush(
-            subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
+            requests_session=session,
+            subscription_info={"endpoint": endpoint, "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
             data=json.dumps(payload),
             vapid_private_key=keys.private_key,
             vapid_claims={"sub": keys.subject},
             ttl=12 * 3600,  # a heads-up older than half a day isn't worth delivering
         )
         return True
+    except requests.TooManyRedirects:
+        log.warning("push to a %s browser was redirected; not followed", sub["slug"])
+        return False
     except WebPushException as e:
         status = getattr(e.response, "status_code", None)
         if status in (404, 410):

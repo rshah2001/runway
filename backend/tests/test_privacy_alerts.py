@@ -184,3 +184,23 @@ def test_only_real_push_services_are_accepted() -> None:
     assert not alerts.allowed_endpoint("https://fcm.googleapis.com.evil.example/x")
     assert not alerts.allowed_endpoint("https://fcm.googleapis.com:8443/x")
     assert not alerts.allowed_endpoint("https://notify.windows.com.evil.example/x")
+    assert not alerts.allowed_endpoint("https://evil.example\\@fcm.googleapis.com/x")  # parser differential
+    assert not alerts.allowed_endpoint("https://user@fcm.googleapis.com/x")
+    assert not alerts.allowed_endpoint("https://fcm.googleapis.com/x y")
+    assert not alerts.allowed_endpoint("https://fcm.googleapis.com:99999/x")
+    assert (
+        alerts.canonical_endpoint("https://FCM.googleapis.com/fcm/send/a?b=1")
+        == "https://fcm.googleapis.com/fcm/send/a?b=1"
+    )
+
+
+def test_delivery_never_follows_a_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
+    import pywebpush
+
+    seen = {}
+    monkeypatch.setattr(pywebpush, "webpush", lambda **kw: seen.update(kw))
+    keys = alerts.Vapid("pub", "priv", "mailto:x@example.com")
+    sub = {"slug": "maya", "endpoint": "https://fcm.googleapis.com/fcm/send/a", "p256dh": "p", "auth": "a"}
+    assert alerts.send(sub, {"title": "t"}, keys)
+    assert seen["requests_session"].max_redirects == 0
+    assert seen["subscription_info"]["endpoint"] == "https://fcm.googleapis.com/fcm/send/a"
