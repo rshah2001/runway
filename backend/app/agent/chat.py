@@ -41,13 +41,13 @@ def chat(message: str) -> ChatResponse:
         verdict = "Yes, you can afford it" if ok else "Not safely"
         return ChatResponse(
             reply=f"{verdict}. Your lowest balance would be ${result.low.balance:,.2f} on "
-            f"{result.low.date:%b %-d} (safety floor ${result.safe_floor:,.0f}).",
+            f"{result.low.date:%b} {result.low.date.day} (safety floor ${result.safe_floor:,.0f}).",
             tool_calls=["simulate_purchase"],
         )
 
     low = engine.forecast().low
     return ChatResponse(
-        reply=f"Your tightest day in the next 30 days is {low.date:%b %-d} at ${low.balance:,.2f}. "
+        reply=f"Your tightest day in the next 30 days is {low.date:%b} {low.date.day} at ${low.balance:,.2f}. "
         'Ask me "can I afford $X?" or say "fix it".',
         tool_calls=["get_forecast"],
     )
