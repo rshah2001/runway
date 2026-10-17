@@ -55,7 +55,7 @@ export function ApprovalCard({ action, compact = false, onDone, onViewRunway }: 
     return (
       <View style={[s.card, compact && s.compact]}>
         {head('check', C.green, 'Transfer complete')}
-        <T tone="dim" style={{ marginTop: 8 }}>{action.description}. Checking now stays above your floor.</T>
+        <T tone="dim" style={{ marginTop: 8 }}>{action.description}. You&apos;re back above your cushion.</T>
         {onViewRunway ? <Caps tone="blue" size={14} style={{ marginTop: 10 }} onPress={onViewRunway} accessibilityRole="link">View your runway →</Caps> : null}
       </View>
     );

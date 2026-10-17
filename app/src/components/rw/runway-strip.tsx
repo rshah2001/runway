@@ -182,7 +182,7 @@ export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey }: 
   return (
     <View onLayout={onLayout} style={{ width: '100%', aspectRatio: W / H }}
       accessible accessibilityRole="image"
-      accessibilityLabel={clear ? 'Runway clear for the next 30 days' : `${days} days of runway; checking falls below the floor on ${endLabel}`}>
+      accessibilityLabel={clear ? 'Runway clear for the next 30 days' : `${days} days until money runs low, on ${endLabel}`}>
       {width > 0 && (
         <>
           <Svg width={width} height={width * (H / W)} viewBox={`0 0 ${W} ${H}`}>

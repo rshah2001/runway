@@ -43,7 +43,7 @@ export default function SpendingScreen() {
         <View style={wide ? { flex: 1.3 } : undefined}>
           <SectionTitle>Categories</SectionTitle>
           <Card style={s.block}>
-            <CardHeader title="Where it went" chevron />
+            <CardHeader title="Where it went" />
             <View style={{ gap: 8, marginTop: 12 }}>
               {d.categories.map((c) => (
                 <ActRow key={c.category} kind={c.category} amount={money(c.spent, 0)} title={c.category}
@@ -121,7 +121,7 @@ function SubsCard({ subs, grow = true }: { subs: Recurring[] | null; grow?: bool
   const monthly = (subs ?? []).reduce((t, r) => t + r.amount * (30 / r.interval_days), 0);
   return (
     <Card style={grow ? { flex: 1 } : undefined}>
-      <CardHeader title="Subscriptions" chevron />
+      <CardHeader title="Subscriptions" />
       <Num size={30} style={{ marginTop: 12 }}>{subs ? money(monthly) : '—'}</Num>
       <T tone="dim" style={{ fontSize: 13 }}>per month · {money(monthly * 12, 0)}/yr</T>
       <View style={{ marginTop: 10, gap: 4 }}>
@@ -139,7 +139,7 @@ function TopCard({ d, grow = true }: { d: Spending; grow?: boolean }) {
   const top = d.categories[0];
   return (
     <Card style={grow ? { flex: 1 } : undefined}>
-      <CardHeader title="Top category" chevron />
+      <CardHeader title="Top category" />
       <Num size={30} style={{ marginTop: 12 }}>{top?.category ?? '—'}</Num>
       <T tone="dim" style={{ fontSize: 13 }}>{top && d.total ? `${Math.round((top.spent / d.total) * 100)}% of spending` : 'No spending yet'}</T>
     </Card>
