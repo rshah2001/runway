@@ -33,3 +33,17 @@ def test_learned_spend_model_beats_the_hand_set_dials() -> None:
     dials = results["Schedule dials (live today)"]
     assert results["Learned: flat daily mean"].mae < dials.mae
     assert results["Learned: weekday means"].mae < dials.mae
+
+
+@pytest.mark.parametrize(
+    ("reply", "says_safe"),
+    [
+        ("Spending $35.00 on Wed Oct 21 isn't safe, as your balance would drop.", False),
+        ("Buying it is not safe because you'd fall to $71.61.", False),
+        ("Yes, you can afford it — the lowest you'd hit is $517.89 on Tue Dec 1.", True),
+        ("Not safely — you'd drop to $71.61 on Thu Nov 5.", False),
+    ],
+)
+def test_verdict_grader_reads_the_first_sentence(reply: str, says_safe: bool) -> None:
+    first = agent_eval.SENTENCE_END.split(reply, maxsplit=1)[0].lower()
+    assert (agent_eval.NEGATIVE.search(first) is None) == says_safe

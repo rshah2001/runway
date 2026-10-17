@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import date
 from typing import Any
 
@@ -28,6 +29,7 @@ log = logging.getLogger(__name__)
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 MAX_MESSAGE_CHARS = 500  # a chat question is short; this caps cost and prompt-injection surface
 MAX_TOOL_ROUNDS = 4
+RETRY_DELAY_S = 1.0
 
 SYSTEM_PROMPT = """You are Runway, a friendly, plain-spoken banking assistant inside a budgeting app.
 The user is a college student checking whether their checking account will stay above a safety floor.
@@ -72,7 +74,7 @@ def _gemini_client() -> Any:
 def _chat_with_gemini(client: Any, message: str, today: date) -> ChatResponse:
     system = SYSTEM_PROMPT.format(today=tools.day(today) + f", {today.year}")
     request = {"model": MODEL, "tools": tools.DECLARATIONS, "system_instruction": system}
-    interaction = client.interactions.create(**request, input=message)
+    interaction = _create(client, **request, input=message)
     tool_calls: list[str] = []
     pending: PendingAction | None = None
 
@@ -90,7 +92,7 @@ def _chat_with_gemini(client: Any, message: str, today: date) -> ChatResponse:
             if "action_id" in result:
                 pending = tools.PENDING[result["action_id"]]
             results.append(_function_result(c, result))
-        interaction = client.interactions.create(**request, input=results, previous_interaction_id=interaction.id)
+        interaction = _create(client, **request, input=results, previous_interaction_id=interaction.id)
     else:
         log.warning("Gemini still calling tools after %d rounds", MAX_TOOL_ROUNDS)
 
@@ -100,6 +102,16 @@ def _chat_with_gemini(client: Any, message: str, today: date) -> ChatResponse:
         log.warning("Discarding Gemini reply without tool grounding: %r", reply)
         return _chat_with_rules(message, today)
     return ChatResponse(reply=reply, tool_calls=tool_calls, pending_action=pending)
+
+
+def _create(client: Any, **kwargs: Any) -> Any:
+    """One Gemini request, retried once: the free tier sometimes rejects a request that succeeds a moment later."""
+    try:
+        return client.interactions.create(**kwargs)
+    except Exception:
+        log.warning("Gemini request failed; retrying once", exc_info=True)
+        time.sleep(RETRY_DELAY_S)
+        return client.interactions.create(**kwargs)
 
 
 def _function_result(call: Any, result: dict[str, Any]) -> dict[str, Any]:

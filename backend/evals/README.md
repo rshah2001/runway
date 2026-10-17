@@ -19,10 +19,14 @@ phrasings (19 not safe, 11 safe), 4 "fix it", 3 subscription and 3 forecast ques
 - **Grounded figures:** every `$` figure in the reply came from a tool output or the user's own
   message. This is how "the LLM never does math" is measured, not just promised.
 
-| Agent | Questions | Tool selection | Answer accuracy | Grounded figures |
-|---|---|---|---|---|
-| Rule-based router (offline baseline) | 40 | 100% | 100% | 100% |
-| Gemini | 40 | _not run yet_ | | |
+| Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
+|---|---|---|---|---|---|
+| Gemini (`gemini-3.8-flash`, free tier) | 40 | 100% | 100% | 100% | 0 |
+| Rule-based router (offline baseline) | 40 | 100% | 100% | 100% | — |
+
+Gemini run on 2026-10-16. API errors are counted separately and score as failures, so a silent fallback
+to the router can never pass as a Gemini answer; earlier free-tier runs on the same day hit 1–2 transient
+403s, which is why the agent retries each request once before falling back.
 
 ## Forecast backtest
 

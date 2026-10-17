@@ -23,7 +23,9 @@ from app.schemas import ChatResponse
 
 TODAY = date(2026, 10, 16)  # fixed so ground truth never drifts: Friday, low $251.61 on Thu Nov 5
 MONEY = re.compile(r"-?\$[\d,]+(?:\.\d{2})?")
-NEGATIVE = re.compile(r"\b(not|no|can't|cannot|shouldn't|won't|wouldn't)\b|short|below|under your")
+NEGATIVE = re.compile(r"\b(not|no|can't|cannot|isn't|aren't|shouldn't|won't|wouldn't)\b|short|below|under your")
+# sentence end: ., ! or ? not inside a number (so "$35.00" doesn't end the sentence), or a dash
+SENTENCE_END = re.compile(r"(?<!\d)[.!?]|[.!?](?!\d)|—")
 
 AFFORD_TEMPLATES = [
     "Can I afford ${amount} {when}?",
@@ -83,7 +85,7 @@ def _affordability_case(i: int, amount: float, when: str) -> Case:
     safe = truth["verdict"] == "safe"
 
     def check(r: ChatResponse) -> bool:
-        first_sentence = re.split(r"[.!?—]", r.reply, maxsplit=1)[0].lower()
+        first_sentence = SENTENCE_END.split(r.reply, maxsplit=1)[0].lower()
         return (NEGATIVE.search(first_sentence) is None) == safe
 
     message = AFFORD_TEMPLATES[i % len(AFFORD_TEMPLATES)].format(amount=amount, when=when)
@@ -99,7 +101,11 @@ def build_cases() -> list[Case]:
             Case(msg, "propose_transfer", lambda r: bool(r.pending_action and r.pending_action.amount == 50), fix)
         )
     subs = tools.find_recurring(today=TODAY)
-    for msg in ["What subscriptions do I have?", "how much do I spend on streaming?", "any recurring charges?"]:
+    for msg in [
+        "What subscriptions do I have?",
+        "How much do my subscriptions cost a month?",
+        "any recurring charges?",
+    ]:
         cases.append(Case(msg, "find_recurring", lambda r: subs["monthly_total"] in r.reply, subs))
     forecast = tools.get_forecast(today=TODAY)
     for msg in ["Will I be okay this month?", "What's my lowest balance coming up?", "When do I get tight?"]:
@@ -113,10 +119,23 @@ def _grounded(reply: str, message: str, truth: dict[str, Any]) -> bool:
     return all(m in allowed or m.removesuffix(".00") in allowed for m in MONEY.findall(reply))
 
 
+def _ask(message: str, client: Any) -> ChatResponse | None:
+    """The agent's reply, or None if Gemini errored — never let a silent fallback score as Gemini."""
+    if client is None:
+        return agent.chat(message, today=TODAY)
+    try:
+        return agent._chat_with_gemini(client, message, TODAY)
+    except Exception:
+        return None
+
+
 def run(client: Any = None) -> list[dict[str, Any]]:
     rows = []
     for case in build_cases():
-        r = agent.chat(case.message, client=client, today=TODAY)
+        r = _ask(case.message, client)
+        if r is None:
+            rows.append({"message": case.message, "tool": False, "answer": False, "grounded": False, "reply": "ERROR"})
+            continue
         rows.append(
             {
                 "message": case.message,
@@ -132,10 +151,14 @@ def run(client: Any = None) -> list[dict[str, Any]]:
 def summary(rows: list[dict[str, Any]], label: str) -> str:
     n = len(rows)
     pct = {k: sum(r[k] for r in rows) / n for k in ("tool", "answer", "grounded")}
-    return f"| {label} | {n} | {pct['tool']:.0%} | {pct['answer']:.0%} | {pct['grounded']:.0%} |"
+    errors = sum(r["reply"] == "ERROR" for r in rows)
+    return f"| {label} | {n} | {pct['tool']:.0%} | {pct['answer']:.0%} | {pct['grounded']:.0%} | {errors} |"
 
 
-HEADER = "| Agent | Questions | Tool selection | Answer accuracy | Grounded figures |\n|---|---|---|---|---|"
+HEADER = (
+    "| Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |\n"
+    "|---|---|---|---|---|---|"
+)
 
 if __name__ == "__main__":
     use_gemini = "--gemini" in sys.argv
