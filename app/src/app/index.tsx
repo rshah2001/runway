@@ -1,29 +1,30 @@
-// Today — owner: an2thu. Rings → status cards → the runway (with the takeoff) → upcoming bills and pay.
+// Today — owner: an2thu. Rings (runway · safe to spend · payday) → forecast + lowest point → the runway
+// (with the takeoff) → upcoming bills and pay. Chat opens from the floating button (components/rw/chat.tsx).
 // Visual spec: app/prototypes/runway.html.
-import { useRouter, useIsFocused } from 'expo-router';
+import { useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { AccountButton } from '@/components/login/account-button';
 import { ApprovalCard } from '@/components/rw/approval-card';
+import { openChat } from '@/components/rw/chat';
 import { Swoosh } from '@/components/rw/icons';
 import { Ring } from '@/components/rw/ring';
 import { ActRow } from '@/components/rw/rows';
 import { RunwayStrip } from '@/components/rw/runway-strip';
-import { Badge, Btn, Card, CardHeader, Caps, LoadState, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
-import { C } from '@/constants/runway';
+import { Badge, Btn, Card, CardHeader, Caps, LoadState, Num, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
+import { C, MAX_WIDTH } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
-import { money, monthDay, weekday } from '@/lib/format';
-import { dipCount, isClear, runwayDays, safeToSpend, upcoming, withApprovedTransfer } from '@/lib/runway';
+import { money, monthDay, weekday, weekdayDate } from '@/lib/format';
+import { daysFromToday, dipCount, isClear, nextPaycheck, payCycleDays, runwayDays, safeToSpend, upcoming, withApprovedTransfer } from '@/lib/runway';
 import { setStore, useStore } from '@/lib/store';
-import type { Account, Forecast, PendingAction } from '@/lib/types';
+import type { Forecast, PendingAction } from '@/lib/types';
 
 const KIND_LABEL: Record<string, string> = { bill: 'Bill', subscription: 'Subscription', card_payment: 'Card payment', paycheck: 'Paycheck', transfer: 'Transfer' };
 
 export default function TodayScreen() {
   const wide = useWide();
-  const router = useRouter();
   const focused = useIsFocused();
   const store = useStore();
   const forecast = useLoad(() => api.forecast(30));
@@ -59,19 +60,17 @@ export default function TodayScreen() {
   // TODO(engine): while transfers aren't live, the backend's numbers don't change after an approval,
   // so the app shows the move itself. Once they're live the re-fetched numbers differ from the
   // pre-approval ones and the backend's values are shown as-is — never counted twice.
-  const savingsAccount = me.data?.accounts.find((a) => a.type === 'Savings');
   const overlay = forecast.data.low.balance === shown.baseLow ? shown.amount : 0;
-  const movedFromSavings = savingsAccount?.balance === shown.baseSavings ? shown.amount : 0;
   const f = withApprovedTransfer(forecast.data, overlay);
 
-  const rings = <RingsRow f={f} savings={savingsAccount} moved={movedFromSavings} />;
+  const rings = <RingsRow f={f} />;
   const status = (
     <View style={[s.pair, wide && { flexDirection: 'column' }]}>
       <ForecastCard f={f} />
-      <SpendCard f={f} />
+      <LowestCard f={f} />
     </View>
   );
-  const runway = <RunwayCard f={f} takeoffKey={takeoffKey} onAsk={() => router.navigate('/ask')} />;
+  const runway = <RunwayCard f={f} takeoffKey={takeoffKey} />;
   const coming = (
     <Card style={s.block}>
       <CardHeader title="Bills & pay · next 2 weeks" chevron />
@@ -119,19 +118,30 @@ export default function TodayScreen() {
   );
 }
 
-function RingsRow({ f, savings, moved }: { f: Forecast; savings?: Account; moved: number }) {
-  const days = runwayDays(f), horizon = f.points.length - 1;
-  // Savings goal: three months of the biggest bill (rent) — a common emergency-fund rule of thumb.
-  const rent = Math.max(0, ...f.events.filter((e) => e.kind === 'bill').map((e) => -e.amount));
-  const goal = rent ? rent * 3 : 1500;
-  const sav = (savings?.balance ?? 0) - moved; // TODO(engine): drop "- moved" once balances reflect transfers
+/**
+ * Three questions, one ring each — every value read straight off the forecast:
+ *  - Runway: days until checking first falls under the floor (ring = share of the 30 days covered).
+ *  - Safe to spend: what's free today without breaking the floor (ring = share of today's balance).
+ *  - Payday: days until the next paycheck (ring fills as payday gets closer within the pay cycle).
+ */
+function RingsRow({ f }: { f: Forecast }) {
+  const wide = useWide();
+  const { width } = useWindowDimensions();
+  // Three rings must fit side by side on the narrowest phone: page padding 24, gaps 8.
+  const size = wide ? 116 : Math.max(84, Math.min(108, Math.floor((Math.min(width, MAX_WIDTH) - 24 - 8) / 3) - 4));
+  const days = runwayDays(f), horizon = f.points.length - 1, clear = days >= horizon;
+  const safe = safeToSpend(f), todayBalance = f.points[0].balance;
+  const pay = nextPaycheck(f), cycle = payCycleDays(f), until = pay ? daysFromToday(f, pay.date) : null;
   return (
-    <View style={s.rings}>
-      <Ring label="Runway" value={days >= horizon ? `${horizon}+` : String(days)} unit="days" frac={days / horizon}
-        color={days >= horizon ? C.green : days < 7 ? C.red : C.amber} />
-      <Ring label="Lowest" value={money(f.low.balance, 0)} unit={monthDay(f.low.date)} frac={f.low.balance / f.safe_floor}
-        color={f.low.balance < f.safe_floor ? C.red : C.green} />
-      <Ring label="Savings" value={savings ? money(sav, 0) : '—'} unit={`of ${money(goal, 0)}`} frac={sav / goal} color={C.blue} />
+    <View style={[s.rings, { gap: wide ? 16 : 4 }]}>
+      <Ring size={size} label="Runway" value={clear ? `${horizon}+` : String(days)} unit="days" frac={days / horizon}
+        color={clear ? C.green : days < 7 ? C.red : C.amber}
+        caption={clear ? `never under ${money(f.safe_floor, 0)}` : `until you dip under ${money(f.safe_floor, 0)}`} />
+      <Ring size={size} label="Safe to spend" value={money(safe, 0)} unit="today" frac={todayBalance > 0 ? safe / todayBalance : 0}
+        color={safe > 0 ? C.green : C.amber} caption={safe > 0 ? 'free after bills' : 'nothing spare yet'} />
+      <Ring size={size} label="Payday" value={until === null ? '—' : String(until)} unit={until === 1 ? 'day' : 'days'}
+        frac={until === null ? 0 : 1 - until / cycle} color={C.blue}
+        caption={pay ? `${money(pay.amount, 0)} on ${weekday(pay.date)}` : 'none in 30 days'} />
     </View>
   );
 }
@@ -152,16 +162,17 @@ function ForecastCard({ f }: { f: Forecast }) {
   );
 }
 
-function SpendCard({ f }: { f: Forecast }) {
-  const v = safeToSpend(f);
+/** The tightest day, in words: how low, when, and how far from the floor. */
+function LowestCard({ f }: { f: Forecast }) {
+  const gap = f.low.balance - f.safe_floor;
   return (
     <Card style={{ flex: 1 }}>
-      <CardHeader title="Safe to spend" chevron />
+      <CardHeader title="Lowest point" chevron />
       <View style={s.metric}>
-        <Badge tone={v ? 'green' : 'amber'}>{money(v, 0)}</Badge>
+        <Num size={28} tone={gap < 0 ? 'red' : 'green'}>{money(f.low.balance, 0)}</Num>
         <View style={{ flex: 1 }}>
-          <Caps tone={v ? 'green' : 'amber'}>{v ? 'Available' : 'Nothing spare'}</Caps>
-          <T tone="dim" style={{ fontSize: 14 }}>After bills + floor</T>
+          <Caps tone="dim" size={13}>{weekdayDate(f.low.date)}</Caps>
+          <T tone="dim" style={{ fontSize: 13 }}>{gap < 0 ? `${money(-gap, 0)} under your floor` : `${money(gap, 0)} above your floor`}</T>
         </View>
       </View>
     </Card>
@@ -169,7 +180,7 @@ function SpendCard({ f }: { f: Forecast }) {
 }
 
 /** The runway plus the fix: the agent proposes a transfer, the user approves it here. */
-function RunwayCard({ f, takeoffKey, onAsk }: { f: Forecast; takeoffKey: number; onAsk: () => void }) {
+function RunwayCard({ f, takeoffKey }: { f: Forecast; takeoffKey: number }) {
   const days = runwayDays(f), horizon = f.points.length - 1, clear = isClear(f);
   const [proposal, setProposal] = useState<PendingAction | null>(null);
   const [asking, setAsking] = useState(false);
@@ -205,11 +216,11 @@ function RunwayCard({ f, takeoffKey, onAsk }: { f: Forecast; takeoffKey: number;
             <Caps size={16}>{clear ? "You're covered" : 'Cover the dip'}</Caps>
             <T tone="dim" style={{ fontSize: 13 }}>
               {clear ? `Checking stays above ${money(f.safe_floor, 0)} all month.` : askError
-                ? "Couldn't get a suggestion. Try again, or ask on the Ask tab."
+                ? "Couldn't get a suggestion. Try again, or ask in the chat."
                 : `Runway's agent proposes a transfer — you approve it.`}
             </T>
           </View>
-          {clear ? <Btn label="Ask" ghost onPress={onAsk} /> : <Btn label={asking ? 'Thinking…' : 'Fix it'} disabled={asking} onPress={getFix} />}
+          {clear ? <Btn label="Ask" ghost onPress={openChat} /> : <Btn label={asking ? 'Thinking…' : 'Fix it'} disabled={asking} onPress={getFix} />}
         </View>
       )}
     </Card>
@@ -221,7 +232,7 @@ const s = StyleSheet.create({
   circ: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
   day: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 32, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card },
   wordmark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
-  rings: { flexDirection: 'row', paddingTop: 18, paddingHorizontal: 2, gap: 4 },
+  rings: { flexDirection: 'row', paddingTop: 18, alignItems: 'flex-start' },
   pair: { flexDirection: 'row', gap: 8, marginTop: 14 },
   metric: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
   block: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 },

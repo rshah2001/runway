@@ -40,3 +40,20 @@ export function withApprovedTransfer(f: Forecast, amount: number): Forecast {
   const low = points.reduce((m, p) => (p.balance < m.balance ? p : m), points[0]);
   return { ...f, points, low };
 }
+
+/** Calendar days from the forecast's first day (today) to `date`. */
+export function daysFromToday(f: Forecast, date: string): number {
+  const [y0, m0, d0] = f.points[0].date.split('-').map(Number);
+  const [y1, m1, d1] = date.split('-').map(Number);
+  return Math.round((Date.UTC(y1, m1 - 1, d1) - Date.UTC(y0, m0 - 1, d0)) / 86_400_000);
+}
+
+/** The next paycheck in the forecast, if one lands inside the horizon. */
+export const nextPaycheck = (f: Forecast): ForecastEvent | undefined =>
+  f.events.find((e) => e.kind === 'paycheck' && e.date > f.points[0].date);
+
+/** Days between paychecks, read off the forecast's own paycheck events (biweekly when only one is visible). */
+export function payCycleDays(f: Forecast): number {
+  const pays = f.events.filter((e) => e.kind === 'paycheck');
+  return pays.length >= 2 ? daysFromToday(f, pays[1].date) - daysFromToday(f, pays[0].date) : 14;
+}

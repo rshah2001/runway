@@ -134,7 +134,7 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true }:
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const top = Platform.OS === 'web' ? (wide ? 24 : 12) : insets.top + 8;
-  const inner = <View style={[s.inner, { paddingTop: top, paddingHorizontal: wide ? 32 : 8 }]}>{children}</View>;
+  const inner = <View style={[s.inner, { paddingTop: top, paddingHorizontal: wide ? 32 : 12 }]}>{children}</View>;
   return (
     <View style={s.page}>
       <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100" pointerEvents="none">
@@ -149,7 +149,7 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true }:
       </Svg>
       {scroll ? (
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 32 }}
+          contentContainerStyle={{ paddingBottom: 104 }} // room for the floating chat button
           refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.text2} /> : undefined}>
           {inner}
         </ScrollView>

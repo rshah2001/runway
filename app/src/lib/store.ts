@@ -1,5 +1,5 @@
 /**
- * Tiny app-wide store for what the screens must share: an approval made on Ask has to reach Today
+ * Tiny app-wide store for what the screens must share: an approval made in the chat has to reach Today
  * (so the chart updates and the plane takes off there). Plain module state + useSyncExternalStore —
  * no library needed for two fields.
  */
@@ -10,9 +10,11 @@ type State = {
   approvedAmount: number;
   /** Set by an approval; Today plays the takeoff once and clears it. */
   celebrate: boolean;
+  /** The chat panel (opened from the floating button on every screen). */
+  chatOpen: boolean;
 };
 
-let state: State = { approvedAmount: 0, celebrate: false };
+let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false };
 const listeners = new Set<() => void>();
 
 export function setStore(patch: Partial<State>) {

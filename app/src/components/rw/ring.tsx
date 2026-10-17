@@ -9,7 +9,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { C } from '@/constants/runway';
 
-import { Caps, Num } from './ui';
+import { Caps, Num, T } from './ui';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const R = 44;
@@ -23,10 +23,12 @@ type Props = {
   value: string;
   unit: string;
   label: string;
+  /** one short line under the label saying what the number means */
+  caption?: string;
   size?: number;
 };
 
-export function Ring({ frac, color, value, unit, label, size = 104 }: Props) {
+export function Ring({ frac, color, value, unit, label, caption, size = 104 }: Props) {
   const reduced = useReducedMotion();
   const offset = useSharedValue(CIRC); // starts empty, sweeps in
   const clamped = Math.max(0, Math.min(1, frac));
@@ -37,10 +39,11 @@ export function Ring({ frac, color, value, unit, label, size = 104 }: Props) {
   }, [clamped, reduced, offset]);
 
   const arcProps = useAnimatedProps(() => ({ strokeDashoffset: offset.get() }));
-  const long = value.length > 4;
+  // Shrink long values ($1,234) so they always sit inside the ring: condensed digits are ~0.5em wide.
+  const valueSize = Math.min(size * 0.34, (size * 1.25) / Math.max(1, value.length));
 
   return (
-    <View style={s.wrap} accessible accessibilityLabel={`${label}: ${value} ${unit}`}>
+    <View style={s.wrap} accessible accessibilityLabel={`${label}: ${value} ${unit}. ${caption ?? ''}`}>
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size} viewBox="0 0 104 104" style={{ transform: [{ rotate: '-90deg' }] }}>
           <Circle cx={52} cy={52} r={R} fill="none" stroke={C.line} strokeWidth={8} />
@@ -48,11 +51,12 @@ export function Ring({ frac, color, value, unit, label, size = 104 }: Props) {
             strokeDasharray={`${CIRC} ${CIRC}`} animatedProps={arcProps} />
         </Svg>
         <View style={[StyleSheet.absoluteFill, s.center]}>
-          <Num size={long ? (size * 0.26) : (size * 0.33)}>{value}</Num>
-          <Caps tone="dim" size={11} style={{ marginTop: 2 }}>{unit}</Caps>
+          <Num size={valueSize} numberOfLines={1}>{value}</Num>
+          <Caps tone="dim" size={Math.max(9, size * 0.1)} style={{ marginTop: 1 }}>{unit}</Caps>
         </View>
       </View>
-      <Caps size={14} style={{ marginTop: 8 }}>{label} <Caps tone="dim" size={16}>›</Caps></Caps>
+      <Caps size={14} style={{ marginTop: 8, textAlign: 'center' }}>{label}</Caps>
+      {caption ? <T tone="dim" style={s.caption} numberOfLines={2}>{caption}</T> : null}
     </View>
   );
 }
@@ -60,4 +64,5 @@ export function Ring({ frac, color, value, unit, label, size = 104 }: Props) {
 const s = StyleSheet.create({
   wrap: { flex: 1, alignItems: 'center' },
   center: { alignItems: 'center', justifyContent: 'center' },
+  caption: { fontSize: 12, lineHeight: 16, textAlign: 'center', marginTop: 2, paddingHorizontal: 2 },
 });

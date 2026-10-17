@@ -16,11 +16,6 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf="house" md="home" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="ask">
-        <NativeTabs.Trigger.Label>Ask</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="bubble.left" md="chat_bubble" />
-      </NativeTabs.Trigger>
-
       <NativeTabs.Trigger name="spending">
         <NativeTabs.Trigger.Label>Spending</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />

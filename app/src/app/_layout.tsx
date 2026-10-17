@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '@/components/login/login-screen';
+import { ChatLauncher } from '@/components/rw/chat';
 import { C } from '@/constants/runway';
 import { bootSession } from '@/lib/account';
 import { useSession } from '@/lib/session';
@@ -39,7 +40,12 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style="light" />
-      {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <LoginScreen /> : <AppTabs />}
+      {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <LoginScreen /> : (
+        <>
+          <AppTabs />
+          <ChatLauncher />
+        </>
+      )}
     </ThemeProvider>
   );
 }

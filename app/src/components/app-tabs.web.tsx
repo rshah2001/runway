@@ -1,5 +1,5 @@
 // Website navigation. Desktop: a top bar with the wordmark and tabs. Phone browsers: a bottom tab
-// bar like the app. Built on expo-router/ui so routes and focus state come from the router.
+// bar like the app. (Chat isn't a tab: it opens from the floating button, see components/rw/chat.tsx.) Built on expo-router/ui so routes and focus state come from the router.
 import { TabList, type TabListProps, TabSlot, TabTrigger, type TabTriggerSlotProps, Tabs } from 'expo-router/ui';
 import { type ComponentRef, forwardRef } from 'react';
 import { Pressable, type PressableStateCallbackType, StyleSheet, View } from 'react-native';
@@ -12,7 +12,6 @@ import { C, F, MAX_WIDTH } from '@/constants/runway';
 
 const ICON: Record<string, string> = {
   today: 'M4 10.5L12 4l8 6.5V20H4zM8 16l2.5-2.5 2 2L16 12',
-  ask: 'M4 5.5h16v10H9l-5 3.5z',
   spending: 'M5 19V11M10 19V6M15 19v-9M20 19v-5',
 };
 
@@ -22,7 +21,6 @@ export default function AppTabs() {
     <TabList asChild>
       <Bar wide={wide}>
         <TabTrigger name="today" href="/" asChild><Tab icon="today" wide={wide}>Today</Tab></TabTrigger>
-        <TabTrigger name="ask" href="/ask" asChild><Tab icon="ask" wide={wide}>Ask</Tab></TabTrigger>
         <TabTrigger name="spending" href="/spending" asChild><Tab icon="spending" wide={wide}>Spending</Tab></TabTrigger>
       </Bar>
     </TabList>
@@ -72,6 +70,7 @@ const s = StyleSheet.create({
   links: { flexDirection: 'row', gap: 6 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   topTab: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 14, borderRadius: 999 },
-  bottom: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, paddingBottom: 18, backgroundColor: C.tabBar, borderTopWidth: 1, borderTopColor: '#20262c' },
+  // paddingBottom clears the iPhone home indicator (safe area) in mobile Safari
+  bottom: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, paddingBottom: 'max(14px, env(safe-area-inset-bottom))' as unknown as number, backgroundColor: C.tabBar, borderTopWidth: 1, borderTopColor: '#20262c' },
   bottomTab: { alignItems: 'center', gap: 4, minWidth: 72 },
 });
