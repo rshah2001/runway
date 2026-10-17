@@ -59,16 +59,28 @@ def local_today() -> date:
     return datetime.now(LOCAL_TZ).date()
 
 
-def load(persona: str, today: date | None = None) -> PersonaData:
-    """One persona's balances, scheduled bills and recent history, live if possible."""
+class LiveDataUnavailable(RuntimeError):
+    """`strict=True` and real data couldn't be read — the caller must not act on a guess."""
+
+
+def load(persona: str, today: date | None = None, *, strict: bool = False) -> PersonaData:
+    """One persona's balances, scheduled bills and recent history, live if possible.
+
+    `strict=True` is for anything that moves money (the safety net): it never falls back to seeded
+    demo data, so a failed read aborts the decision instead of acting on made-up balances.
+    """
     today = today or local_today()
     if get_settings().live:
         try:
             return _load_live(persona, today)
         except UnknownPersona:
             raise
-        except Exception:  # a dead database must not take the chatbot down mid-demo
+        except Exception as e:  # a dead database must not take the chatbot down mid-demo…
+            if strict:  # …but it must stop anything that moves money
+                raise LiveDataUnavailable(f"live data for {persona} unavailable") from e
             log.exception("forecast inputs: live read failed for %s, using seeded demo data", persona)
+    elif strict:
+        raise LiveDataUnavailable("not in live mode")
     return _load_demo(persona, today)
 
 
