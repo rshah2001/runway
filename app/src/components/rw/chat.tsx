@@ -1,11 +1,12 @@
 /**
  * Runway's chat, opened from the round button in the phone bottom bar or the corner button on desktop.
- * Desktop: a chat window anchored to the bottom-right corner. Phones: a full-screen sheet.
+ * Desktop: a chat window anchored to the bottom-right corner. Phones: a sheet that rises most of the
+ * way up over the dimmed page (tap the dim area or the handle to close), so you keep your place.
  * The conversation lives as long as the app, so closing and reopening keeps it.
  *
  * Motion: opening is occasional → standard animation, off the JS thread.
  *  - desktop window: scale 0.96 → 1 + fade from its corner, 200ms ease-out (closes in 150ms)
- *  - phone sheet: slides up from the bottom, 320ms iOS sheet curve (closes in 240ms)
+ *  - phone sheet: slides up from the bottom, 320ms iOS sheet curve (closes in 240ms); the page dims behind
  *  - reduced motion: fades only.
  */
 import { useRouter } from 'expo-router';
@@ -14,8 +15,10 @@ import {
   BackHandler,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   useWindowDimensions,
   View,
@@ -26,6 +29,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { C, F } from '@/constants/runway';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import { setStore, useStore } from '@/lib/store';
 import type { PendingAction } from '@/lib/types';
 
@@ -87,14 +91,20 @@ export function ChatLauncher() {
       : { opacity: 1, transform: [{ translateY: (1 - v) * height }] };
   });
   const fabStyle = useAnimatedStyle(() => ({ opacity: 1 }));
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: p.get() * 0.55 }));
 
   const fabBottom = 28; // desktop corner (phones use the bottom-bar button)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {mounted && !wide && (
+        <Animated.View pointerEvents={chatOpen ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, s.scrim, scrimStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeChat} accessibilityRole="button" accessibilityLabel="Close chat" />
+        </Animated.View>
+      )}
       {mounted && (
         <Animated.View pointerEvents={chatOpen ? 'auto' : 'none'} accessibilityViewIsModal={chatOpen}
-          style={[wide ? [s.window, { bottom: fabBottom + 68, maxHeight: Math.min(680, height - 140) }] : s.sheet, panelStyle]}>
+          style={[wide ? [s.window, { bottom: fabBottom + 68, maxHeight: Math.min(680, height - 140) }] : [s.sheet, { height: Math.min(height * 0.78, 720) }], panelStyle]}>
           <ChatPanel wide={wide} />
         </Animated.View>
       )}
@@ -121,8 +131,9 @@ function ChatPanel({ wide }: { wide: boolean }) {
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const name = useSession().name;
   const [msgs, setMsgs] = useState<Msg[]>([
-    { id: nextId++, kind: 'text', from: 'bot', text: 'Hi Maya. Ask whether you can afford something, or say "Fix it" and I\'ll suggest a transfer you can approve.' },
+    { id: nextId++, kind: 'text', from: 'bot', text: `Hi ${name ?? 'there'}. Ask whether you can afford something, or say "Fix it" and I'll suggest a transfer you can approve.` },
   ]);
 
   async function send(raw: string) {
@@ -145,23 +156,23 @@ function ChatPanel({ wide }: { wide: boolean }) {
     }
   }
 
-  const top = wide ? 14 : Platform.OS === 'web' ? 14 : insets.top + 8;
+  const top = wide ? 14 : 0;
   const bottom = wide ? 12 : Math.max(12, insets.bottom);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.head, { paddingTop: top }]}>
+      {!wide && (
+        <Pressable onPress={closeChat} style={s.grabHit} accessibilityRole="button" accessibilityLabel="Close chat">
+          <View style={s.grab} />
+        </Pressable>
+      )}
+      <View style={[s.head, { paddingTop: top }, !wide && s.headSheet]}>
         <View style={{ flex: 1 }}>
-          <Caps size={wide ? 22 : 28} style={{ textTransform: 'none', letterSpacing: 0.3 }}>Ask Runway</Caps>
-          <T tone="dim" style={{ fontSize: 13 }}>Ask anything about your money. Answers use your real numbers.</T>
+          <Text style={[s.title, wide && { fontSize: 20 }]}>Ask Runway</Text>
+          <T tone="dim" style={{ fontSize: 14, marginTop: 2 }}>Every number comes from your forecast, never guessed.</T>
         </View>
-        {!wide && (
-          <PressableScale onPress={closeChat} style={s.close} accessibilityRole="button" accessibilityLabel="Close chat">
-            <Icon name="close" size={20} color={C.text} />
-          </PressableScale>
-        )}
       </View>
-      <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={s.thread} keyboardShouldPersistTaps="handled"
+      <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={[s.thread, !wide && { justifyContent: 'flex-start' }]} keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: !reduced })}>
         {msgs.map((m) => (
           <MsgIn key={m.id} stretch={m.kind === 'approval'}>
@@ -219,19 +230,25 @@ const s = StyleSheet.create({
   window: { position: 'absolute', right: 32, width: 400, height: 620, borderRadius: 18, overflow: 'hidden', backgroundColor: C.bg,
     borderWidth: 1, borderColor: C.line, transformOrigin: 'bottom right',
     shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 30, shadowOffset: { width: 0, height: 16 }, elevation: 16 },
-  sheet: { ...StyleSheet.absoluteFill, backgroundColor: C.bg, zIndex: 20 },
+  scrim: { backgroundColor: '#000', zIndex: 19 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.card, zIndex: 20,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 30, shadowOffset: { width: 0, height: -8 }, elevation: 24 },
+  grabHit: { alignSelf: 'center', paddingTop: 10, paddingBottom: 10, paddingHorizontal: 30 },
+  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: '#3a4147' },
+  headSheet: { borderBottomWidth: 0, paddingHorizontal: 20 },
+  title: { fontFamily: F.bodySemi, fontSize: 22, color: C.text, letterSpacing: -0.2 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: C.line },
-  close: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
   thread: { gap: 10, paddingVertical: 14, paddingHorizontal: 12, flexGrow: 1, justifyContent: 'flex-end' },
   msg: { maxWidth: '88%', paddingVertical: 11, paddingHorizontal: 14, borderRadius: 14 },
-  bot: { backgroundColor: C.card, borderTopLeftRadius: 4 },
+  bot: { backgroundColor: C.card2, borderTopLeftRadius: 4 },
   me: { backgroundColor: '#fff', borderTopRightRadius: 4 },
   msgText: { fontSize: 16, lineHeight: 22 },
   tools: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, marginLeft: 6 },
   chips: { gap: 8, paddingHorizontal: 12, paddingBottom: 10 },
-  chip: { height: 36, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, justifyContent: 'center' },
+  chip: { height: 38, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card2, justifyContent: 'center' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 12 },
-  input: { flex: 1, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
+  input: { flex: 1, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.card2, borderWidth: 1, borderColor: '#2f363c',
     color: C.text, fontFamily: F.body, fontSize: 16 },
   send: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   fabWrap: { position: 'absolute', zIndex: 30 },
