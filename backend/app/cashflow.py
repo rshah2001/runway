@@ -31,6 +31,9 @@ class Projection:
     paycheck: Decimal | None
     events: list[ForecastEvent] = field(default_factory=list)  # what moves the balance
     floor: Decimal = Decimal("300")  # what this person keeps in checking (app/prefs.py)
+    # the engine's cautious (p5) end-of-day balance — what the Network Guardian plans a supporter's room on
+    days_low: list[tuple[date, Decimal]] = field(default_factory=list)
+    confident: bool = True  # readiness is "confident" (payday locked, enough history)
 
     def low(self, start: date, end: date) -> tuple[date, Decimal] | None:
         """Lowest end-of-day balance in [start, end)."""
@@ -74,6 +77,8 @@ def projection_for(
         paycheck=paycheck,
         events=f.events,
         floor=Decimal(str(schedule.safe_floor)),
+        days_low=[(p.date, Decimal(str(p.balance if p.balance_low is None else p.balance_low))) for p in f.points],
+        confident=f.readiness is None or f.readiness.status == "confident",
     )
 
 

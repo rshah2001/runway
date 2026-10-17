@@ -1,5 +1,6 @@
 """Every safety-net guardrail, tested on the pure decide() — no database, no Nessie."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal as D
 
@@ -45,7 +46,7 @@ def test_no_dip_means_no_bridge() -> None:
 def test_dip_under_the_limit_is_covered_automatically_and_due_on_payday() -> None:
     d = decide(proj("maya", 208.40), [helper("sam", 5000, 100)], TODAY)
     assert d.action == "auto_bridge" and d.lender == "sam"
-    assert d.amount == D(100)  # $91.60 gap rounded up to whole tens
+    assert d.amount == D(95)  # $91.60 gap rounded up to whole fives
     assert d.shortfall_date == date(2026, 11, 5) and d.due_date == PAYDAY
 
 
@@ -64,8 +65,9 @@ def test_helping_must_be_safe_for_the_helper() -> None:
     assert d.action == "no_safe_helper"
 
 
-def test_picks_the_family_member_with_the_most_runway() -> None:
-    d = decide(proj("maya", 208), [helper("jordan", 2000, 200), helper("sam", 9000, 200)], TODAY)
+def test_one_supporter_with_the_most_safe_room_covers_it_alone() -> None:
+    d = decide(proj("maya", 208), [helper("jordan", 2000, 200), helper("sam", 9000, 300)], TODAY)
+    assert d.allocations == (("sam", D(95)),)
     assert d.lender == "sam"
 
 
@@ -97,3 +99,18 @@ def test_never_bridges_if_repaying_on_payday_would_break_the_borrower() -> None:
 
 def test_huge_gaps_are_not_bridged() -> None:
     assert decide(proj("maya", -2000), [helper("sam", 90000, 5000)], TODAY).action == "no_safe_helper"
+
+
+def test_two_supporters_split_a_need_neither_can_cover_alone() -> None:
+    maya = proj("maya", 165)  # $135 short of $300
+    sam, emma = helper("sam", 390, 150), helper("emma", 2000, 45)  # Sam: $90 above his cushion
+    d = decide(maya, [sam, emma, helper("jordan", 159, 300)], TODAY)
+    assert d.action == "auto_bridge" and d.amount == D(135)
+    assert d.allocations == (("sam", D(90)), ("emma", D(45)))
+
+
+def test_a_supporter_whose_forecast_is_unsure_is_only_ever_asked() -> None:
+    sam = helper("sam", 9000, 500)
+    unsure = replace(sam, projection=replace(sam.projection, confident=False))
+    d = decide(proj("maya", 208), [unsure], TODAY)
+    assert d.action == "needs_approval" and d.lender == "sam"

@@ -33,7 +33,7 @@ def test_a_lower_cushion_means_the_same_balance_is_no_dip() -> None:
 def test_a_higher_cushion_asks_for_more() -> None:
     careful = replace(proj("maya", 208), floor=D(500))
     d = decide(careful, [helper("sam", 5000, 400)], TODAY)
-    assert d.action == "auto_bridge" and d.amount == D(300)  # $292 short of $500, rounded up
+    assert d.action == "auto_bridge" and d.amount == D(295)  # $292 short of $500, rounded up to fives
 
 
 def test_helping_keeps_the_helper_above_their_own_cushion() -> None:

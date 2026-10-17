@@ -61,9 +61,10 @@ def test_plan_only_ever_asks_supporters_with_an_active_agreement(monkeypatch: py
         lambda c, borrower: [{"lender_slug": "sam", "limit_amount": 100, "outstanding": 0, "enabled": True}],
     )
     monkeypatch.setattr(safety_net.agreements_repo, "involving", lambda c, s: [row(*consent, version=7)])
+    monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(500))
     d = safety_net.plan(None, "maya", TODAY)
     if consent == ("t", "t"):
-        assert d.action == "auto_bridge" and d.lender == "sam" and d.agreement_version == 7
+        assert d.action == "auto_bridge" and d.lender == "sam" and d.versions == (("sam", 7),)
     else:
         assert d.action == "no_safe_helper" and d.lender is None
 

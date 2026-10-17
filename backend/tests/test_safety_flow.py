@@ -234,3 +234,68 @@ def test_a_limit_change_after_the_request_means_nothing_moves(wire) -> None:
     store.agreement["version"] = 2  # the supporter changed something after the bridge was asked for
     wire(store, nessie)
     assert safety_net._fund("bridge-1") is None and nessie.sent == []
+
+
+# ---------- re-validation under the lock (security review: decide-then-act gap) ----------
+@pytest.fixture
+def fresh_rows(monkeypatch: pytest.MonkeyPatch):
+    rows = {"outstanding": [], "limit": {"enabled": True, "limit_amount": D(150), "outstanding": D(0)}, "cap": D(500)}
+    monkeypatch.setattr(safety_net, "_consent_still_holds", lambda *a: True)
+    monkeypatch.setattr(safety_net.safety_repo, "outstanding_bridges", lambda conn: rows["outstanding"])
+    monkeypatch.setattr(safety_net.safety_repo, "limits", lambda conn, lender, borrower: [rows["limit"]])
+    monkeypatch.setattr(safety_net, "_exposure_limit", lambda conn, slug: rows["cap"])
+    return rows
+
+
+def test_a_share_that_still_fits_passes(fresh_rows) -> None:
+    assert safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+
+
+def test_exposure_used_up_meanwhile_blocks_the_share(fresh_rows) -> None:
+    fresh_rows["outstanding"] = [{"borrower_slug": "jordan", "lender_slug": "sam", "amount": D(450)}]
+    assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+
+
+def test_a_supporter_who_started_borrowing_meanwhile_never_lends(fresh_rows) -> None:
+    fresh_rows["outstanding"] = [{"borrower_slug": "sam", "lender_slug": "emma", "amount": D(20)}]
+    assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+
+
+def test_a_lowered_or_paused_limit_meanwhile_blocks_an_automatic_share(fresh_rows) -> None:
+    fresh_rows["limit"] = {"enabled": True, "limit_amount": D(50), "outstanding": D(0)}
+    assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+    assert safety_net._still_safe(None, "sam", "maya", D(90), False, 1)  # an approval may exceed the auto limit
+    fresh_rows["limit"] = {"enabled": False, "limit_amount": D(150), "outstanding": D(0)}
+    assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
+
+
+# ---------- safe repayment ----------
+@pytest.fixture
+def repay_world(monkeypatch: pytest.MonkeyPatch):
+    from tests.test_safety_net import proj
+
+    world = {"balance": D(1500), "landed": True, "projection": proj("maya", 900, after_payday=900)}
+    monkeypatch.setattr(safety_net, "_checking_balance", lambda conn, p: world["balance"])
+    monkeypatch.setattr(safety_net.repo, "paycheck_landed", lambda conn, acct, since, at_least: world["landed"])
+    monkeypatch.setattr(safety_net, "project", lambda conn, slug, today=None: world["projection"])
+    return world
+
+
+B = {"amount": D(100), "due_date": date(2026, 11, 6), "funded_at": None, "borrower_slug": "maya"}
+MAYA = {"checking_id": "maya-chk"}
+
+
+def test_repays_when_the_paycheck_landed_and_nothing_dips(repay_world) -> None:
+    assert safety_net._safe_to_repay(None, B, MAYA, D(300), date(2026, 11, 6))
+
+
+def test_no_verified_paycheck_means_no_repayment_even_with_enough_balance(repay_world) -> None:
+    repay_world["landed"] = False
+    assert not safety_net._safe_to_repay(None, B, MAYA, D(300), date(2026, 11, 6))
+
+
+def test_a_repayment_that_would_cause_a_new_dip_waits(repay_world) -> None:
+    from tests.test_safety_net import proj
+
+    repay_world["projection"] = proj("maya", 350, after_payday=350)  # 350 - 100 < 300 within the week
+    assert not safety_net._safe_to_repay(None, B, MAYA, D(300), date(2026, 11, 8))

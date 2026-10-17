@@ -6,6 +6,7 @@ scoped to one customer, so callers never write SQL.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 import psycopg
@@ -179,6 +180,20 @@ def insert_p2p_payment(conn: psycopg.Connection, p: Row) -> None:
            ON CONFLICT (id) DO NOTHING""",
         p,
     )
+
+
+def paycheck_landed(conn: psycopg.Connection, account_id: str, since: date, at_least: Decimal) -> bool:
+    """A real income deposit of at least `at_least` landed on `account_id` on or after `since` — not a
+    Runway move (tagged [rw:…]) and not safety-net money, so a bridge can never "repay itself"."""
+    row = conn.execute(
+        """SELECT 1 FROM transactions
+           WHERE account_id = %s AND kind = 'deposit' AND status = 'completed' AND amount >= %s AND ts >= %s
+             AND COALESCE(description, '') NOT LIKE '%%[rw:%%'
+             AND COALESCE(description, '') NOT ILIKE '%%safety net%%'
+           LIMIT 1""",
+        (account_id, at_least, since),
+    ).fetchone()
+    return row is not None
 
 
 def p2p_payment(conn: psycopg.Connection, payment_id: str) -> Row | None:
