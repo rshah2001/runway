@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from seed.personas import MERCHANTS, PERSONAS, PersonaSpec
-from seed.plan import HISTORY_DAYS, build_plan
+from seed.plan import HISTORY_DAYS, build_plan, demo_opening_balance
 
 log = logging.getLogger(__name__)
 LOCAL_TZ = ZoneInfo("America/New_York")  # the demo's bank day; the server itself runs on UTC
@@ -120,8 +120,11 @@ def _spec(persona: str) -> PersonaSpec:
 
 def _load_demo(persona: str, today: date) -> PersonaData:
     spec = _spec(persona)
+    plan = build_plan(spec, today)
+    # the seed tunes some personas' opening balance to tell the same demo story on any day; match it
+    checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
     history: list[Txn] = []
-    for op in build_plan(spec, today):
+    for op in plan:
         account = _ACCOUNT[op.account]
         if op.kind == "purchase":
             category = MERCHANTS[op.merchant][0] if op.merchant in MERCHANTS else "Other"
@@ -135,4 +138,4 @@ def _load_demo(persona: str, today: date) -> PersonaData:
             kind: TxnKind = "deposit" if incoming else "transfer"
             history.append(Txn(op.on, kind, op.amount if incoming else -op.amount, op.description, "P2P", account))
     bills = [UpcomingBill(b.day, b.amount, b.nickname) for b in spec.bills]
-    return PersonaData(persona, spec.checking, spec.savings, bills, sorted(history, key=lambda t: t.date))
+    return PersonaData(persona, checking, spec.savings, bills, sorted(history, key=lambda t: t.date))
