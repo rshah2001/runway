@@ -144,3 +144,53 @@ Mock-first backend; the contract lives in backend/app/schemas.py. Replace mocks 
 3. Wire Patil-Hemangi's auth dependency into the routes; resolve TODO(auth) on /actions/{id}/approve.
 4. Vultr deploy (deploy/ + .github/workflows/ci.yml) and the GoDaddy domain.
 ```
+
+---
+
+## Patil-Hemangi — round 2: make Runway *learn you* (like Whoop) and show how sure it is
+
+```
+You're continuing on Runway (live at sixsevenbucksleft.vip). First read docs/WHY_RUNWAY.md ("How it
+learns your money"), docs/SAFETY_NET.md, docs/ARCHITECTURE.md ("Who may do what") and
+backend/evals/README.md. Pull main first: your engine now powers the safety net too (app/cashflow.py
+is a thin adapter over it), and every route has Auth0 sign-in wired in.
+
+Goal: today the engine learns from 90 days of history but never says how sure it is. Make it behave
+like Whoop: it calibrates before it trusts itself, it predicts a range, it tracks its own accuracy,
+and it doesn't mistake a one-off for a habit. Every number still comes from the engine, never the LLM.
+
+I own: backend/app/forecast/**, backend/app/agent/**, backend/evals/**, their tests.
+Shared (small, separate PRs, tell the team): backend/app/schemas.py + app/src/lib/types.ts (contract,
+additive fields only), backend/app/db/** (data layer — tell me the table you need, or open a small PR).
+Do NOT change existing response shapes; only add fields.
+
+Build, in order:
+1. Readiness / calibration. engine.readiness(persona, today) → status "calibrating" | "learning" |
+   "confident", days_of_history, paychecks_seen, spend_days, progress 0–1, and plain-English reasons
+   ("I've seen 1 of 2 paychecks"). Suggested thresholds: confident = ≥30 days of everyday spending +
+   ≥2 paychecks detected; calibrating = <14 days or no paycheck. Add an optional `readiness` field to
+   the /forecast response (schemas.py + types.ts in one PR). Tell me when it's in: the safety net will
+   refuse AUTOMATIC bridges unless readiness is "confident" (over-limit approvals still work).
+2. A range, not a point. Per-day low/high (e.g. p10/p90) from how much everyday spending actually
+   varies in the history window (empirical daily quantiles or a bootstrap — explain the choice in the
+   README). Optional fields on each forecast point + the lowest point's range. The safety net will plan
+   on the cautious end, so make "low" really conservative.
+3. Learning-curve eval. Backtest MAE with 14 / 30 / 60 / 90 days of history, plus band coverage
+   (% of actual days inside your p10–p90 band; aim ≈80%). Table in evals/README.md, CI thresholds in
+   tests/test_evals.py. This is the slide that answers "how does it learn?" with data.
+4. Its own report card. Each day, save that day's forecast; later compare it to the actual balance
+   → rolling error ("within ±$40 over the last 14 days"). I'll add a `forecast_snapshots` hypertable +
+   repo functions — send me the columns you need. Expose the rolling error in readiness.
+5. One-offs. Detect outliers in everyday spending (e.g. > 3× the median day, or a merchant/category
+   that's rare for this person) and keep them out of the spending rate; list them in readiness
+   ("left out: $406 car repair on Jul 20"). Nice-to-have: an agent tool to mark "that was a one-off".
+6. Agent voice. The agent states confidence in the persona's voice — "I've watched 4 months of your
+   money, so I'm sure" vs "I'm still learning — day 12 of 30, take this as a rough guide". In
+   overdraft_risk keep it calm and plain, as now.
+7. From the review of #6: move tools.PENDING / ACTION_PERSONA to the database so a deploy mid-demo
+   can't drop a waiting "fix it" (same deal: tell me the table, or a small PR to app/db).
+
+Rules that still hold: the LLM never computes a number; write tools only create pending actions;
+the persona comes from the request / signed-in user, never the model. Tests + evals stay green.
+Branch names: ai/<feature>. Small PRs — readiness first, it unblocks the safety-net guardrail.
+```

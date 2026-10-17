@@ -17,6 +17,7 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 | If you want to… | Read |
 |---|---|
 | Understand the plan and prizes | [`docs/PLAN.md`](docs/PLAN.md) |
+| Pitch: how we're different + how it learns | [`docs/WHY_RUNWAY.md`](docs/WHY_RUNWAY.md) |
 | See who owns which files + your starter prompt | [`docs/TEAM.md`](docs/TEAM.md) · [`docs/TEAM_PROMPTS.md`](docs/TEAM_PROMPTS.md) |
 | See the system design and API contract | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Work with Nessie | [`docs/NESSIE.md`](docs/NESSIE.md) |
