@@ -232,7 +232,10 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
    Accept/Decline). Only active members invite; only the creator removes. Membership never shows money —
    support still comes from agreements (My supporters / People I support). Demo: Maya sees "Family" and
    "Weekend crew"; Jordan has an invitation to "Weekend crew".
-5. Keep going on the circle map from branch `ui/circle-chart` (`components/rw/circle-map.tsx` only).
+5. **Recipient limits** (API is live), under "My supporters" in Circles: "Most I'll owe at once" (a stepper,
+   with "No cap") and "Let several people cover one gap" (a switch). `api.supportReceiving(maxOwed | null,
+   allowMulti)`; current values in `api.support()` → `max_owed`, `allow_multi`.
+6. Keep going on the circle map from branch `ui/circle-chart` (`components/rw/circle-map.tsx` only).
 
 ## Patil-Hemangi — AI + Auth0 (`backend/app/agent/`, `backend/evals/`, Auth0 tenant)
 
@@ -256,7 +259,7 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
 
 1. ✅ `GET /forecast/scenarios` + `discreet_notifications` (this PR)
 2. ✅ Named Circles: tables + invite / accept / decline / leave / remove API + `lib/api.ts` calls
-3. Recipient limits: "max I can owe at once", "allow several supporters"
+3. ✅ Recipient limits: "max I can owe at once", "allow several supporters"
 4. Demo 6: a demo-only "payday now" (real Nessie paycheck deposit → safe repayment) + a deferred case
 5. A `support_decisions` record of every decision and its reasons
 6. Alex / Priya / Leo + simultaneous shortfalls (network-wide split with a written fairness rule)

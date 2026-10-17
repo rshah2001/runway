@@ -53,6 +53,7 @@ from app.schemas import (
     SetExposure,
     SetLimit,
     SetPreferences,
+    SetReceiving,
     SetSafeFloor,
     SetSupportMode,
     SimulateRequest,
@@ -467,6 +468,23 @@ def support_mode(req: SetSupportMode, user: OptionalUser) -> SupportSummary:
             agreements.set_mode(conn, actor, actor, req.recipient, req.mode)
         except agreements.NotYourAgreement:
             raise HTTPException(403, "Only the supporter chooses how their support works") from None
+        conn.commit()
+    return safety_views.support_for(actor)
+
+
+@app.put("/support/receiving", response_model=SupportSummary)
+def support_receiving(req: SetReceiving, user: OptionalUser) -> SupportSummary:
+    """My limits as a recipient: the most I'll owe at once, and whether several people may help together."""
+    actor = _own_settings(user, req.persona)
+    if not get_settings().live:
+        return safety_views.demo_support(actor).model_copy(
+            update={"max_owed": req.max_owed, "allow_multi": req.allow_multi}
+        )
+    from app.db import pool, repo, safety_repo
+
+    with pool.connection() as conn:
+        safety_repo.lock_people(conn, actor)
+        repo.set_receiving(conn, actor, None if req.max_owed is None else round(req.max_owed, 2), req.allow_multi)
         conn.commit()
     return safety_views.support_for(actor)
 

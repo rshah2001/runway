@@ -135,6 +135,10 @@ ALTER TABLE money_preferences ALTER COLUMN safe_floor DROP NOT NULL;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS alerts_only boolean;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS family_cover boolean;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS discreet_notifications boolean;
+-- the recipient's own limits: the most they'll owe at once (NULL = no cap), and help from one person only
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS max_owed numeric(12, 2)
+    CHECK (max_owed >= 0 AND max_owed <= 5000);
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS allow_multi boolean;
 """
 
 # Heads-up alerts (app/alerts.py): which browsers want a push, and which dips each person was told about

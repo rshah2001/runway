@@ -113,7 +113,11 @@ def rebuild() -> None:
 
         circles.setup_demo(conn, force=True)  # the circles back to the script
         for slug in DEMO_PERSONAS:  # everyone's total cap back to the default
-            conn.execute("UPDATE money_preferences SET support_exposure_limit = NULL WHERE slug = %s", (slug,))
+            conn.execute(
+                "UPDATE money_preferences SET support_exposure_limit = NULL, max_owed = NULL, allow_multi = NULL"
+                " WHERE slug = %s",
+                (slug,),
+            )
         conn.commit()
         db_schema.refresh_daily_spend(conn)  # after the commit, as the seed does
     from app import alerts

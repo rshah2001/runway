@@ -120,3 +120,14 @@ def test_approval_only_supporters_are_asked_never_auto_moved() -> None:
     sam = helper("sam", 9000, 500)
     d = decide(proj("maya", 208), [replace(sam, automatic=False)], TODAY)
     assert d.action == "needs_approval" and d.lender == "sam" and not d.held
+
+
+def test_the_recipients_own_cap_on_what_they_owe_at_once() -> None:
+    d = decide(proj("maya", 165), [helper("sam", 9000, 500)], TODAY, owe_room=D(100))
+    assert d.action == "no_safe_helper" and "owe at once" in d.reason  # $135 is more than her $100 cap
+
+
+def test_one_supporter_only_when_the_recipient_says_so() -> None:
+    helpers = [helper("sam", 390, 150), helper("emma", 2000, 45)]  # $90 + $45 would split it
+    d = decide(proj("maya", 165), helpers, TODAY, allow_multi=False)
+    assert d.action != "auto_bridge" and len(d.allocations) <= 1

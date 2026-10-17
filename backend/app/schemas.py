@@ -334,6 +334,8 @@ class SupportSummary(BaseModel):
     supporters: list[SupportAgreement]  # people who may help me
     exposure_limit: float = 500  # the most I let Runway have out across everyone I support
     committed: float = 0  # what I have out (or promised) right now as a supporter
+    max_owed: float | None = None  # as a recipient: the most I'll owe at once (None = no cap)
+    allow_multi: bool = True  # as a recipient: several people may cover one gap together
 
 
 class ActivityItem(BaseModel):
@@ -404,6 +406,14 @@ class SetSupportMode(BaseModel):
     persona: str = Field("maya", pattern=PERSONA_SLUG)  # the supporter (ignored when signed in)
     recipient: str = Field(pattern=PERSONA_SLUG)
     mode: Literal["auto", "approval"]
+
+
+class SetReceiving(BaseModel):
+    """The recipient's own limits. Leave max_owed out (null) for no cap."""
+
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in
+    max_owed: float | None = Field(None, ge=0, le=5000)
+    allow_multi: bool = True
 
 
 class SetExposure(BaseModel):
