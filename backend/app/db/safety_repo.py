@@ -19,6 +19,17 @@ SETTABLE = {
 }
 
 
+# ---------- locking ----------
+def lock_people(conn: psycopg.Connection, *slugs: str) -> None:
+    """Hold a transaction-scoped lock on each person, always in the same (sorted) order so two passes
+    can't deadlock. Every decision that moves or commits someone's money takes these first, so two
+    passes can never both spend the same supporter's room. Released at commit/rollback — so the claim
+    is committed before the slow Nessie call, never held across it."""
+    conn.execute("SET LOCAL lock_timeout = '10s'")
+    for slug in sorted(set(slugs)):
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"runway:{slug}",))
+
+
 # ---------- limits (only ever written on behalf of the lender) ----------
 def set_limit(conn: psycopg.Connection, lender: str, borrower: str, amount: float, enabled: bool) -> None:
     conn.execute(

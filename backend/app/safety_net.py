@@ -22,6 +22,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
+import psycopg
+
 from app import auth0_ciba, prefs, reconcile
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
@@ -212,6 +214,10 @@ def _fund(bridge_id: str) -> dict | None:
     """Move the bridge's money lender → borrower. Only one caller can claim a bridge, and the journal
     row is written in the same transaction as the claim, before any money moves."""
     with pool.connection() as conn:
+        current = safety_repo.bridge(conn, bridge_id)
+        if current is None:
+            return None
+        safety_repo.lock_people(conn, current["lender_slug"], current["borrower_slug"])
         b = safety_repo.transition(conn, bridge_id, ("pending_approval",), "funding")
         if b is None:
             conn.rollback()
@@ -340,24 +346,30 @@ def act(decision: Decision) -> dict | None:
         return None
     bridge_id = f"bridge-{secrets.token_hex(6)}"
     with pool.connection() as conn:
+        safety_repo.lock_people(conn, decision.borrower, decision.lender)
         if safety_repo.open_bridge_for_borrower(conn, decision.borrower):  # re-check under the lock
+            conn.rollback()
             return None
-        safety_repo.insert_bridge(
-            conn,
-            {
-                "id": bridge_id,
-                "borrower_slug": decision.borrower,
-                "lender_slug": decision.lender,
-                "amount": decision.amount,
-                "reason": decision.reason,
-                "status": "pending_approval",
-                "mode": "auto" if decision.action == "auto_bridge" else "approval",
-                "shortfall_date": decision.shortfall_date,
-                "due_date": decision.due_date,
-                "approval_channel": None,
-                "borrower_floor": decision.floor,
-            },
-        )
+        try:
+            safety_repo.insert_bridge(
+                conn,
+                {
+                    "id": bridge_id,
+                    "borrower_slug": decision.borrower,
+                    "lender_slug": decision.lender,
+                    "amount": decision.amount,
+                    "reason": decision.reason,
+                    "status": "pending_approval",
+                    "mode": "auto" if decision.action == "auto_bridge" else "approval",
+                    "shortfall_date": decision.shortfall_date,
+                    "due_date": decision.due_date,
+                    "approval_channel": None,
+                    "borrower_floor": decision.floor,
+                },
+            )
+        except psycopg.errors.UniqueViolation:  # the database's own one-open-bridge-per-pair rule
+            conn.rollback()
+            return None
         b = safety_repo.bridge(conn, bridge_id)
         if decision.action == "needs_approval":
             channel = _request_approval(conn, b)
@@ -404,6 +416,10 @@ def approve(bridge_id: str) -> dict | None:
 
 def decline(bridge_id: str) -> dict | None:
     with pool.connection() as conn:
+        current = safety_repo.bridge(conn, bridge_id)
+        if current is None:
+            return None
+        safety_repo.lock_people(conn, current["lender_slug"], current["borrower_slug"])
         b = safety_repo.transition(conn, bridge_id, ("pending_approval",), "declined")
         if b:
             _both(

@@ -228,6 +228,9 @@ ALTER TABLE bridges ADD CONSTRAINT bridges_status_check CHECK (status IN ('pendi
     'funding', 'active', 'repaying', 'repaid', 'repay_failed', 'failed', 'reconcile'));
 -- when the status last changed: "stuck" is measured from here, not from created_at
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
+-- at most one open bridge between the same two people, enforced by the database, not just the code
+CREATE UNIQUE INDEX IF NOT EXISTS bridges_one_open_pair ON bridges (borrower_slug, lender_slug)
+    WHERE status IN ('pending_approval', 'funding', 'active', 'repaying', 'repay_failed', 'reconcile');
 """
 
 HYPERTABLE = """

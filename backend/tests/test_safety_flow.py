@@ -31,6 +31,7 @@ class Store:
         }
         self.journal: dict[str, dict] = {}
         self.events: list[tuple[str, str]] = []
+        self.locks: list[tuple[str, ...]] = []
 
     # ---- connection ----
     def __enter__(self):
@@ -116,6 +117,8 @@ def wire(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(safety_net.pool, "connection", lambda: store)
         monkeypatch.setattr(safety_net.safety_repo, "transition", store.transition)
         monkeypatch.setattr(safety_net.safety_repo, "add_event", store.add_event)
+        monkeypatch.setattr(safety_net.safety_repo, "bridge", lambda conn, bridge_id: dict(store.bridge))
+        monkeypatch.setattr(safety_net.safety_repo, "lock_people", lambda conn, *slugs: store.locks.append(slugs))
         monkeypatch.setattr(safety_net.journal_repo, "claim", store.claim)
         monkeypatch.setattr(safety_net.journal_repo, "finish", store.finish)
         monkeypatch.setattr(safety_net.journal_repo, "for_ref", store.for_ref)
@@ -185,3 +188,24 @@ def test_a_bridge_is_never_funded_twice(wire) -> None:
     store.bridge["status"] = "pending_approval"  # even if something put it back
     assert safety_net._fund("bridge-1") is None
     assert sum(1 for s in nessie.sent if s[0] == "transfer") == 1
+
+
+def test_funding_takes_both_peoples_locks_before_claiming(wire) -> None:
+    store = Store("pending_approval")
+    wire(store, Nessie())
+    safety_net._fund("bridge-1")
+    assert store.locks and set(store.locks[0]) == {"sam", "maya"}
+
+
+def test_lock_order_is_sorted_so_two_passes_cannot_deadlock() -> None:
+    from app.db import safety_repo
+
+    taken = []
+
+    class Conn:
+        def execute(self, sql, params=None):
+            if params:
+                taken.append(params[0])
+
+    safety_repo.lock_people(Conn(), "sam", "maya", "sam")
+    assert taken == ["runway:maya", "runway:sam"]
