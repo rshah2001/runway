@@ -84,9 +84,11 @@ type Props = {
   lastLabel: string;
   /** bump to play the takeoff (from the current runway to clear) */
   takeoffKey: number;
+  /** quieter version: no dotted climb ahead of time and no date above the end marker */
+  minimal?: boolean;
 };
 
-export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey }: Props) {
+export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey, minimal = false }: Props) {
   const reduced = useReducedMotion();
   const clear = days >= horizon;
   const endX = X0 + (Math.min(days, horizon) / horizon) * (X1 - X0);
@@ -193,11 +195,13 @@ export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey }: 
             <AnimatedLine x1={X0 + 26} y1={MID} y2={MID} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="10 9" animatedProps={dashProps} />
             <AnimatedRect y={Y} width={22} height={RH} fill={C.red} animatedProps={fadeProps} fillOpacity={0.18} />
             <AnimatedRect y={Y - 5} width={4} height={RH + 10} rx={2} fill={C.red} animatedProps={endProps} />
-            <AnimatedPath d={SWOOSH} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="3 6" strokeLinecap="round" animatedProps={ghostProps} />
+            {!minimal && (
+              <AnimatedPath d={SWOOSH} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="3 6" strokeLinecap="round" animatedProps={ghostProps} />
+            )}
             <AnimatedPath d={SWOOSH} fill="none" stroke={C.red} strokeWidth={3.5} strokeLinecap="round"
               strokeDasharray={`${PATH_SAMPLES.swooshLen} ${PATH_SAMPLES.swooshLen}`} animatedProps={swooshProps} />
             <SvgText x={X0} y={H - 2} fill={C.text3} fontSize={10} fontFamily={F.cond} letterSpacing={1}>TODAY</SvgText>
-            {!clear || takeoffKey > 0 ? (
+            {!minimal && (!clear || takeoffKey > 0) ? (
               <AnimatedText x={endX} y={Y - 9} fill={C.red} fontSize={10} fontFamily={F.condBold} letterSpacing={1} textAnchor="middle" animatedProps={labelProps}>
                 {label.toUpperCase()}
               </AnimatedText>
