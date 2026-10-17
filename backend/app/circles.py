@@ -58,6 +58,11 @@ def _set(conn: psycopg.Connection, circle_id: str, slug: str, state: str, invite
     )
 
 
+def _is_creator(conn: psycopg.Connection, circle_id: str, actor: str) -> bool:
+    row = conn.execute("SELECT created_by FROM circles WHERE id = %s", (circle_id,)).fetchone()
+    return row is not None and row["created_by"] == actor
+
+
 def create(conn: psycopg.Connection, actor: str, name: str, circle_id: str | None = None) -> str:
     name = name.strip()
     if not 1 <= len(name) <= 40:
@@ -73,8 +78,13 @@ def invite(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> N
         raise CircleRefused("Only people in this circle can invite someone.")
     if slug == actor:
         raise CircleRefused("You're already in this circle.")
-    if _state(conn, circle_id, slug) in ("invited", "active"):
+    current = _state(conn, circle_id, slug)
+    if current in ("invited", "active"):
         return  # already there or already asked: nothing to do
+    # someone the creator removed, or who said no, can only be asked again by the creator — otherwise
+    # any member could undo a removal or keep re-inviting a person who declined
+    if current in ("removed", "declined") and not _is_creator(conn, circle_id, actor):
+        raise CircleRefused("Only the person who made this circle can invite them again.")
     _set(conn, circle_id, slug, "invited", invited_by=actor)
 
 
@@ -91,8 +101,7 @@ def leave(conn: psycopg.Connection, actor: str, circle_id: str) -> None:
 
 
 def remove(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> None:
-    row = conn.execute("SELECT created_by FROM circles WHERE id = %s", (circle_id,)).fetchone()
-    if row is None or row["created_by"] != actor:
+    if not _is_creator(conn, circle_id, actor) or _state(conn, circle_id, actor) != "active":
         raise CircleRefused("Only the person who made this circle can remove someone.")
     if slug == actor:
         raise CircleRefused("You can leave, but not remove yourself.")
