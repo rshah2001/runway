@@ -1,103 +1,72 @@
-import {
-  Tabs,
-  TabList,
-  TabTrigger,
-  TabSlot,
-  TabTriggerSlotProps,
-  TabListProps,
-} from 'expo-router/ui';
-import { Pressable, View, StyleSheet } from 'react-native';
+// Website navigation. Desktop: a top bar with the wordmark and tabs. Phone browsers: a bottom tab
+// bar like the app. Built on expo-router/ui so routes and focus state come from the router.
+import { TabList, type TabListProps, TabSlot, TabTrigger, type TabTriggerSlotProps, Tabs } from 'expo-router/ui';
+import { type ComponentRef, forwardRef } from 'react';
+import { Pressable, type PressableStateCallbackType, StyleSheet, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Swoosh } from '@/components/rw/icons';
+import { Caps, useWide } from '@/components/rw/ui';
+import { C, F, MAX_WIDTH } from '@/constants/runway';
 
-import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
+const ICON: Record<string, string> = {
+  today: 'M4 10.5L12 4l8 6.5V20H4zM8 16l2.5-2.5 2 2L16 12',
+  ask: 'M4 5.5h16v10H9l-5 3.5z',
+  spending: 'M5 19V11M10 19V6M15 19v-9M20 19v-5',
+};
 
 export default function AppTabs() {
+  const wide = useWide();
+  const list = (
+    <TabList asChild>
+      <Bar wide={wide}>
+        <TabTrigger name="today" href="/" asChild><Tab icon="today" wide={wide}>Today</Tab></TabTrigger>
+        <TabTrigger name="ask" href="/ask" asChild><Tab icon="ask" wide={wide}>Ask</Tab></TabTrigger>
+        <TabTrigger name="spending" href="/spending" asChild><Tab icon="spending" wide={wide}>Spending</Tab></TabTrigger>
+      </Bar>
+    </TabList>
+  );
   return (
-    <Tabs>
-      <TabSlot style={{ height: '100%' }} />
-      <TabList asChild>
-        <CustomTabList>
-          <TabTrigger name="today" href="/" asChild>
-            <TabButton>Today</TabButton>
-          </TabTrigger>
-          <TabTrigger name="ask" href="/ask" asChild>
-            <TabButton>Ask</TabButton>
-          </TabTrigger>
-          <TabTrigger name="spending" href="/spending" asChild>
-            <TabButton>Spending</TabButton>
-          </TabTrigger>
-        </CustomTabList>
-      </TabList>
+    <Tabs style={{ flex: 1, backgroundColor: C.bg }}>
+      {wide && list}
+      <TabSlot style={{ flex: 1 }} />
+      {!wide && list}
     </Tabs>
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+const Bar = forwardRef<ComponentRef<typeof View>, TabListProps & { wide: boolean }>(function Bar({ wide, children, ...props }, ref) {
+  if (!wide) return <View ref={ref} {...props} style={s.bottom}>{children}</View>;
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
-      <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
-          {children}
-        </ThemedText>
-      </ThemedView>
-    </Pressable>
-  );
-}
-
-export function CustomTabList(props: TabListProps) {
-  return (
-    <View {...props} style={styles.tabListContainer}>
-      <ThemedView type="backgroundElement" style={styles.innerContainer}>
-        <ThemedText type="smallBold" style={styles.brandText}>
-          Runway
-        </ThemedText>
-
-        {props.children}
-
-      </ThemedView>
+    <View ref={ref} {...props} style={s.topWrap}>
+      <View style={s.top}>
+        <View style={s.brand}><Swoosh /><Caps size={20} style={{ letterSpacing: 7, fontFamily: F.condMedium }}>Runway</Caps></View>
+        <View style={s.links}>{children}</View>
+      </View>
     </View>
   );
-}
+});
 
-const styles = StyleSheet.create({
-  tabListContainer: {
-    position: 'absolute',
-    width: '100%',
-    padding: Spacing.three,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  innerContainer: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.five,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexGrow: 1,
-    gap: Spacing.two,
-    maxWidth: MaxContentWidth,
-  },
-  brandText: {
-    marginRight: 'auto',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  tabButtonView: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-  },
-  externalPressable: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.one,
-    marginLeft: Spacing.three,
-  },
+const Tab = forwardRef<ComponentRef<typeof View>, TabTriggerSlotProps & { icon: string; wide: boolean }>(function Tab({ icon, wide, isFocused, children, ...props }, ref) {
+  const color = isFocused ? C.text : C.text3;
+  return (
+    <Pressable ref={ref} {...props} style={({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => [wide ? s.topTab : s.bottomTab, wide && (isFocused || hovered) && { backgroundColor: isFocused ? C.card2 : C.card }]}>
+      <Svg width={wide ? 18 : 24} height={wide ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <Path d={ICON[icon]} />
+      </Svg>
+      <Caps size={wide ? 14 : 11} style={{ color, letterSpacing: wide ? 1.6 : 0.6, fontFamily: wide ? F.cond : F.bodyMedium, textTransform: wide ? 'uppercase' : 'none' }}>
+        {children as string}
+      </Caps>
+    </Pressable>
+  );
+});
+
+const s = StyleSheet.create({
+  topWrap: { backgroundColor: C.tabBar, borderBottomWidth: 1, borderBottomColor: '#20262c' },
+  top: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, height: 64 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  links: { flexDirection: 'row', gap: 6 },
+  topTab: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 14, borderRadius: 999 },
+  bottom: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, paddingBottom: 18, backgroundColor: C.tabBar, borderTopWidth: 1, borderTopColor: '#20262c' },
+  bottomTab: { alignItems: 'center', gap: 4, minWidth: 72 },
 });

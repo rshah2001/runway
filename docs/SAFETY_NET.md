@@ -8,9 +8,9 @@
 
 ## How it decides (`backend/app/safety_net.py` → `decide()`, pure + unit-tested)
 
-1. **Spot the dip.** Project the borrower's checking balance to their next payday
-   (`app/cashflow.py`: live balance − bills − typical daily debit spending + paydays ± scheduled
-   repayments). If it drops under the **$300 safety floor**, the gap is rounded up to whole tens
+1. **Spot the dip.** Project the borrower's checking balance to their next payday with **the same
+   forecast engine the chat and charts use** (`app/forecast`; `app/cashflow.py` only adds scheduled
+   bridge repayments and the next payday) — so the agent and the safety net never disagree on stage. If it drops under the **$300 safety floor**, the gap is rounded up to whole tens
    (a $92 gap → a $100 bridge).
 2. **Find a safe helper.** Among family members with a limit for the borrower, keep only those whose
    *own* projection stays above $300 after lending. Pick the one with the most runway.
@@ -47,11 +47,14 @@
 ## Demo data
 
 Default limits (set by the lenders): **Sam → Maya $100**, **Sam → Jordan $300**, **Jordan → Maya $50**.
-Maya's seeded balance is tuned so her lowest point before payday is always **$208** → a **$100
-bridge, exactly Sam's limit** (`demo_low_before_payday` in `seed/personas.py`; stable on every day —
-tested). For the over-limit moment, lower Sam's limit to $50 live, then run.
+Maya's seeded balance is tuned **against the forecast engine** so her lowest point before payday is
+always **$208** → a **$100 bridge, exactly Sam's limit** (`demo_low_before_payday` in
+`seed/personas.py`; tested on 14 consecutive days). The chat says the same: "$208 on Thu Oct 22". For the over-limit moment, lower Sam's limit to $50 live, then run.
 
 ## Auth0 push (CIBA) setup — Patil-Hemangi
+
+(The safety net already runs on your forecast engine — `app/cashflow.py` is a thin adapter — and
+`sources.demo_data()` was extracted from `_load_demo` so the seed tunes Maya on the same inputs.)
 
 The backend client is done (`backend/app/auth0_ciba.py`, tested against a fake Auth0). It turns on
 when these are configured. **Check the current Auth0 docs for each step** — names move around:

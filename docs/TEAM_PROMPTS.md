@@ -32,7 +32,7 @@ Build, in order:
    (max(0, low − safe_floor)), and a "Coming up" list from forecast.events (next 14 days).
    Pull-to-refresh.
 3. Ask: chat bubbles, input, suggested-prompt chips ("Can I afford $180 Friday?", "Fix it",
-   "What subscriptions do I have?") using api.chat(). When a reply has pending_action, show an
+   "What subscriptions do I have?") using api.chat(message, persona) — always pass the current persona. When a reply has pending_action, show an
    approval card (description, amount, Approve / Decline → api.approve(id)), then refresh Today so
    the chart visibly turns green — that is the demo's big moment. If approve returns 503 show
    "nothing moved — try again"; if it returns 502 (status "failed") show "we're checking with the

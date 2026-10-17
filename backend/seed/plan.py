@@ -113,16 +113,18 @@ def build_plan(spec: PersonaSpec, today: date) -> list[Op]:
 
 
 def demo_opening_balance(spec: PersonaSpec, plan: list[Op], today: date) -> float:
-    """Checking balance today such that, with the same rules as app/cashflow.py (bills due in the
-    window, average daily debit spending over the last 30 days), the lowest point before the next
-    payday is `spec.demo_low_before_payday`."""
-    if spec.paycheck.every_days is None:
-        payday = next_monthly(spec.paycheck.day, today + timedelta(days=1))  # strictly after today
-    else:
-        payday = today + timedelta(days=(4 - today.weekday()) % 7 or 7)  # same rule as paydays()
-    month_ago = today - timedelta(days=30)
-    debit = sum(op.amount for op in plan if op.kind == "purchase" and op.account == "checking" and op.on >= month_ago)
-    daily = round(debit / 30, 2)
-    window_days = (payday - today).days  # today … the day before payday
-    bills = sum(b.amount for b in spec.bills for d in _monthly(b.day, today, payday))
-    return round(spec.demo_low_before_payday + bills + daily * (window_days - 1), 2)
+    """Checking balance today such that the forecast engine's lowest point before the next payday is
+    `spec.demo_low_before_payday`. The engine is linear in the opening balance (every day shifts by
+    the same amount), so one projection from $0 gives the answer exactly."""
+    from app.cashflow import HORIZON_DAYS, next_paycheck  # local: app.forecast.sources imports this module
+    from app.forecast import engine, schedule, sources
+
+    sched = schedule.build(sources.demo_data(spec, plan, 0.0), today)
+    payday, _ = next_paycheck(sched, today)
+    if payday is None:
+        return spec.checking
+    # same horizon as the safety net: the engine books everyday spending in weekly blocks, so the
+    # first block (and therefore the low) depends on the horizon
+    f = engine.forecast(days=HORIZON_DAYS - 1, start=today, schedule=sched)
+    low_from_zero = min(p.balance for p in f.points if p.date < payday)
+    return round(spec.demo_low_before_payday - low_from_zero, 2)

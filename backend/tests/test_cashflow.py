@@ -1,36 +1,63 @@
+"""The safety net reads the forecast engine (one forecast for the whole app). Offline demo data."""
+
 from datetime import date, timedelta
-from decimal import Decimal as D
+from decimal import Decimal
 
-from app.cashflow import build_projection, detect_paydays
+from app.cashflow import next_paycheck, projection_for
+from app.forecast import engine
+from app.schemas import ForecastEvent
 
-TODAY = date(2026, 10, 16)  # Friday
-
-
-def test_detects_a_biweekly_paycheck_and_ignores_small_deposits() -> None:
-    deposits = [(TODAY - timedelta(days=d), D(780)) for d in (7, 21, 35, 49)] + [(TODAY - timedelta(days=3), D(31))]
-    days, amount = detect_paydays(deposits, TODAY, TODAY + timedelta(days=30))
-    assert amount == D(780) and days == [TODAY + timedelta(days=7), TODAY + timedelta(days=21)]
+TODAY = date(2026, 10, 16)  # a Friday
 
 
-def test_detects_a_monthly_paycheck_on_the_same_day() -> None:
-    deposits = [(date(2026, m, 1), D(2100)) for m in (7, 8, 9, 10)]
-    days, amount = detect_paydays(deposits, TODAY, date(2026, 12, 31))
-    assert amount == D(2100) and days == [date(2026, 11, 1), date(2026, 12, 1)]
+def test_projection_matches_the_engine_exactly() -> None:
+    p = projection_for("jordan", first_name="Jordan", age=40, today=TODAY)
+    f = engine.forecast(days=34, persona="jordan", start=TODAY)
+    assert [(d, float(b)) for d, b in p.days] == [(pt.date, pt.balance) for pt in f.points]
 
 
-def test_projection_applies_bills_spending_income_and_scheduled_repayments() -> None:
-    p = build_projection(
-        slug="maya",
-        first_name="Maya",
-        age=20,
+def test_next_paycheck_comes_from_the_engines_schedule() -> None:
+    payday, amount = next_paycheck(engine.schedule_for("maya", TODAY), TODAY)
+    assert payday == TODAY + timedelta(days=7) and amount == Decimal("780.0")  # biweekly Friday, never today
+
+
+def test_scheduled_repayments_move_the_projection() -> None:
+    due = TODAY + timedelta(days=3)
+    base = projection_for("sam", first_name="Sam", age=60, today=TODAY)
+    paid = projection_for(
+        "sam",
+        first_name="Sam",
+        age=60,
         today=TODAY,
-        balance=D(680),
-        bills=[(16, D(50), "Due today"), (20, D(35), "Phone")],
-        deposits=[(TODAY - timedelta(days=d), D(780)) for d in (14, 28)],
-        daily_spend=D(10),
-        scheduled=[(TODAY + timedelta(days=2), D(-100), "Repay Sam")],
+        scheduled=[ForecastEvent(date=due, amount=100, label="Maya pays you back", kind="transfer")],
     )
-    assert p.days[0] == (TODAY, D(630))  # bill due today counts; today's spending is already in the balance
-    assert p.balance_on(TODAY + timedelta(days=2)) == D(630 - 20 - 100)
-    assert p.balance_on(date(2026, 10, 20)) == D(630 - 40 - 100 - 35)
-    assert p.next_payday == date(2026, 10, 30) and p.paycheck == D(780)
+    assert paid.balance_on(due) - base.balance_on(due) == Decimal(100)
+    assert paid.balance_on(due - timedelta(days=1)) == base.balance_on(due - timedelta(days=1))
+
+
+def test_maya_demo_dip_is_208_on_the_engine_every_day() -> None:
+    """The seed tunes Maya's balance against the engine itself, so chat, charts and the safety net
+    all see the same $208 low before payday — whatever day the demo runs."""
+    for offset in range(14):
+        today = TODAY + timedelta(days=offset)
+        p = projection_for("maya", first_name="Maya", age=20, today=today)
+        assert abs(p.low(today, p.next_payday)[1] - Decimal("208")) <= Decimal("0.01"), today
+
+
+def test_safety_net_inputs_never_fall_back_to_demo_data(monkeypatch) -> None:
+    """Money decisions must not run on made-up balances: strict loads fail instead of falling back."""
+    import pytest
+
+    from app.forecast import sources
+
+    with pytest.raises(sources.LiveDataUnavailable):  # tests run in demo mode
+        sources.load("maya", TODAY, strict=True)
+
+    class Live:
+        live = True
+
+    monkeypatch.setattr(sources, "get_settings", lambda: Live())
+    monkeypatch.setattr(sources, "_load_live", lambda p, t: (_ for _ in ()).throw(ConnectionError("db down")))
+    with pytest.raises(sources.LiveDataUnavailable):
+        sources.load("maya", TODAY, strict=True)
+    assert sources.load("maya", TODAY).slug == "maya"  # the chat path still falls back and keeps answering
