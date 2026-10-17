@@ -171,6 +171,19 @@
   .x{width:30px;height:30px;border-radius:50%;background:var(--card2);color:var(--t2);display:grid;place-items:center;flex:0 0 30px}
   #news{overflow:hidden;transition:height 300ms var(--eo),opacity 200ms,margin-top 300ms var(--eo)}
   #news.gone{height:0!important;opacity:0;margin-top:0!important}
+  [hidden]{display:none!important}
+  .acct{position:relative}
+  .hi{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px 0 14px;border-radius:999px;background:var(--card2);font-size:15px;font-weight:600}
+  .hi .chev{transition:transform 260ms var(--eo)}
+  .hi[aria-expanded="true"] .chev{transform:rotate(180deg)}
+  .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:200px;padding:6px;border-radius:18px;background:#252b30;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:20;
+        transform-origin:top right;transform:scale(.92);opacity:0;pointer-events:none;transition:transform 220ms var(--eo),opacity 160ms}
+  .menu.on{transform:none;opacity:1;pointer-events:auto}
+  .menu-who{padding:10px 12px 10px}.menu-who b{display:block;font-size:15px}.menu-who span{font-size:13px;color:var(--t2)}
+  .menu button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:12px;border-top:1px solid var(--line);font-size:15px;font-weight:600;color:var(--red);text-align:left}
+  .menu button:hover{background:rgba(255,255,255,.05)}
+  .out{min-height:640px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center}
+  .out p{color:var(--t2)}.out .cta{width:260px}
   .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:22px}
   .tile{background:var(--card);border-radius:18px;padding:12px;text-align:center}
   .tile small{display:block;font:600 11px "Barlow Condensed";letter-spacing:.12em;text-transform:uppercase;color:var(--t2)}
@@ -241,7 +254,7 @@ const FIX = {
 };
 
 /* ---------- state ---------- */
-const S = { who: 'maya', tab: 'home', applied: null, askedAlex: false, alts: false, samLimit: 100, spend: 0, customOpen: false, pillOpen: false, newsHidden: { maya: false, sam: false } };
+const S = { who: 'maya', tab: 'home', applied: null, askedAlex: false, alts: false, samLimit: 100, menu: false, out: false, spend: 0, customOpen: false, pillOpen: false, newsHidden: { maya: false, sam: false } };
 let shown = MAYA.slice();          // what the chart is drawing right now (animates toward target)
 const base = () => S.who === 'sam' ? SAM : S.applied ? shift(MAYA, FIX[S.applied].moves) : MAYA;
 const target = () => S.spend ? shift(base(), [[0, -S.spend]]) : base();   // what-if: less in checking from today on
@@ -364,7 +377,15 @@ const ICON = {
   check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   shield: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6z"/></svg>',
 };
-const topBar = () => `<div class="top"><div class="brand"><svg width="22" height="12" viewBox="0 0 22 12"><path d="M1 11C8 11 15 7 21 1" fill="none" stroke="#ff6b5e" stroke-width="2.6" stroke-linecap="round"/></svg>RUNWAY</div><div class="avatar">${S.who === 'sam' ? 'S' : 'M'}</div></div>`;
+const topBar = () => `<div class="top"><div class="brand"><svg width="22" height="12" viewBox="0 0 22 12"><path d="M1 11C8 11 15 7 21 1" fill="none" stroke="#ff6b5e" stroke-width="2.6" stroke-linecap="round"/></svg>RUNWAY</div><div class="acct"><button class="hi press" data-acct aria-haspopup="menu" aria-expanded="${S.menu}">Hi, ${who()}<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div class="menu ${S.menu ? 'on' : ''}" role="menu">
+      <div class="menu-who"><b>${who()}</b><span>Signed in with Auth0</span></div>
+      <button class="press" role="menuitem" data-signout><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Sign out</button>
+    </div></div></div>`;
+const who = () => S.who === 'sam' ? 'Sam' : 'Maya';
+/* After Sign out: the login screen, so the flow can be tried end to end. */
+const signedOutHTML = () => `<div class="out"><div class="brand"><svg width="22" height="12" viewBox="0 0 22 12"><path d="M1 11C8 11 15 7 21 1" fill="none" stroke="#ff6b5e" stroke-width="2.6" stroke-linecap="round"/></svg>RUNWAY</div>
+  <p>You're signed out.</p><button class="cta press" data-signin>Sign in with Auth0</button></div>`;
 
 /* Everything main's Today shows (greeting, balance, pill, tiles, answer, family news, chart + what-if + fix,
    Coming up), in the v7 look. In the app all of these come straight off GET /forecast. */
@@ -581,6 +602,8 @@ function ask(q) {
 /* ---------- render + wiring ---------- */
 function render() {
   const app = document.getElementById('app');
+  if (S.out) { app.innerHTML = signedOutHTML(); document.querySelector('.dock').hidden = true; return; }
+  document.querySelector('.dock').hidden = false;
   app.innerHTML = S.tab === 'home' ? homeHTML() : S.tab === 'family' ? familyHTML() : spendingHTML();
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
   document.querySelectorAll('#picker button').forEach((b) => b.classList.toggle('on', b.dataset.who === S.who));
@@ -598,7 +621,12 @@ function render() {
 
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
+  // the account menu closes on any tap outside it
+  if (S.menu && !e.target.closest('.acct')) { S.menu = false; document.querySelector('.menu')?.classList.remove('on'); document.querySelector('.hi')?.setAttribute('aria-expanded', 'false'); }
   if (!t) return;
+  if (t.dataset.acct !== undefined) { S.menu = !S.menu; t.setAttribute('aria-expanded', S.menu); t.nextElementSibling.classList.toggle('on', S.menu); return; }
+  if (t.dataset.signout !== undefined) { S.menu = false; S.out = true; render(); return; }
+  if (t.dataset.signin !== undefined) { S.out = false; S.tab = 'home'; render(); return; }
   const d = t.dataset;
   if (d.who) { S.who = d.who; S.tab = 'home'; S.alts = false; S.spend = 0; shown = target().slice(); render(); }
   else if (d.tab) { S.tab = d.tab; render(); document.getElementById('screen').scrollTop = 0; }
@@ -630,7 +658,7 @@ document.addEventListener('click', (e) => {
   else if (d.q) ask(d.q);
 });
 document.getElementById('chatBtn').addEventListener('click', chatSheet);
-addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeSheet(); if (S.menu) { S.menu = false; render(); } } });
 render();
 </script>
 </body>
