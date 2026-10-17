@@ -307,7 +307,7 @@ def test_router_keeps_confident_answers_short() -> None:
     assert "rough guide" not in r.reply and "sketch" not in r.reply
 
 
-@pytest.mark.parametrize(("days", "phrase"), [(20, "day 18 of 30, so take this as a rough guide"), (10, "a sketch")])
+@pytest.mark.parametrize(("days", "phrase"), [(20, "day 18 of 30, so take this as a rough guide"), (10, "a rough sketch")])
 def test_router_says_when_it_is_still_learning(monkeypatch: pytest.MonkeyPatch, days: int, phrase: str) -> None:
     _new_user(monkeypatch, days)
     r = agent.chat("can I afford $15 on 2026-11-07?", persona="maya", today=TODAY)
