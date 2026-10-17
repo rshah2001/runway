@@ -4,6 +4,9 @@
  * takeoff before the app replaces it (`enter…` commits the session).
  */
 import { api } from './api';
+import { router } from 'expo-router';
+import { Platform } from 'react-native';
+
 import { httpStatus } from '../hooks/use-load';
 import { completeWebSignIn, forgetSession, isSignedIn, login, logout } from './auth';
 import { setSession } from './session';
@@ -18,6 +21,17 @@ async function signedInProfile(): Promise<Profile> {
 
 /** On launch: finish a sign-in Auth0 just returned from (web), resume a session, else the login screen. */
 export async function bootSession(): Promise<void> {
+  // back from Auth0: once handled, drop ?code=…&state=… from the address (via the router, which
+  // would otherwise put its own copy of the URL back)
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && /[?&](code|error)=/.test(window.location.search)) {
+    setTimeout(() => {
+      try {
+        router.replace('/');
+      } catch {
+        // router not mounted yet: the address keeps a used, one-time code — harmless
+      }
+    }, 0);
+  }
   try {
     await completeWebSignIn();
   } catch (e) {

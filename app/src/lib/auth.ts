@@ -101,10 +101,21 @@ export async function login(): Promise<boolean> {
   return true;
 }
 
+/** Our own words for the errors Auth0 can send back — its error_description is never shown, since
+ * anyone can put text in a link's address. */
+const SIGN_IN_ERRORS: Record<string, string> = {
+  access_denied: 'You cancelled the sign-in, or this account isn’t allowed in',
+  login_required: 'Please sign in again',
+  consent_required: 'Please sign in again',
+  interaction_required: 'Please sign in again',
+  unauthorized: 'This account isn’t allowed to use Runway',
+};
+
 /**
  * Web only: finishes a redirect sign-in when Auth0 has just sent the user back (`?code=…&state=…`).
- * Resolves true when a session was saved, false when there was nothing to finish. Throws with
- * Auth0's message if Auth0 sent back an error. Always removes the code from the address bar.
+ * Resolves true when a session was saved, false when there was nothing to finish (including any
+ * return this tab didn't start — a forged or replayed link). Throws one of our fixed messages if
+ * Auth0 sent back an error for our own request. Always removes the code from the address bar.
  */
 export async function completeWebSignIn(): Promise<boolean> {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
@@ -114,9 +125,10 @@ export async function completeWebSignIn(): Promise<boolean> {
   const saved = window.sessionStorage.getItem(PKCE_KEY);
   window.sessionStorage.removeItem(PKCE_KEY);
   window.history.replaceState(null, '', window.location.pathname); // never leave the code in the URL
-  if (error) throw new Error(params.get('error_description') ?? error);
   const pkce = saved ? (JSON.parse(saved) as { state?: string; verifier?: string }) : null;
-  if (!pkce?.verifier || pkce.state !== state) return false; // not a sign-in this tab started: ignore it
+  // a code or an error only counts if it answers the request this tab sent (matching state)
+  if (!pkce?.verifier || !state || pkce.state !== state) return false;
+  if (error) throw new Error(SIGN_IN_ERRORS[error] ?? 'Auth0 couldn’t sign you in');
   const tokens = await AuthSession.exchangeCodeAsync(
     { clientId: CLIENT_ID, code: code!, redirectUri: redirectUri(), extraParams: { code_verifier: pkce.verifier } },
     await getDiscovery(),
