@@ -38,6 +38,18 @@ def current_user(authorization: str | None = Header(default=None)) -> User | Non
 CurrentUser = Annotated[User | None, Depends(current_user)]
 
 
+def optional_user(authorization: str | None = Header(default=None)) -> User | None:
+    """Like `current_user`, but a request with NO token is anonymous (None) instead of 401 — for
+    reads that stay browsable without an account (the demo's persona switcher). A token that is
+    present is still fully verified, and a bad one is still 401."""
+    if not authorization or config() is None:
+        return None
+    return current_user(authorization)
+
+
+OptionalUser = Annotated[User | None, Depends(optional_user)]
+
+
 def _linked(user: User) -> str:
     if user.persona is None:
         raise HTTPException(403, "This account isn't linked to a Runway profile yet.")

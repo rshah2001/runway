@@ -54,6 +54,10 @@ jobs:
         env:
           # repo variable PUBLIC_API_URL = http://<server>/api once the Vultr server exists
           EXPO_PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL || 'http://localhost:8000' }}
+          # Auth0 sign-in for the web app — public identifiers (the app is a PKCE public client, no secret)
+          EXPO_PUBLIC_AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          EXPO_PUBLIC_AUTH0_CLIENT_ID: ${{ vars.AUTH0_CLIENT_ID }}
+          EXPO_PUBLIC_AUTH0_AUDIENCE: ${{ vars.AUTH0_AUDIENCE }}
       - uses: actions/upload-artifact@v4
         with:
           name: web

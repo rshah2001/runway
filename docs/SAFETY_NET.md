@@ -23,7 +23,7 @@
 
 | Rule | Where |
 |---|---|
-| Only the **lender** sets or raises their limit (never the borrower, never the AI) | `PUT /safety-net/limits` — TODO(auth): must be the logged-in lender |
+| Only the **lender** sets or raises their limit (never the borrower, never the AI) | `PUT /safety-net/limits` → `authorize_money(user, lender)` |
 | Must come back **by the borrower's next payday**, within 31 days | `decide()` → `no_payday` |
 | Helping must keep the **helper** above the floor | `decide()` |
 | Repaying on payday must keep the **borrower** above the floor, or no bridge | `decide()` |
@@ -33,7 +33,7 @@
 | Covers **forecast gaps from bills and normal spending** — not a one-off purchase you're considering | only the cash-flow projection triggers it |
 | Never funds or repays **twice**: every money move first claims the bridge with an atomic status update | `safety_repo.transition()` |
 | Every move appears in **both** people's feed | `safety_events` |
-| Real money only with `LIVE_TRANSFERS=1` (off until the routes check the Auth0 user) | otherwise `/safety-net/run` is a dry run |
+| Real money only with `LIVE_TRANSFERS=1`, and then only for a signed-in owner | otherwise `/safety-net/run` is a dry run |
 
 ## API
 

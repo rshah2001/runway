@@ -66,6 +66,14 @@ class Decision:
     due_date: date | None = None
 
 
+def _md(d: date) -> str:
+    return f"{d:%b} {d.day}"  # "Oct 22" — portable; %-d is glibc-only and crashes on Windows
+
+
+def _wmd(d: date) -> str:
+    return f"{d:%a %b} {d.day}"  # "Fri Oct 23"
+
+
 def _money(x: Decimal) -> str:
     return f"${x:,.2f}".replace(".00", "")
 
@@ -88,7 +96,7 @@ def decide(
     short_day, short_bal = low
     need = Decimal(math.ceil((floor - short_bal) / ROUND_TO) * ROUND_TO)
     base = dict(shortfall_date=short_day, low_balance=short_bal, due_date=b.next_payday)
-    gap = f"{name} would drop to {_money(short_bal)} on {short_day:%b %-d}, before payday on {b.next_payday:%b %-d}"
+    gap = f"{name} would drop to {_money(short_bal)} on {_md(short_day)}, before payday on {_md(b.next_payday)}"
 
     if need > MAX_BRIDGE:
         return Decision(b.slug, "no_safe_helper", f"{gap} — the gap is bigger than any bridge.", need, **base)
@@ -113,7 +121,7 @@ def decide(
         h = under[0]
         reason = (
             f"{gap}. {h.projection.first_name} covers {_money(need)} within their {_money(h.limit)} limit "
-            f"and stays safe; it comes back on {b.next_payday:%b %-d}."
+            f"and stays safe; it comes back on {_md(b.next_payday)}."
         )
         return Decision(b.slug, "auto_bridge", reason, need, h.projection.slug, **base)
     h = safe[0][0]
@@ -214,13 +222,13 @@ def _fund(bridge_id: str) -> dict | None:
             out_transfer_id=t_id,
             out_deposit_id=d_id,
         )
-        due = f"{b['due_date']:%a %b %-d}"
+        due = f"{_wmd(b['due_date'])}"
         if b["mode"] == "auto":
             _both(
                 conn,
                 b,
                 "bridge_auto",
-                f"🛟 {b['lender_name']} covered you with ${amount:,.0f} before {b['shortfall_date']:%b %-d} — "
+                f"🛟 {b['lender_name']} covered you with ${amount:,.0f} before {_md(b['shortfall_date'])} — "
                 f"it goes back automatically on payday, {due}.",
                 f"🛟 Runway sent ${amount:,.0f} of yours to {b['borrower_name']} (within your limit). "
                 f"You get it back on {due}.",
@@ -291,8 +299,8 @@ def act(decision: Decision) -> dict | None:
                 b,
                 "approval_needed",
                 f"Asked {b['lender_name']} to approve ${decision.amount:,.0f} — it's over their auto limit.",
-                f"🔔 {b['borrower_name']} needs ${decision.amount:,.0f} before {decision.shortfall_date:%b %-d} "
-                f"(over your auto limit). Approve {where} — it comes back {decision.due_date:%b %-d}.",
+                f"🔔 {b['borrower_name']} needs ${decision.amount:,.0f} before {_md(decision.shortfall_date)} "
+                f"(over your auto limit). Approve {where} — it comes back {_md(decision.due_date)}.",
             )
         conn.commit()
     return _fund(bridge_id) if decision.action == "auto_bridge" else b
