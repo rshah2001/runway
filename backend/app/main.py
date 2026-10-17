@@ -339,13 +339,7 @@ def safety_net_summary(user: OptionalUser, persona: str = PERSONA) -> SafetyNetS
 @app.get("/support", response_model=SupportSummary)
 def support_summary(user: OptionalUser, persona: str = PERSONA) -> SupportSummary:
     """My agreements — as supporter and as recipient. No one's balance, income or spending, ever."""
-    persona = persona_for(user, persona)
-    if not get_settings().live:
-        return safety_views.demo_support(persona)
-    from app.db import agreements_repo, pool
-
-    with pool.connection() as conn:
-        return safety_views.support_summary(persona, agreements_repo.involving(conn, persona))
+    return safety_views.support_for(persona_for(user, persona))
 
 
 def _change_agreement(req: AgreementChange, user: User | None, action: str) -> SupportSummary:

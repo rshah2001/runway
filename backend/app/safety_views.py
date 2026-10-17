@@ -291,3 +291,13 @@ def demo_support(viewer: str) -> SupportSummary:
         for s, r, amount in SAFETY_LIMITS
     ]
     return support_summary(viewer, rows)
+
+
+def support_for(viewer: str) -> SupportSummary:
+    """`viewer`'s own agreements, live or demo — the one place the API and the assistant both read."""
+    if not get_settings().live:
+        return demo_support(viewer)
+    from app.db import agreements_repo, pool
+
+    with pool.connection() as conn:
+        return support_summary(viewer, agreements_repo.involving(conn, viewer))

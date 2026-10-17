@@ -437,9 +437,19 @@ def _bridge(b: Bridge) -> dict[str, Any]:
     return {"from": b.lender_name, "to": b.borrower_name, "amount": money(b.amount), "status": words, "why": b.reason}
 
 
+AGREEMENT_WORDS = {
+    "active": "both agreed",
+    "paused": "paused",
+    "revoked": "stopped",
+    "needs_both": "not agreed yet",
+    "needs_supporter": "waiting for the supporter's yes",
+    "needs_recipient": "waiting for your yes",
+}
+
+
 def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
-    """The family safety net from this user's side: who covered them, what they lent and when it comes
-    back, the limits they set, and requests waiting for their OK.
+    """The safety net from this user's side: who covered them, what they lent and when it comes back,
+    their support agreements, the limits they set, and requests waiting for their OK.
 
     Read-only by design. It can't approve, decline, start or change anything: those happen only in the
     app's Family screen, from the person whose money it is.
@@ -448,6 +458,7 @@ def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
 
     today = today or sources.local_today()
     s = safety_views.summary(persona)
+    support = safety_views.support_for(persona)
     _, sched = _inputs(persona, today)
     now = engine.forecast(start=today, schedule=sched)
     return {
@@ -469,9 +480,19 @@ def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
         "family_covering_me": [
             {"who": lim.lender_name, "up_to": money(lim.limit), "on": lim.enabled} for lim in s.limits_for_me
         ],
+        # Quiet Support Agreements, from this user's side only: who agreed, and whether both said yes
+        "my_supporters": [
+            {"who": a.supporter_name, "agreement": AGREEMENT_WORDS[a.state], "up_to": money(a.limit or 0)}
+            for a in support.supporters
+        ],
+        "people_i_support": [
+            {"who": a.recipient_name, "agreement": AGREEMENT_WORDS[a.state], "my_limit": money(a.limit or 0)}
+            for a in support.supporting
+        ],
+        "privacy": "Supporters see only the amount and when it's back — never a balance, spending or the reason.",
         "recent": [e.message for e in s.events[:5]],
         "can_change_here": False,
-        "where_to_act": "The Family screen in the app: approve or decline requests, and change limits there.",
+        "where_to_act": "The Circles screen in the app: agree or stop support, answer requests, change limits.",
     }
 
 
