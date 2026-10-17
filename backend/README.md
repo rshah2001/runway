@@ -1,16 +1,29 @@
 # Backend
 
-FastAPI service (Python 3.12). Owners: **A** (data + infra), **B** (forecast + ML), **C** (agent + auth).
+FastAPI service. Owners: **team lead + Claude**. Mock-first: every route already returns realistic
+data in the final contract shape (`app/schemas.py`) so the app team can build in parallel.
 
-Planned modules:
+## Run
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload --port 8000     # interactive docs: http://localhost:8000/docs
+```
+
+## Layout
 
 ```
 backend/
-├── seed/        create demo personas in Nessie (run once, store ids)
-├── nessie/      thin typed client over the Nessie REST API
-├── ingest/      Nessie → Tiger Data sync
-├── forecast/    projection engine (ported from prototype/ buildEvents + project) + ML upgrade
-├── agent/       Gemini tool definitions + pending-action approval flow
-├── evals/       forecast backtest + agent accuracy suite
-└── main.py      FastAPI routes (see docs/ARCHITECTURE.md)
+├── app/
+│   ├── main.py            routes (thin — delegate to modules)
+│   ├── schemas.py         the API contract (mirror in app/src/lib/types.ts)
+│   ├── nessie/client.py   MOCK → real Nessie client
+│   ├── forecast/engine.py MOCK schedule → real engine (port of prototype) + ML
+│   └── agent/chat.py      MOCK keyword rules → Gemini tool calling + Auth0 approval
+├── seed/                  (todo) create demo personas in Nessie
+└── evals/                 (todo) forecast backtest + agent accuracy suite
 ```
+
+Try it: `POST /agent/chat {"message": "can I afford $180?"}`, then `{"message": "fix it"}`, then
+approve the returned action at `POST /actions/{id}/approve`.

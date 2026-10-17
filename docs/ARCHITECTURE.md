@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-Next.js frontend (Auth0 login) ──► FastAPI backend (on Vultr)
+Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
                                      ├── Nessie client (read + write)
                                      ├── Ingest job ──► Tiger Data (Postgres + TimescaleDB)
                                      │                   ├── transactions hypertable
@@ -23,7 +23,7 @@ Next.js frontend (Auth0 login) ──► FastAPI backend (on Vultr)
    pending action and trigger an Auth0 approval request to the user's device.
 4. On approval, the backend calls Nessie, re-ingests, recomputes the forecast, and the frontend refreshes.
 
-## API contract (draft — agree in hour 0–2, then change only by PR)
+## API contract (implemented as mocks — `backend/app/schemas.py` ↔ `app/src/lib/types.ts`; change only by PR)
 
 | Method | Path | Returns |
 |---|---|---|
@@ -31,7 +31,7 @@ Next.js frontend (Auth0 login) ──► FastAPI backend (on Vultr)
 | GET | `/forecast?days=30` | `{ points: [{date, balance}], low: {date, balance}, events: [...] }` |
 | POST | `/simulate` `{amount, date, label}` | same shape as `/forecast`, with the purchase applied |
 | GET | `/recurring` | `[{merchant, amount, interval_days, next_date}]` |
-| GET | `/spending?month=YYYY-MM` | category totals + transactions |
+| GET | `/spending?month=YYYY-MM` | category totals + transactions *(todo — not in the mock yet)* |
 | POST | `/agent/chat` `{message}` | `{reply, tool_calls, pending_action?}` |
 | POST | `/actions/{id}/approve` | executes the Nessie call, returns the new forecast |
 
@@ -58,6 +58,6 @@ GROUP BY day, account_id, category;
 
 ## Stack
 
-- **Frontend:** Next.js (App Router) + TypeScript, Recharts, Auth0 Next.js SDK
+- **App:** Expo (React Native + Expo Router) + TypeScript → web, iOS, Android from one codebase; react-native-svg charts; Auth0
 - **Backend:** Python 3.12, FastAPI, httpx (Nessie), psycopg (Tiger Data), Google Gen AI SDK (Gemini)
-- **Hosting:** Vultr (backend + DB), frontend on Vultr too (keeps the Vultr prize story simple)
+- **Hosting:** Vultr (backend + DB + static web export); iOS/Android via EAS preview builds / Expo Go for the demo

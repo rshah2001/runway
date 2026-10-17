@@ -380,10 +380,10 @@ function importTxnCSV(text, src){
     const d = toISO(r[iDate]); if(!d) continue;
     const raw = (r[iAmt]||'').replace(/[$,\s]/g,''); const a = Number(raw);
     if(!isFinite(a) || a === 0) continue;
-    const m = ((iMer >= 0 ? r[iMer] : '') || 'Unknown').trim().slice(0,60);
+    const m = esc(((iMer >= 0 ? r[iMer] : '') || 'Unknown').trim().slice(0,60));
     const typeRaw = (iType >= 0 ? r[iType] : '').toLowerCase();
     const t = typeRaw.includes('payment') ? 'payment' : (typeRaw.includes('purchase') ? 'purchase' : 'adjust');
-    const c = (iCat >= 0 ? r[iCat] : '') || 'Other';
+    const c = esc((iCat >= 0 ? r[iCat] : '') || 'Other');
     const key = `${d}|${a.toFixed(2)}|${m}`;
     if(seen.has(`${d}|${a}|${m}`) || seen.has(key)) continue;         // don't double-import
     seen.add(key);
@@ -423,6 +423,8 @@ const d2s = d => d.toISOString().slice(0,10);
 const s2d = s => new Date(s + 'T12:00:00');
 const niceDate = s => s2d(s).toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
 const niceDateY = s => s2d(s).toLocaleDateString('en-US',{month:'short', day:'numeric', year:'numeric'});
+// escape user / CSV text before it is stored, since render() builds HTML with template strings
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const todayStr = () => d2s(new Date(Date.now() - new Date().getTimezoneOffset()*60000));
 // inclusive list of 'YYYY-MM' from start..end, e.g. monthsBetween('2026-08','2027-07')
 const monthsBetween = (startYM, endYM) => {
@@ -480,26 +482,10 @@ const txtEnc = new TextEncoder(), txtDec = new TextDecoder();
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
 
-/* cloud sync: vault blob (already encrypted) is stored server-side under an id
-   derived from the password — same password on any device = same data.   */
-let syncId = null;
-async function deriveSyncId(pw){
-  const km = await crypto.subtle.importKey('raw', txtEnc.encode(pw), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', salt:txtEnc.encode('runway-vault-sync-v1'), iterations:100000, hash:'SHA-256'}, km, 128);
-  return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-async function remoteGet(){
-  if(!syncId) return null;
-  try{
-    const r = await fetch('api/vault', {headers:{'x-sync-id':syncId}});
-    if(!r.ok) return null;
-    const t = await r.text(); return t || null;
-  }catch(e){ return null; }   // offline or local file:// copy — sync silently off
-}
-function remotePut(payload){
-  if(!syncId) return;
-  try{ fetch('api/vault', {method:'PUT', headers:{'x-sync-id':syncId}, body:payload}).catch(()=>{}); }catch(e){}
-}
+/* Cloud sync was removed: it keyed data by a password-derived id with no server auth.
+   The real app replaces it with Auth0 login + the backend. Data here stays in this browser. */
+async function remoteGet(){ return null; }
+function remotePut(){}
 
 async function deriveKey(pw, salt){
   const km = await crypto.subtle.importKey('raw', txtEnc.encode(pw), 'PBKDF2', false, ['deriveKey']);
@@ -1648,13 +1634,13 @@ window.clearAnchor = () => { anchor = null; save('anchor', null); render(); };
 window.addDeposit = () => {
   const amt = parseFloat($('#depAmt').value);
   if(isNaN(amt) || amt<=0) return toast('Enter the deposit amount');
-  deposits.push({date: $('#depDate').value || todayStr(), amount: amt, note: $('#depNote').value});
+  deposits.push({date: $('#depDate').value || todayStr(), amount: amt, note: esc($('#depNote').value)});
   save('deposits', deposits); render(); toast('+' + fmt(amt) + ' toward ' + goal.name + ' 🎯');
 };
 window.delDeposit = i => { deposits.splice(i,1); save('deposits', deposits); render(); };
 window.setAcct = (k,v) => { accts[k] = Number(v)||0; save('accts', accts); render(); };
 window.iouAdd = () => {
-  const name = $('#iouName').value.trim(), amt = parseFloat($('#iouAmt').value);
+  const name = esc($('#iouName').value.trim()), amt = parseFloat($('#iouAmt').value);
   if(!name || isNaN(amt) || amt<=0) return toast('Need a name and an amount');
   ious.push({name, dir: $('#iouDir').value, amt: Math.round(amt*100)/100, note: 'added ' + niceDateY(todayStr())});
   save('ious', ious); render(); toast('IOU added');
@@ -1671,7 +1657,7 @@ window.iouPay = i => {
 };
 window.iouDel = i => { ious.splice(i,1); save('ious', ious); render(); };
 window.debtAdd = () => {
-  const name = (prompt('What do you owe? (name)') || '').trim();
+  const name = esc((prompt('What do you owe? (name)') || '').trim());
   if(!name) return;
   const amt = parseFloat(prompt('Current balance owed ($)'));
   if(isNaN(amt) || amt < 0) return toast('Need a valid amount');
@@ -1689,7 +1675,7 @@ window.setDebtTotal = (k, v) => {
 };
 window.setDebtName = (k, v) => {
   const d = DEBTS[k]; if(!d) return;
-  const n = String(v).trim();
+  const n = esc(String(v).trim());
   if(n) d.name = n;
   saveDebts(); render();
 };
@@ -1721,7 +1707,7 @@ window.spendAdd = () => {
   if(isNaN(amt) || amt<=0) return toast('Enter the amount');
   const card = $('#spCard') ? $('#spCard').value : '';
   const type = ($('#spType') ? $('#spType').value : 'food') === 'buy' ? 'buy' : 'food';
-  spends.push({date: todayStr(), amount: Math.round(amt*100)/100, note: $('#spNote').value.trim(), card: card||null, type});
+  spends.push({date: todayStr(), amount: Math.round(amt*100)/100, note: esc($('#spNote').value.trim()), card: card||null, type});
   save('spends', spends);
   render();
   if(card && DEBTS[card]) toast('On ' + DEBTS[card].name + ' · balance now ' + fmt(debtRemaining(card)));
@@ -1740,7 +1726,7 @@ window.extraAdd = () => {
   amt = Math.round(Math.abs(amt)*100)/100;
   const signed = $('#exDir').value==='in' ? amt : -amt;
   const recur = $('#exRecur').checked ? 'monthly' : 'once';
-  extras.push({date: $('#exDate').value || todayStr(), amount: signed, label: $('#exNote').value.trim(), recur});
+  extras.push({date: $('#exDate').value || todayStr(), amount: signed, label: esc($('#exNote').value.trim()), recur});
   save('extras', extras); render();
   toast((signed>=0?'+':'')+fmt(signed)+' added'+(recur==='monthly'?' · every month':''));
 };
@@ -1775,7 +1761,7 @@ function verdictFor(price){
 }
 window.buyCheck = () => {
   const price = parseFloat($('#buyPrice').value);
-  const name = $('#buyName').value.trim() || 'that thing';
+  const name = esc($('#buyName').value.trim()) || 'that thing';
   const v = verdictFor(price);
   if(!v) return toast('Enter a price first');
   $('#buyVerdict').innerHTML = `
@@ -1785,7 +1771,7 @@ window.buyCheck = () => {
     <div class="row" style="margin-top:8px"><button class="ghost" onclick="wishAdd()">＋ add to wishlist</button></div>`;
 };
 window.wishAdd = () => {
-  const price = parseFloat($('#buyPrice').value), name = $('#buyName').value.trim();
+  const price = parseFloat($('#buyPrice').value), name = esc($('#buyName').value.trim());
   if(!name || isNaN(price) || price<=0) return toast('Name and price needed');
   wishlist.push({name, price: Math.round(price*100)/100, added: todayStr()});
   save('wishlist', wishlist); render(); toast('On the wishlist — watching it for you 👀');
@@ -1807,7 +1793,7 @@ window.syncFromAccounts = () => {
 window.quickSpend = () => {
   const amt = parseFloat(prompt('How much did you spend?'));
   if(isNaN(amt) || amt<=0) return;
-  const note = (prompt('On what? (optional)') || '').trim();
+  const note = esc((prompt('On what? (optional)') || '').trim());
   spends.push({date: todayStr(), amount: Math.round(amt*100)/100, note, card:null, type:'food'});
   save('spends', spends); render();
   const mk = todayStr().slice(0,7);
@@ -1838,7 +1824,7 @@ window.noteMonth = () => {
   const ym = activeMonth();
   const v = prompt(`Why did ${MONTH_FULL(ym)} look the way it did?\n\nInsights will show this and stop treating the month as a trend.`, monthNotes[ym] || '');
   if(v === null) return;
-  if(v.trim()) monthNotes[ym] = v.trim(); else delete monthNotes[ym];
+  if(v.trim()) monthNotes[ym] = esc(v.trim()); else delete monthNotes[ym];
   save('monthNotes', monthNotes); render();
   toast(v.trim() ? 'Note saved ✓' : 'Note removed');
 };
@@ -2088,7 +2074,6 @@ window.lockSubmit = async () => {
   if(pw.length < 4){ msg.textContent = 'Use at least 4 characters.'; return; }
   msg.textContent = 'Unlocking…';
   try{
-    syncId = await deriveSyncId(pw);
     const local = localStorage.getItem('pb_vault');
     if(local){
       await unlockVaultStr(pw, local);
@@ -2174,7 +2159,7 @@ function boot(){
   $('#lockTitle').textContent = hasVault ? '🔒 Unlock your finances' : '🔐 Set a password';
   $('#lockSub').textContent = hasVault
     ? 'Your data is encrypted. Enter your password.'
-    : 'Enter your password. If you already use this app on another device, the SAME password pulls your data from the cloud. New here: choose one — it encrypts everything, and there is NO recovery if you forget it.';
+    : 'Choose a password — it encrypts the demo data stored in this browser. There is NO recovery if you forget it.';
   $('#pw2').style.display = hasVault ? 'none' : '';
   $('#lockForget').style.display = hasVault ? '' : 'none';
   $('#lockMsg').textContent = '';

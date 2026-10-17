@@ -14,7 +14,8 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 
 | If you want to… | Read |
 |---|---|
-| Understand the plan, prizes, and who does what | [`docs/PLAN.md`](docs/PLAN.md) |
+| Understand the plan and prizes | [`docs/PLAN.md`](docs/PLAN.md) |
+| See who owns which files + your starter prompt | [`docs/TEAM.md`](docs/TEAM.md) · [`docs/TEAM_PROMPTS.md`](docs/TEAM_PROMPTS.md) |
 | See the system design and API contract | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Work with Nessie | [`docs/NESSIE.md`](docs/NESSIE.md) |
 | Give your AI coding tool context | [`CLAUDE.md`](CLAUDE.md) |
@@ -25,17 +26,28 @@ Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.
 ```
 runway/
 ├── prototype/      single-file HTML prototype — the reference UI + forecast logic (demo data)
-├── frontend/       Next.js app (Auth0 login, runway chart, agent chat)        — owner: D
-├── backend/        FastAPI: Nessie client, Tiger Data, forecast, Gemini agent — owners: A, B, C
+├── app/            Expo app → web + iOS + Android (Today, Ask, Spending)      — Friend 1 + Friend 2
+├── backend/        FastAPI: Nessie, Tiger Data, forecast, Gemini agent (mock-first) — team lead + Claude
 ├── docs/           plan, architecture, Nessie notes
 └── CLAUDE.md       shared context for AI coding assistants
+```
+
+## Run it
+
+```bash
+# terminal 1 — backend (serves mock data in the final API shape)
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# terminal 2 — app
+cd app && npm install && npx expo start      # w = web · i = iOS · a = Android · or scan with Expo Go
 ```
 
 ## Run the prototype
 
 ```bash
-cd prototype && python3 -m http.server 8000
-# open http://localhost:8000 — pick any password (it only encrypts local demo data)
+cd prototype && python3 -m http.server 8080
+# open http://localhost:8080 — pick any password (it only encrypts local demo data)
 ```
 
 All data in the prototype is a **fictional persona ("Maya")** generated relative to today's date.
@@ -44,7 +56,7 @@ All data in the prototype is a **fictional persona ("Maya")** generated relative
 
 The `prototype/` UI and forecast engine were adapted from a pre-existing personal-finance project by
 a team member, with all personal data removed. We will disclose this on Devpost and confirm with the
-organizers that it's allowed. Everything in `frontend/` and `backend/` is built during the hackathon.
+organizers that it's allowed. Everything in `app/` and `backend/` is built during the hackathon.
 
 ## Secrets
 

@@ -56,12 +56,13 @@ testable — which is exactly what our evals measure.
 
 ## Team split
 
+One Expo codebase ships the **website, iOS app and Android app**. Full file ownership in `docs/TEAM.md`.
+
 | | Owns |
 |---|---|
-| **A — Data + backend** | Nessie seed script (3 personas, 4 months history), Tiger Data schema + aggregates, FastAPI, Vultr deploy |
-| **B — ML** | Forecast engine (port from `prototype/`), recurring detector, backtest eval |
-| **C — Agent + auth** | Gemini tool calling, agent eval suite, Auth0 login + approval flow |
-| **D — Frontend + design** | Next.js UI (port look from `prototype/`), chart, chat panel, polish, domain, slides, demo video |
+| **Team lead + Claude — Backend** | Nessie client + seed personas, Tiger Data, forecast engine + ML, Gemini agent, evals, Vultr deploy |
+| **Friend 1 — Today + Spending** | Theme, runway chart, status card, upcoming list, subscriptions + accounts screens |
+| **Friend 2 — Ask + Auth + Ship** | Agent chat + approval cards, Auth0 login, EAS builds, domain, Devpost, demo script/video |
 
 ## Timeline (adjust to the event's hours)
 

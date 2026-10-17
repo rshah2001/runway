@@ -12,20 +12,21 @@ goals and prizes and `docs/ARCHITECTURE.md` for the API contract before making c
   action that requires user approval via Auth0 before any Nessie POST/PUT.
 - **No secrets in git.** Keys live in `.env` (see `.env.example`). Never hardcode the Nessie key.
 - **No real personal data.** Only the fictional demo personas. The repo will be public for judging.
-- **Change the API contract in `docs/ARCHITECTURE.md` only via PR**, so frontend and backend stay in sync.
+- **The API contract is `backend/app/schemas.py` ↔ `app/src/lib/types.ts`.** Change both in one PR, so app and backend stay in sync.
 
 ## Code quality (the AI-track judges read the code)
 
 - Small, well-named functions; docstrings on public functions; explain *why* in comments, not *what*.
-- Type hints in Python, TypeScript strict mode in the frontend.
+- Type hints in Python, TypeScript strict mode in the app.
 - Every model/agent change should keep `backend/evals/` passing and update the eval results in the README.
 
 ## Layout
 
 - `prototype/index.html` — working single-file reference. The forecast logic (`buildEvents`, `project`,
-  `verdictFor`, `coachAdvice`) is the spec for the backend engine; its CSS is the visual spec for the frontend.
-- `backend/` — FastAPI (Python 3.12): Nessie client, Tiger Data ingest, forecast engine, Gemini agent, evals.
-- `frontend/` — Next.js App Router + TypeScript.
+  `verdictFor`, `coachAdvice`) is the spec for the backend engine; its CSS is the visual spec for the app.
+- `backend/` — FastAPI: Nessie client, Tiger Data ingest, forecast engine, Gemini agent, evals. Mock-first.
+- `app/` — Expo (React Native + Expo Router) → web, iOS, Android. Read `app/AGENTS.md` before touching Expo APIs.
+- **File ownership is in `docs/TEAM.md` — only edit files your workstream owns.**
 
 ## Workflow
 
