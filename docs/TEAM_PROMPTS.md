@@ -8,7 +8,7 @@ prompt restates the file-ownership rules from `docs/TEAM.md` so parallel work ne
 ## an2thu — App UI + design (plan role D)
 
 ```
-You're working on Six Seven Bucks Left (sixsevenbucksleft.vip — codename "runway" in the repo), a hackathon banking app: one Expo / React Native codebase that ships a
+You're working on Runway (live at sixsevenbucksleft.vip), a hackathon banking app: one Expo / React Native codebase that ships a
 website, an iOS app and an Android app. First read CLAUDE.md, docs/PLAN.md, docs/TEAM.md,
 docs/ARCHITECTURE.md and app/AGENTS.md, then open prototype/index.html in a browser — it is the
 visual reference (dark glass cards, gradient accents, runway chart).
@@ -56,7 +56,7 @@ Branch names: ui/<feature>. Small PRs.
 ## Patil-Hemangi — AI + auth (plan roles B + C)
 
 ```
-You're working on Six Seven Bucks Left (sixsevenbucksleft.vip — codename "runway" in the repo), a hackathon banking app built on the Capital One Nessie API. First read
+You're working on Runway (live at sixsevenbucksleft.vip), a hackathon banking app built on the Capital One Nessie API. First read
 CLAUDE.md, docs/PLAN.md (especially "AI depth" and the core design decision), docs/TEAM.md and
 docs/ARCHITECTURE.md (the "Fix it" flow).
 

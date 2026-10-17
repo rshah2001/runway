@@ -3,7 +3,7 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
-const TITLE = 'Six Seven Bucks Left';
+const TITLE = 'Runway';
 const DESCRIPTION =
   'See the day your balance runs out before it happens — and let an AI banker fix it with one tap.';
 
@@ -19,7 +19,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta property="og:title" content={TITLE} />
         <meta property="og:description" content={DESCRIPTION} />
         <meta property="og:url" content="https://sixsevenbucksleft.vip" />
-        <meta name="apple-mobile-web-app-title" content="67 Bucks Left" />
+        <meta name="apple-mobile-web-app-title" content="Runway" />
         <ScrollViewStyleReset />
       </head>
       <body>{children}</body>

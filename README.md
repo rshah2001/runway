@@ -1,8 +1,8 @@
-# Six Seven Bucks Left 💸
+# Runway 🛫
 
 **[sixsevenbucksleft.vip](https://sixsevenbucksleft.vip)** · *you're a VIP… with sixty-seven bucks left*
 
-**Will I be okay?** Six Seven Bucks Left forecasts your bank balance day by day for the next 30+ days, flags the
+**Will I be okay?** Runway shows how much runway you have before you run out of money. It forecasts your bank balance day by day for the next 30+ days, flags the
 day you'd overdraft, and lets an AI banker fix it with one tap — through real Nessie API calls.
 
 Built at **SwampHacks XII** for the Capital One "Best Use of Nessie" challenge.

@@ -1,4 +1,4 @@
-"""Six Seven Bucks Left API — owner: rshah2001. Routes are thin: each one delegates to the module its owner maintains.
+"""Runway API — owner: rshah2001. Routes are thin: each one delegates to the module its owner maintains.
 
 Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000/docs)
 """
@@ -60,7 +60,7 @@ async def lifespan(_: FastAPI):
     pool.close()
 
 
-app = FastAPI(title="Six Seven Bucks Left API", lifespan=lifespan)
+app = FastAPI(title="Runway API", lifespan=lifespan)
 
 # only the app's own origins may call the API; set CORS_ORIGINS (comma-separated) when deploying
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8081,http://localhost:19006").split(",")
