@@ -20,7 +20,7 @@ export default function TodayScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="subtitle">Runway</ThemedText>
+        <ThemedText type="subtitle">Six Seven Bucks Left</ThemedText>
         {error && <ThemedText themeColor="textSecondary">Backend not reachable: {error}</ThemedText>}
         {forecast && (
           <>

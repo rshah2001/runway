@@ -1,4 +1,6 @@
-# Runway — context for AI coding assistants
+# Six Seven Bucks Left — context for AI coding assistants
+
+(Product name: **Six Seven Bucks Left**, at sixsevenbucksleft.vip. The repo, folders, server paths and bundle ids keep the internal codename `runway`.)
 
 Hackathon project (SwampHacks XII). A balance-forecasting banking app on the Capital One **Nessie** API
 with a **Gemini** agent that can move money only after **Auth0** approval. Read `docs/PLAN.md` for

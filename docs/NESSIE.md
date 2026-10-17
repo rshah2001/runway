@@ -18,7 +18,7 @@ query param on every request. Keep the key in `.env` (`NESSIE_API_KEY`), never i
 
 ## How the current Nessie API really behaves (probed Oct 2026 — the public SDKs are outdated)
 
-| Behavior | What Runway does about it |
+| Behavior | What we do about it |
 |---|---|
 | **HTTPS only** — `http://` times out ("Host is down") | Every URL uses `https://` |
 | Transactions need `status`: `pending` \| `cancelled` \| `completed` | Always sends `completed` |

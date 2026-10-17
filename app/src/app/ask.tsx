@@ -8,7 +8,7 @@ import { Spacing } from '@/constants/theme';
 export default function AskScreen() {
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="subtitle">Ask Runway</ThemedText>
+      <ThemedText type="subtitle">Ask Six Seven</ThemedText>
       <ThemedText themeColor="textSecondary">Chat with the agent — coming soon.</ThemedText>
     </ThemedView>
   );
