@@ -13,7 +13,7 @@ import psycopg
 
 from app.db import repo, safety_repo
 from app.forecast import engine, sources
-from app.forecast.schedule import Schedule
+from app.forecast.schedule import Schedule, build
 from app.schemas import ForecastEvent
 
 LOCAL_TZ = sources.LOCAL_TZ
@@ -76,8 +76,12 @@ def projection_for(
 
 
 def project(conn: psycopg.Connection, slug: str, today: date | None = None, days: int = HORIZON_DAYS) -> Projection:
-    """Live projection: the engine's forecast plus outstanding bridges' repayments on their due dates."""
+    """Live projection: the engine's forecast plus outstanding bridges' repayments on their due dates.
+
+    Strict: the safety net moves money on this, so it never runs on demo-fallback data — a failed
+    read raises LiveDataUnavailable and that persona's pass is skipped."""
     today = today or sources.local_today()
+    schedule = build(sources.load(slug, today, strict=True), today)
     p = repo.persona(conn, slug)
     scheduled = []
     for b in safety_repo.outstanding_bridges(conn):
@@ -97,5 +101,11 @@ def project(conn: psycopg.Connection, slug: str, today: date | None = None, days
                 )
             )
     return projection_for(
-        slug, first_name=p["first_name"], age=p["age"] or 0, today=today, scheduled=scheduled, days=days
+        slug,
+        first_name=p["first_name"],
+        age=p["age"] or 0,
+        today=today,
+        schedule=schedule,
+        scheduled=scheduled,
+        days=days,
     )

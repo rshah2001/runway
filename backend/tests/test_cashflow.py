@@ -42,3 +42,22 @@ def test_maya_demo_dip_is_208_on_the_engine_every_day() -> None:
         today = TODAY + timedelta(days=offset)
         p = projection_for("maya", first_name="Maya", age=20, today=today)
         assert abs(p.low(today, p.next_payday)[1] - Decimal("208")) <= Decimal("0.01"), today
+
+
+def test_safety_net_inputs_never_fall_back_to_demo_data(monkeypatch) -> None:
+    """Money decisions must not run on made-up balances: strict loads fail instead of falling back."""
+    import pytest
+
+    from app.forecast import sources
+
+    with pytest.raises(sources.LiveDataUnavailable):  # tests run in demo mode
+        sources.load("maya", TODAY, strict=True)
+
+    class Live:
+        live = True
+
+    monkeypatch.setattr(sources, "get_settings", lambda: Live())
+    monkeypatch.setattr(sources, "_load_live", lambda p, t: (_ for _ in ()).throw(ConnectionError("db down")))
+    with pytest.raises(sources.LiveDataUnavailable):
+        sources.load("maya", TODAY, strict=True)
+    assert sources.load("maya", TODAY).slug == "maya"  # the chat path still falls back and keeps answering
