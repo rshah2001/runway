@@ -19,7 +19,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from app.agent import tools
+from app.agent import tools, voice
 from app.agent.tools import PENDING  # noqa: F401 — main.py reads pending actions from here
 from app.forecast import engine
 from app.schemas import ChatResponse, PendingAction
@@ -32,8 +32,8 @@ MAX_MESSAGE_CHARS = 500  # a chat question is short; this caps cost and prompt-i
 MAX_TOOL_ROUNDS = 4
 RETRY_DELAY_S = 1.0
 
-SYSTEM_PROMPT = """You are Runway, a money buddy for college students inside a budgeting app. You're witty, a
-little Gen Z, and honest: a friend who's good with money and roasts you gently.
+# Shared by every voice: accuracy, the tone dial's serious end and the guardrails never vary by user.
+SYSTEM_PROMPT = """You are Runway, the assistant inside a budgeting app that forecasts a user's checking balance.
 
 Accuracy (never broken, not even for a joke):
 - Never calculate, estimate or invent a number or date. Every amount, date and balance you say comes from
@@ -41,37 +41,30 @@ Accuracy (never broken, not even for a joke):
 - Call a tool before answering any question about balances, purchases, bills or subscriptions.
 - To check a purchase, call simulate_purchase. To fix a shortfall, call propose_transfer. If the user asks to
   fix things right after asking about a purchase, pass that purchase to propose_transfer.
+- Lead with the answer and the real number. 2-3 short sentences, plain text, no markdown.
+- Never shame the user.
 
-Voice:
-- Lead with the answer and the real number, then add one light joke at most. The joke wraps the answer,
-  it never replaces it. 2-3 short sentences, plain text, no markdown.
-- Roast spending habits, never the person. Never shame the user.
+Your voice for this user:
+{voice}
 
-Tone follows the tool's "status" field (or the current status below if you haven't called a tool):
-- healthy: playful. A celebration is fine when there are no dips ("Who are you?? 👑").
-- tight: light and focused, a small joke at most ("Your wallet is doing a plank.").
+Tone follows the tool's "status" field (or the current status below if you haven't called a tool), in any voice:
 - overdraft_risk: no jokes in any reply, whatever the question. Calm, clear and reassuring: say when and
   by how much, then offer the fix. If a tool says already_below_floor_without_it, mention that dip too.
-- Only when a tool says low_point_under_100 is true, you may say "Your balance is giving... sixty-seven."
-  Use it rarely.
-- Subscriptions: a gentle roast of the list is fine ("That's not a watchlist, that's a cable bill with extra
-  steps."), quoting the totals the tool gives.
-
-No jokes at all, ever, around money movement or security: transfer proposals, approvals, failed transfers,
-login, or anything that looks like fraud. When you propose a transfer, say plainly what moves and that it is
-waiting for the user's approval; never say money has moved.
+- No jokes at all, ever, around money movement or security: transfer proposals, approvals, failed transfers,
+  login, or anything that looks like fraud. When you propose a transfer, say plainly what moves and that it
+  is waiting for the user's approval; never say money has moved.
 
 Guardrails:
 - No financial advice beyond this app's numbers: no stocks, crypto, loans or tax advice.
 - If something fails, be calm: say nothing moved and to try again in a moment.
-- Off-topic requests: steer back with one light line, e.g. "I'm better at rent than recipes. Want me to check
-  if pizza fits the budget?"
 
 Today is {today}. Current status: {status}."""
 
 
-def chat(message: str, *, client: Any = None, today: date | None = None) -> ChatResponse:
-    """Answer one chat message. `client` is injectable so tests can run Gemini's loop offline."""
+def chat(
+    message: str, *, persona: str = voice.DEFAULT_PERSONA, client: Any = None, today: date | None = None
+) -> ChatResponse:
+    """Answer one chat message in the voice for `persona`'s age. `client` is injectable for offline tests."""
     today = today or date.today()
     message = message.strip()
     if not message:
@@ -83,7 +76,7 @@ def chat(message: str, *, client: Any = None, today: date | None = None) -> Chat
         client = _gemini_client()
     if client is not None:
         try:
-            return _chat_with_gemini(client, message, today)
+            return _chat_with_gemini(client, message, today, voice.voice_for_persona(persona))
         except Exception:  # any SDK, network or quota failure: the demo must still answer
             log.exception("Gemini failed; answering with the rule-based router")
     return _chat_with_rules(message, today)
@@ -95,10 +88,10 @@ def _gemini_client() -> Any:
     return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
-def _chat_with_gemini(client: Any, message: str, today: date) -> ChatResponse:
+def _chat_with_gemini(client: Any, message: str, today: date, tone: voice.Voice = "genz") -> ChatResponse:
     now = engine.forecast(start=today)  # the tone dial: set before any tool runs
     status = engine.status(now.low.balance, now.safe_floor)
-    system = SYSTEM_PROMPT.format(today=tools.day(today) + f", {today.year}", status=status)
+    system = SYSTEM_PROMPT.format(voice=voice.VOICES[tone], today=tools.day(today) + f", {today.year}", status=status)
     request = {"model": MODEL, "tools": tools.DECLARATIONS, "system_instruction": system}
     interaction = _create(client, **request, input=message)
     tool_calls: list[str] = []

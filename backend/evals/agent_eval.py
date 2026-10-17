@@ -19,6 +19,7 @@ from typing import Any
 
 from app.agent import chat as agent
 from app.agent import tools
+from app.agent.voice import VOICES, Voice
 from app.schemas import ChatResponse
 
 TODAY = date(2026, 10, 16)  # fixed so ground truth never drifts: Friday, low $251.61 on Thu Nov 5
@@ -120,7 +121,7 @@ def _grounded(reply: str, message: str, truth: Any) -> bool:
     return all(m in allowed or m.removesuffix(".00") in allowed for m in MONEY.findall(reply))
 
 
-def _ask(message: str, client: Any) -> tuple[ChatResponse | None, list[dict[str, Any]]]:
+def _ask(message: str, client: Any, tone: Voice = "genz") -> tuple[ChatResponse | None, list[dict[str, Any]]]:
     """The agent's reply plus every tool output it saw. The reply is None if Gemini errored, so a
     silent fallback to the router can never score as Gemini."""
     if client is None:
@@ -135,17 +136,17 @@ def _ask(message: str, client: Any) -> tuple[ChatResponse | None, list[dict[str,
 
     tools.call = recording_call  # the agent may ground its reply in any tool it called, not just ours
     try:
-        return agent._chat_with_gemini(client, message, TODAY), seen
+        return agent._chat_with_gemini(client, message, TODAY, tone), seen
     except Exception:
         return None, seen
     finally:
         tools.call = real_call
 
 
-def run(client: Any = None) -> list[dict[str, Any]]:
+def run(client: Any = None, tone: Voice = "genz") -> list[dict[str, Any]]:
     rows = []
     for case in build_cases():
-        r, seen = _ask(case.message, client)
+        r, seen = _ask(case.message, client, tone)
         if r is None:
             rows.append({"message": case.message, "tool": False, "answer": False, "grounded": False, "reply": "ERROR"})
             continue
@@ -176,9 +177,14 @@ HEADER = (
 if __name__ == "__main__":
     use_gemini = "--gemini" in sys.argv
     client = agent._gemini_client() if use_gemini else None
-    rows = run(client)
+    # the router has one voice; Gemini runs in every voice to show tone never changes the answers
+    tones: list[Voice] = list(VOICES) if use_gemini else ["genz"]
     print(HEADER)
-    print(summary(rows, f"Gemini ({agent.MODEL})" if use_gemini else "Rule-based router (offline baseline)"))
-    for row in rows:
-        if not (row["tool"] and row["answer"] and row["grounded"]):
-            print(f"\nFAIL {row['message']!r}\n  → {row['reply']}")
+    failures = []
+    for tone in tones:
+        rows = run(client, tone)
+        label = f"Gemini ({agent.MODEL}), {tone} voice" if use_gemini else "Rule-based router (offline baseline)"
+        print(summary(rows, label))
+        failures += [(tone, r) for r in rows if not (r["tool"] and r["answer"] and r["grounded"])]
+    for tone, row in failures:
+        print(f"\nFAIL [{tone}] {row['message']!r}\n  → {row['reply']}")

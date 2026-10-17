@@ -1,5 +1,6 @@
 """Agent tests: the tools' numbers, the rule-based router, and Gemini's tool loop with a fake client."""
 
+import re
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -203,3 +204,45 @@ def test_system_prompt_carries_the_current_status() -> None:
     fake = FakeGemini(_text("You're short on Nov 5."))
     agent.chat("how am I doing?", client=fake, today=TODAY)
     assert "Current status: overdraft_risk." in fake.sent[0]["system_instruction"]
+
+
+# ---------- voices: chosen from age in code; tone only ----------
+
+
+@pytest.mark.parametrize(
+    ("persona", "expected"), [("maya", "genz"), ("jordan", "direct"), ("sam", "classic"), ("unknown", "genz")]
+)
+def test_voice_follows_persona_age(persona: str, expected: str) -> None:
+    from app.agent import voice
+
+    assert voice.voice_for_persona(persona) == expected
+
+
+@pytest.mark.parametrize(
+    ("age", "expected"), [(18, "genz"), (29, "genz"), (30, "direct"), (49, "direct"), (50, "classic")]
+)
+def test_voice_age_brackets(age: int, expected: str) -> None:
+    from app.agent import voice
+
+    assert voice.voice_for(age) == expected
+
+
+def test_each_persona_gets_its_voice_and_the_same_rules() -> None:
+    from app.agent import voice
+
+    prompts = {}
+    for persona in ("maya", "jordan", "sam"):
+        fake = FakeGemini(_text("You're short on Nov 5."))
+        agent.chat("how am I doing?", persona=persona, client=fake, today=TODAY)
+        prompts[persona] = fake.sent[0]["system_instruction"]
+        assert voice.VOICES[voice.voice_for_persona(persona)] in prompts[persona]
+    shared = agent.SYSTEM_PROMPT.split("{voice}")
+    for prompt in prompts.values():
+        assert all(part.split("{")[0] in prompt for part in shared)  # accuracy rules and guardrails identical
+
+
+def test_voice_examples_contain_no_figures() -> None:
+    from app.agent import voice
+
+    # "$" or a standalone number; digits inside a field name like low_point_under_100 are fine
+    assert not any(re.search(r"\$|(?<!\w)\d", text) for text in voice.VOICES.values())
