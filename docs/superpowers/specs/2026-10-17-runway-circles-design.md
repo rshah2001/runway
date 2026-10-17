@@ -154,8 +154,10 @@ Notification previews discreet by default ("Runway has an update about your safe
 | `bridges` (+cols) | `decision_id` FK, `agreement_id`, `agreement_version` |
 | `transfer_journal` | see 2.2 |
 
-Data migration: each existing `safety_limits` row → an `active` agreement with both consents stamped
-"migrated" (keeps the live Sam→Maya demo working). `PUT /safety-net/limits` becomes a thin wrapper over
+Data migration (revised per user, 2026-10-17): existing `safety_limits` rows are preserved but are
+**not** consent. Each becomes a `pending_supporter` agreement (source `legacy_limit`, no consent
+stamps); automatic help needs explicit recipient opt-in and supporter authorization. Seeded demo
+relationships get both consents through an auditable setup step (source `demo_setup`, audit rows). `PUT /safety-net/limits` becomes a thin wrapper over
 the agreement update, so nothing that exists breaks.
 
 ---
