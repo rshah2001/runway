@@ -48,6 +48,27 @@ Build, in order:
    history, open requests. Buttons: Pay (api.p2pSend), Request (api.p2pRequest), and on an open
    request "Mark paid" (api.p2pSettle). Demo moment: "Alex owes you $45 for concert tickets" →
    settle → Maya's checking goes up. Same 503 / 502 handling as the approval card.
+5c. FAMILY SAFETY NET — the demo's headline (read docs/SAFETY_NET.md first). An AI covers a family
+   member's dip from someone else's money automatically, within a limit the LENDER set, and repays
+   the lender on payday. Data: api.safetyNet(persona) → SafetyNetSummary. Build a "Family" tab/screen:
+   a. Safety status on Today: if projected_low is under $300, show "Runway has you covered" when a
+      bridge in `borrowed` is active (lender, amount, "goes back automatically on <due_date>"), or the
+      gap if not. Refresh Today after any bridge change so the chart turns green.
+   b. Limits I set (lender view): one row per family member in limits_i_set — slider/stepper $0–$1,000
+      + on/off toggle → api.setSafetyLimit(lender, borrower, limit, enabled). Show "outstanding" and
+      "remaining" ("$100 of $100 out"). Copy: "Runway may cover Maya up to $100 without asking — it
+      always comes back by her next payday." Only the lender edits their own limits.
+   c. Money I lent (lender view, `lent`): a timeline card per bridge — sent → comes back on due_date
+      → status. When status is "repaid", celebrate it: "💸 You got your $100 back from Maya on
+      <repaid_on>". "repay_failed" = late (amber, "no new bridges until it's back").
+   d. Approvals waiting (`approvals_waiting`): over-limit bridges — show reason, amount, due_date and
+      Approve / Decline (api.approveBridge / api.declineBridge). If approval_channel is "auth0_push",
+      add "📱 Also sent to your phone".
+   e. Activity feed (`events`, newest first): both sides see every move.
+   f. Demo button (small, e.g. in settings): "Check now" → api.runSafetyNet(persona); render each
+      SafetyDecision.reason. executed:false means dry run (real transfers off) — label it "preview".
+   Use the persona switcher to tell the story: Maya (20) borrows → Sam (60) sees it covered and,
+   on payday, "you got it back"; Jordan (40) approves an over-limit request.
 6. Login screen (app/src/app/login.tsx) that calls login() from app/src/lib/auth.ts.
 7. Polish: icons, splash, empty/loading/error states, animations. Must look great on web AND phone.
 
@@ -101,6 +122,12 @@ Build, in order:
    (backend/app/auth/), and approval before /actions/{id}/approve executes (the TODO(auth) in
    main.py — tell me the exact change and I'll wire it in). Bonus: Auth0 for AI Agents async
    authorization (push approval on the phone).
+
+6. Family safety net (backend already built — docs/SAFETY_NET.md): (a) do the Auth0 push (CIBA)
+   tenant setup in that doc — users for Sam/Jordan, Guardian push enrollment, a CIBA-enabled client,
+   then send me the env values; (b) when the forecast engine is persona-aware, the safety net can
+   use it instead of app/cashflow.py (same Projection shape); (c) the agent should explain bridges
+   in plain words from SafetyDecision.reason — friendly for a 20-year-old, respectful for a 60-year-old.
 
 Write clean, documented, typed code with tests — the AI judges read the repo.
 Branch names: ai/<feature>. Small PRs.

@@ -114,6 +114,52 @@ CREATE TABLE IF NOT EXISTS p2p_requests (
 CREATE INDEX IF NOT EXISTS p2p_requests_persona ON p2p_requests (persona_slug, status);
 """
 
+# family safety net: lenders pre-authorize bridges up to a limit; the agent covers a forecast dip
+# automatically under the limit, asks for an Auth0 push approval over it, and repays on payday
+SAFETY_NET = """
+CREATE TABLE IF NOT EXISTS safety_limits (
+    lender_slug    text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    borrower_slug  text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    limit_amount   numeric(12, 2) NOT NULL CHECK (limit_amount >= 0),  -- set by the LENDER only
+    enabled        boolean NOT NULL DEFAULT true,
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (lender_slug, borrower_slug),
+    CHECK (lender_slug <> borrower_slug)
+);
+
+CREATE TABLE IF NOT EXISTS bridges (
+    id                 text PRIMARY KEY,
+    borrower_slug      text NOT NULL,
+    lender_slug        text NOT NULL,
+    amount             numeric(12, 2) NOT NULL CHECK (amount > 0),
+    reason             text NOT NULL,
+    status             text NOT NULL CHECK (status IN ('pending_approval', 'declined', 'funding', 'active',
+                                                   'repaying', 'repaid', 'repay_failed', 'failed')),
+    mode               text NOT NULL CHECK (mode IN ('auto', 'approval')),  -- auto = under the lender's limit
+    shortfall_date     date NOT NULL,
+    due_date           date NOT NULL,           -- the borrower's next payday
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    funded_at          timestamptz,
+    repaid_at          timestamptz,
+    approval_channel   text,                    -- 'auth0_push' | 'in_app'
+    auth_req_id        text,                    -- Auth0 CIBA request id while waiting for the push
+    out_transfer_id    text, out_deposit_id    text,   -- lender → borrower (Nessie)
+    back_transfer_id   text, back_deposit_id   text    -- borrower → lender on payday (Nessie)
+);
+CREATE INDEX IF NOT EXISTS bridges_borrower ON bridges (borrower_slug, status);
+CREATE INDEX IF NOT EXISTS bridges_lender ON bridges (lender_slug, status);
+
+CREATE TABLE IF NOT EXISTS safety_events (
+    id            bigserial PRIMARY KEY,
+    at            timestamptz NOT NULL DEFAULT now(),
+    persona_slug  text NOT NULL,              -- whose feed this appears in
+    kind          text NOT NULL,
+    message       text NOT NULL,
+    bridge_id     text
+);
+CREATE INDEX IF NOT EXISTS safety_events_persona ON safety_events (persona_slug, at DESC);
+"""
+
 HYPERTABLE = """
 SELECT create_hypertable('transactions', by_range('ts', INTERVAL '7 days'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS transactions_customer_ts ON transactions (customer_id, ts DESC);
@@ -155,7 +201,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, SAFETY_NET, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         enabled = conn.execute(
             "SELECT compression_enabled FROM timescaledb_information.hypertables WHERE hypertable_name = 'transactions'"

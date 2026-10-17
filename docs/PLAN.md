@@ -15,7 +15,7 @@ that sees them coming.
 | **Overall — Hack of the Year** | Real problem, live demo, technical depth | Core |
 | **AI track (Most Creative Use of AI)** | Tool-calling agent + forecasting model + evals + clean public README | Core |
 | **Best Use of Gemini** (MLH) | Gemini powers the agent | Free |
-| **Best Use of Auth0** (MLH) | Login + **Auth0 for AI Agents**: user approves before the agent moves money | Medium |
+| **Best Use of Auth0** (MLH) | Login + **Auth0 for AI Agents**: the safety-net agent acts for one person with another's pre-agreed limit, and asks the lender by **Auth0 push (CIBA)** when it's over | Medium |
 | **Best Use of Tiger Data** (MLH) | Transactions as a hypertable; continuous aggregates feed forecast + charts | Medium |
 | **Best Use of Vultr** (MLH) | Backend + DB hosted on Vultr | Low |
 | **GoDaddy Registry domain** (MLH) | Register a domain for the deployed app | 10 min |
@@ -47,14 +47,17 @@ testable — which is exactly what our evals measure.
 
 ## Demo script (~3 min)
 
-1. Log in (Auth0) as **Maya**, a UF junior. 30-day chart dips **red** on the tightest day.
-2. "Can I go to the concert Friday? $180." → *"Not safely — you'd be $X short on the 5th when rent hits."*
-3. "Fix it." → agent proposes **move $100 from savings** → **Auth0 approval push on phone** → approve →
-   real Nessie transfer → chart turns green.
-4. Peer-to-peer: "Alex still owes you $45 for the concert tickets." → **Request** → Alex settles → a real Nessie
-   transfer between two customers lands in Maya's checking.
-5. Subscription detective (switch to Jordan, 40): "8 subscriptions, ~$164/mo."
-6. Close on eval numbers + architecture slide.
+1. Log in (Auth0) as **Maya, 20**. Her chart dips under the $300 floor before Friday's payday.
+2. **Family safety net** (the headline — `docs/SAFETY_NET.md`): nobody asks. Runway sees the dip,
+   checks that grandpa **Sam (60)** can help safely, and moves **$100** within the limit *he* set —
+   real Nessie money. Maya's chart turns green: *"Sam covered you — it goes back on payday."*
+3. Over the limit: lower Sam's limit to $50, Maya needs $100 → **Sam's phone buzzes (Auth0 push)**,
+   he approves on stage, money moves.
+4. Switch to Sam: the timeline shows *"comes back Fri"* → on payday *"💸 You got your $100 back."*
+5. "Can I go to the concert Friday? $180." → *"Not safely."* · Peer-to-peer: *"Alex still owes you $45"*
+   → settle → real transfer between two Nessie customers.
+6. Close on the guardrails slide (lender sets the limit, it must come back by payday, helping must be
+   safe for the helper) + eval numbers + architecture.
 
 ## Team split
 

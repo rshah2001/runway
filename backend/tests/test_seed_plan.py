@@ -73,3 +73,34 @@ def test_adding_p2p_does_not_reshuffle_purchases() -> None:
     without = [op for op in build_plan(replace(maya, p2p=[]), TODAY) if op.kind == "purchase"]
     with_p2p = [op for op in build_plan(maya, TODAY) if op.kind == "purchase"]
     assert without == with_p2p
+
+
+def test_maya_demo_dip_is_the_same_every_day() -> None:
+    """With the tuned opening balance, the cash-flow projection's lowest point before payday is
+    always $208 — so the safety-net demo always produces a $100 bridge."""
+    from decimal import Decimal
+
+    from app.cashflow import build_projection
+    from seed.plan import demo_opening_balance
+
+    maya = BY_SLUG["maya"]
+    for offset in range(14):  # two weeks of possible demo days
+        today = TODAY + timedelta(days=offset)
+        plan = build_plan(maya, today)
+        bal = Decimal(str(demo_opening_balance(maya, plan, today)))
+        debit = [
+            Decimal(str(op.amount))
+            for op in plan
+            if op.kind == "purchase" and op.account == "checking" and op.on >= today - timedelta(days=30)
+        ]
+        p = build_projection(
+            slug="maya",
+            first_name="Maya",
+            age=20,
+            today=today,
+            balance=bal,
+            bills=[(b.day, Decimal(str(b.amount)), b.nickname) for b in maya.bills],
+            deposits=[(op.on, Decimal(str(op.amount))) for op in plan if op.kind == "deposit"],
+            daily_spend=(sum(debit, Decimal(0)) / 30).quantize(Decimal("0.01")),
+        )
+        assert abs(p.low(today, p.next_payday)[1] - Decimal("208")) <= Decimal("0.05"), today

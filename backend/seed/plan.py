@@ -110,3 +110,19 @@ def build_plan(spec: PersonaSpec, today: date) -> list[Op]:
             ops.append(Op("p2p", "checking", amount, d, pat.memo, contact=pat.contact, direction=pat.direction))
 
     return sorted(ops, key=lambda o: (o.on, o.kind, o.description))
+
+
+def demo_opening_balance(spec: PersonaSpec, plan: list[Op], today: date) -> float:
+    """Checking balance today such that, with the same rules as app/cashflow.py (bills due in the
+    window, average daily debit spending over the last 30 days), the lowest point before the next
+    payday is `spec.demo_low_before_payday`."""
+    if spec.paycheck.every_days is None:
+        payday = next_monthly(spec.paycheck.day, today + timedelta(days=1))  # strictly after today
+    else:
+        payday = today + timedelta(days=(4 - today.weekday()) % 7 or 7)  # same rule as paydays()
+    month_ago = today - timedelta(days=30)
+    debit = sum(op.amount for op in plan if op.kind == "purchase" and op.account == "checking" and op.on >= month_ago)
+    daily = round(debit / 30, 2)
+    window_days = (payday - today).days  # today … the day before payday
+    bills = sum(b.amount for b in spec.bills for d in _monthly(b.day, today, payday))
+    return round(spec.demo_low_before_payday + bills + daily * (window_days - 1), 2)
