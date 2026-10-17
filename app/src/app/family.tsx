@@ -5,7 +5,7 @@
 // lender's phone (Auth0 push) can only be approved there.
 // Also here: asking the family for help before a dip, paying a bridge back early, settling and sending
 // money between friends, and — for the three demo accounts — resetting the demo.
-import { useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/rw/icons';
@@ -16,9 +16,9 @@ import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { useStore } from '@/lib/store';
+import { moneyMoved, useStore } from '@/lib/store';
 import { money, monthDay, plain, weekdayDate } from '@/lib/format';
-import type { Bridge, P2PSummary, SafetyEvent, SafetyLimit, SafetyNetSummary } from '@/lib/types';
+import type { Bridge, P2PPayment, P2PSummary, SafetyEvent, SafetyLimit, SafetyNetSummary } from '@/lib/types';
 
 /** The backend accepts $0–$1,000; steps of $50 keep the stepper to a few taps. */
 const LIMIT_STEP = 50;
@@ -28,10 +28,12 @@ const OPEN: Bridge['status'][] = ['funding', 'active', 'repaying', 'repay_failed
 
 
 export default function FamilyScreen() {
-  const sn = useLoad(() => api.safetyNet());
-  const p2p = useLoad(() => api.p2p());
-  const fc = useLoad(() => api.forecast(30), String(useStore().prefsVersion));
-  const reload = () => { sn.reload(); p2p.reload(); fc.reload(); };
+  // keyed on the app-wide money signal: a payment here, an approval in the chat or a reset all refresh it
+  const version = String(useStore().dataVersion);
+  const sn = useLoad(() => api.safetyNet(), version);
+  const p2p = useLoad(() => api.p2p(), version);
+  const fc = useLoad(() => api.forecast(30), version);
+  const reload = moneyMoved; // after any action here, every screen (Today, Spending, this one) re-fetches
 
   const d = sn.data;
   const lender = !!d?.limits_i_set.length;
@@ -80,7 +82,7 @@ export default function FamilyScreen() {
               <SectionLabel>Your limits</SectionLabel>
               <List>
                 {d.limits_i_set.map((l, i) => (
-                  <LimitRow key={l.borrower} first={i === 0} l={l} out={d.lent.find((b) => b.borrower === l.borrower && OPEN.includes(b.status))} onSaved={sn.reload} />
+                  <LimitRow key={l.borrower} first={i === 0} l={l} out={d.lent.find((b) => b.borrower === l.borrower && OPEN.includes(b.status))} onSaved={reload} />
                 ))}
               </List>
               <Fine>Only you can change these. Over the limit, Runway asks you on your phone first.</Fine>
@@ -90,14 +92,7 @@ export default function FamilyScreen() {
           <OwesYou p2p={p2p.data} onAsked={reload} />
           <SendMoney p2p={p2p.data} onSent={reload} />
 
-          {d.events.length > 0 && (
-            <>
-              <SectionLabel>Recent</SectionLabel>
-              <List>
-                {d.events.slice(0, 5).map((e, i) => <EventRow key={`${e.at}-${i}`} e={e} first={i === 0} />)}
-              </List>
-            </>
-          )}
+          <Recent events={d.events} payments={p2p.data?.payments ?? []} />
         </>
       )}
       <DemoReset onDone={reload} />
@@ -415,6 +410,36 @@ function OwesYou({ p2p, onAsked }: { p2p: Awaited<ReturnType<typeof api.p2p>> | 
         })}
       </List>
     </>
+  );
+}
+
+/**
+ * Everything that happened, newest first: what the safety net did and money sent to or received from
+ * friends — so a payment shows up here the moment it's made.
+ */
+function Recent({ events, payments }: { events: SafetyEvent[]; payments: P2PPayment[] }) {
+  type Item = { key: string; when: string; node: (first: boolean) => ReactNode };
+  const items: Item[] = [
+    ...events.map((e, i) => ({ key: `e-${e.at}-${i}`, when: e.at, node: (first: boolean) => <EventRow e={e} first={first} /> })),
+    ...payments.map((p) => ({ key: `p-${p.id}`, when: `${p.date}T12:00:00`, node: (first: boolean) => <PaymentRow p={p} first={first} /> })),
+  ].sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0)).slice(0, 8);
+  if (!items.length) return null;
+  return (
+    <>
+      <SectionLabel>Recent</SectionLabel>
+      <List>{items.map((it, i) => <Fragment key={it.key}>{it.node(i === 0)}</Fragment>)}</List>
+    </>
+  );
+}
+
+function PaymentRow({ p, first }: { p: P2PPayment; first: boolean }) {
+  const inbound = p.direction === 'in';
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <Row first={first} left={<Avatar name={p.contact} />}
+      title={inbound ? `${p.contact} paid you` : `You paid ${p.contact}`}
+      sub={`${plain(p.memo)} · ${p.date === today ? 'Today' : monthDay(p.date)}`}
+      right={<Amount tone={inbound ? 'green' : undefined}>{`${inbound ? '+' : '−'}${money(p.amount, 0)}`}</Amount>} />
   );
 }
 

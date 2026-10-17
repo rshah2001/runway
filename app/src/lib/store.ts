@@ -18,8 +18,11 @@ type State = {
   approval: ApprovalRequest | null;
   /** Family notes the user closed on Today (by event time), so they stay closed while the app is open. */
   dismissed: string[];
-  /** Bumped when the user changes a money preference (what they keep): screens re-fetch their forecast. */
-  prefsVersion: number;
+  /**
+   * Bumped whenever money moves or a money setting changes (a payment, a repayment, an approval, a
+   * limit, what you keep, a demo reset). Every screen keys its loads on it, so they all re-fetch.
+   */
+  dataVersion: number;
 };
 
 /** What the approval sheet shows: the agent's proposal plus the facts Today read off the forecast. */
@@ -30,8 +33,13 @@ export type ApprovalRequest = {
   facts: [label: string, value: string][];
 };
 
-let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [], prefsVersion: 0 };
+let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, approval: null, dismissed: [], dataVersion: 0 };
 const listeners = new Set<() => void>();
+
+/** Money moved (or a money setting changed): every screen re-fetches what it shows. */
+export function moneyMoved() {
+  setStore({ dataVersion: state.dataVersion + 1 });
+}
 
 export function setStore(patch: Partial<State>) {
   state = { ...state, ...patch };

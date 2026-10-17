@@ -6,7 +6,7 @@
  * $1,000), so each person sets their own; nobody can set it for someone else.
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
  */
-import { type ComponentRef, useRef, useState } from 'react';
+import { type ComponentRef, type ElementRef, useRef, useState } from 'react';
 import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { Easing, FadeOut, Keyframe } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -17,7 +17,7 @@ import { C, F } from '@/constants/runway';
 import { leave } from '@/lib/account';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
-import { setStore, useStore } from '@/lib/store';
+import { moneyMoved } from '@/lib/store';
 import { useSession } from '@/lib/session';
 
 // grows from the button's top-right corner: scale 0.92 → 1 with a quick fade (Apple: anchor to the source)
@@ -118,12 +118,15 @@ const MAX_KEEP = 5000; // the server's limit too
 
 /** Pick or type what you keep; saves for you only, then every screen re-fetches its forecast. */
 function KeepEditor({ current, onSaved, onCancel }: { current: number; onSaved: (v: number) => void; onCancel: () => void }) {
-  const store = useStore();
   const [value, setValue] = useState(String(Math.round(current)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [typing, setTyping] = useState(!PRESETS.includes(Math.round(current))); // "Custom" is the choice
+  const input = useRef<ElementRef<typeof TextInput>>(null);
   const amount = Number(value.replace(/[^0-9.]/g, ''));
   const valid = value.trim() !== '' && Number.isFinite(amount) && amount >= 0 && amount <= MAX_KEEP;
+  // one thing is selected at a time: a preset, or Custom (your own amount in the box)
+  const custom = typing || !PRESETS.includes(amount);
 
   async function save() {
     if (!valid) return setError(`Pick an amount from $0 to ${money(MAX_KEEP, 0)}.`);
@@ -131,7 +134,7 @@ function KeepEditor({ current, onSaved, onCancel }: { current: number; onSaved: 
     setError(null);
     try {
       const me = await api.setSafeFloor(Math.round(amount * 100) / 100);
-      setStore({ prefsVersion: store.prefsVersion + 1 }); // Today, Family and the chart re-fetch
+      moneyMoved(); // what you keep changed: Today, Spending, Family and the chart re-fetch
       onSaved(me.safe_floor);
     } catch (e) {
       const m = e instanceof Error ? e.message : '';
@@ -147,21 +150,30 @@ function KeepEditor({ current, onSaved, onCancel }: { current: number; onSaved: 
       <Text style={s.sheetLead}>Runway warns you, and family can step in, before your balance goes under this. It’s yours to choose — some people want $0, others $1,000.</Text>
       <View style={s.presets}>
         {PRESETS.map((n) => {
-          const on = amount === n && valid;
+          const on = !custom && amount === n;
           return (
-            <PressableScale key={n} onPress={() => { setValue(String(n)); setError(null); }} accessibilityRole="button"
+            <PressableScale key={n} onPress={() => { setValue(String(n)); setTyping(false); setError(null); }} accessibilityRole="button"
               accessibilityState={{ selected: on }} style={[s.preset, on && s.presetOn]}>
               <Text style={[s.presetText, on && { color: '#111' }]}>{money(n, 0)}</Text>
             </PressableScale>
           );
         })}
+        <PressableScale onPress={() => { setTyping(true); setError(null); input.current?.focus(); }} accessibilityRole="button"
+          accessibilityState={{ selected: custom }} accessibilityLabel="Custom amount" style={[s.preset, custom && s.presetOn]}>
+          <Text style={[s.presetText, custom && { color: '#111' }]}>Custom</Text>
+        </PressableScale>
       </View>
-      <View style={s.inputRow}>
-        <Text style={s.dollar}>$</Text>
-        <TextInput value={value} onChangeText={(t) => { setValue(t); setError(null); }} keyboardType="decimal-pad"
-          inputMode="decimal" accessibilityLabel="Amount to keep, in dollars" style={s.input}
-          onSubmitEditing={save} returnKeyType="done" maxLength={7} />
+      <View style={[s.inputRow, custom && s.inputOn]}>
+        <Text style={[s.dollar, custom && { color: C.text }]}>$</Text>
+        <TextInput ref={input} value={value} onChangeText={(t) => { setValue(t); setTyping(true); setError(null); }}
+          onFocus={() => setTyping(true)} keyboardType="decimal-pad" inputMode="decimal"
+          accessibilityLabel="Your own amount to keep, in dollars" placeholder="Your amount" placeholderTextColor={C.text3}
+          style={s.input} onSubmitEditing={save} returnKeyType="done" maxLength={7} />
       </View>
+      {/* say exactly what Save will do, so a highlighted preset is never mistaken for the choice */}
+      <Text style={[s.whoSub, { marginTop: 8 }]} accessibilityLiveRegion="polite">
+        {valid ? `You’ll keep ${money(amount, 0)} in checking.` : `Type an amount from $0 to ${money(MAX_KEEP, 0)}.`}
+      </Text>
       {error && <Text style={[s.whoSub, { color: C.red, marginTop: 6 }]} accessibilityLiveRegion="polite">{error}</Text>}
       <View style={s.editorBtns}>
         <PressableScale onPress={onCancel} accessibilityRole="button" style={[s.btn, s.btnGhost]}>
@@ -196,6 +208,7 @@ const s = StyleSheet.create({
   presetText: { fontFamily: F.bodySemi, fontSize: 14, color: C.text },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, height: 42, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: C.line },
   dollar: { fontFamily: F.bodySemi, fontSize: 16, color: C.text2 },
+  inputOn: { borderColor: '#fff', borderWidth: 1.5 }, // Custom is the choice: the box is what Save uses
   input: { flex: 1, fontFamily: F.bodySemi, fontSize: 16, color: C.text, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as object,
   editorBtns: { flexDirection: 'row', gap: 8, marginTop: 12 },
   btn: { flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
