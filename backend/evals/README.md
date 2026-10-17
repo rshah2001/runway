@@ -104,11 +104,12 @@ the cutoff, as if Runway had just met the person. Same 18 folds.
   of history it missed every month-4 paycheck ($2,737 error). Now two matching paychecks (same payer,
   amounts within 5%, a gap that fits weekly / every-2-weeks / monthly pay, the latest one recent) put
   a **provisional** payday in the forecast: error at 30 days drops **92%, to $206**, almost the 60-day
-  level. Readiness says so ("I've seen 2 paychecks… I'll be sure after the 3rd"), never calls it
-  "confident", and the safety net won't bridge automatically on it.
+  level. Readiness says so ("I've seen 2 paychecks… I'll be sure after the 3rd") and never calls it
+  "confident".
 - **What it costs:** at 30 days, 11% of real days fell below the cautious end, just over the 10% target,
-  because a payday seen twice is less certain than one seen three times. That's acceptable only because
-  nothing automatic acts on a provisional forecast.
+  because a payday seen twice is less certain than one seen three times. So anything that moves money
+  automatically should wait for "confident": the safety net should only bridge automatically when the
+  borrower's readiness is "confident" (a suggested change for `app/safety_net.py`, owned by the backend).
 - **14 days is unchanged on purpose:** two weeks usually holds one paycheck, and one deposit doesn't fit
   any pattern. Coverage there stays low for the same reason: the band models everyday spending, not a
   missing paycheck.

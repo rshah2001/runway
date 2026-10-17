@@ -52,7 +52,6 @@ class Readiness(BaseModel):
     days_of_history: int
     paychecks_seen: int
     paycheck_found: bool  # the forecast has a learned payday in it
-    paycheck_provisional: bool = False  # it's counting on a payday seen only twice so far
     spend_days: int  # days the everyday spending rate was learned from
     progress: float  # 0–1 toward "confident"
     reasons: list[str]  # plain English, safe to show as-is

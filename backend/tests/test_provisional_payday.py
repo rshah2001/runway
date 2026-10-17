@@ -70,7 +70,7 @@ def test_a_provisional_paycheck_is_in_the_forecast() -> None:
 def test_readiness_says_it_is_only_counting_on_it() -> None:
     data = _person(_deposits("Acme payroll", [date(2026, 9, 25), date(2026, 10, 9)], 950.0))
     r = schedule.build(data, TODAY).readiness
-    assert r is not None and r.paycheck_provisional and not r.paycheck_found
+    assert r is not None and not r.paycheck_found  # counted on, not confirmed
     assert r.status == "learning"  # never "confident" on a payday seen twice
     assert any("I've seen 2 paychecks of $950.00 14 days apart" in reason for reason in r.reasons)
 
@@ -86,4 +86,5 @@ def test_a_small_confirmed_allowance_does_not_outrank_a_bigger_provisional_paych
 def test_seeded_personas_keep_their_confirmed_paychecks() -> None:
     for persona in ("maya", "jordan", "sam"):
         r = engine.readiness(persona, TODAY)
-        assert r.paycheck_found and not r.paycheck_provisional and r.status == "confident"
+        assert r.paycheck_found and r.status == "confident"
+        assert not any("I'll be sure after" in reason for reason in r.reasons)

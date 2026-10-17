@@ -102,8 +102,7 @@ def assess(
         status=status,
         days_of_history=days,
         paychecks_seen=seen,
-        paycheck_found=paycheck is not None and not paycheck_provisional,
-        paycheck_provisional=paycheck_provisional,
+        paycheck_found=paycheck is not None and not paycheck_provisional,  # provisional: in the reasons only
         spend_days=spend_days,
         progress=progress,
         reasons=reasons,

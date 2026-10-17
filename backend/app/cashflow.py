@@ -30,9 +30,6 @@ class Projection:
     next_payday: date | None
     paycheck: Decimal | None
     events: list[ForecastEvent] = field(default_factory=list)  # what moves the balance
-    # the forecast's readiness ("calibrating" | "learning" | "confident"); None = unknown, treated as not
-    # confident, so the safety net never moves money automatically on a guess (e.g. a payday seen twice)
-    readiness: str | None = None
 
     def low(self, start: date, end: date) -> tuple[date, Decimal] | None:
         """Lowest end-of-day balance in [start, end)."""
@@ -75,7 +72,6 @@ def projection_for(
         next_payday=payday,
         paycheck=paycheck,
         events=f.events,
-        readiness=schedule.readiness.status if schedule.readiness else None,
     )
 
 

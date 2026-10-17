@@ -1,10 +1,7 @@
 """Every safety-net guardrail, tested on the pure decide() — no database, no Nessie."""
 
-from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal as D
-
-import pytest
 
 from app.cashflow import Projection
 from app.safety_net import Helper, decide
@@ -26,14 +23,14 @@ def proj(
         elif payday and d >= payday:
             bal = D(str(after_payday))
         out.append((d, bal))
-    return Projection(slug, slug.title(), 20, D(1000), out, payday, D(780), readiness="confident")
+    return Projection(slug, slug.title(), 20, D(1000), out, payday, D(780))
 
 
 def helper(slug: str, low: float, limit: float, outstanding: float = 0, enabled: bool = True, borrowing: bool = False):
     """A family member whose balance sits flat at `low` (their lowest point) all month."""
     flat = [(TODAY + timedelta(days=n), D(str(low))) for n in range(35)]
     return Helper(
-        Projection(slug, slug.title(), 60, D(str(low)), flat, None, None, readiness="confident"),
+        Projection(slug, slug.title(), 60, D(str(low)), flat, None, None),
         D(str(limit)),
         D(str(outstanding)),
         enabled,
@@ -100,20 +97,3 @@ def test_never_bridges_if_repaying_on_payday_would_break_the_borrower() -> None:
 
 def test_huge_gaps_are_not_bridged() -> None:
     assert decide(proj("maya", -2000), [helper("sam", 90000, 5000)], TODAY).action == "no_safe_helper"
-
-
-# ---------- readiness gate: no automatic bridge on a forecast Runway doesn't trust yet ----------
-
-
-@pytest.mark.parametrize("readiness", ["calibrating", "learning", None])
-def test_an_unconfident_forecast_needs_the_lender_to_approve(readiness: str | None) -> None:
-    maya = replace(proj("maya", 120), readiness=readiness)  # dips $180 under the floor, within Sam's limit
-    sam = Helper(proj("sam", 5000), limit=D(500), outstanding=D(0), enabled=True, is_borrowing=False)
-    d = decide(maya, [sam], TODAY)
-    assert d.action == "needs_approval" and d.lender == "sam"
-    assert "still learning" in d.reason and "approve" in d.reason
-
-
-def test_a_confident_forecast_still_bridges_automatically() -> None:
-    sam = Helper(proj("sam", 5000), limit=D(500), outstanding=D(0), enabled=True, is_borrowing=False)
-    assert decide(proj("maya", 120), [sam], TODAY).action == "auto_bridge"
