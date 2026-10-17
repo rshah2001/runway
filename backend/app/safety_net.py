@@ -783,14 +783,16 @@ def _safe_to_repay(conn, b: dict, borrower: dict, keep: Decimal, today: date) ->
     return _repay_wait_reason(conn, b, borrower, keep, today) is None
 
 
-def repay_due(today: date | None = None) -> list[dict]:
+def repay_due(today: date | None = None, only: set[str] | None = None) -> list[dict]:
     """On (or after) the due date, pay each lender back — but never push the borrower under the floor."""
     today, done = today or _today(), []
     with pool.connection() as conn:
         due = [
             b
             for b in safety_repo.outstanding_bridges(conn)
-            if b["due_date"] <= today and b["status"] in ("active", "repay_failed")  # never repaying/reconcile
+            if b["due_date"] <= today
+            and b["status"] in ("active", "repay_failed")  # never repaying/reconcile
+            and (only is None or b["id"] in only)  # the demo payday touches only the presenter's own bridges
         ]
     for b in due:
         with pool.connection() as conn:

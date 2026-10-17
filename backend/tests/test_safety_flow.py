@@ -326,3 +326,27 @@ def test_one_person_only_meanwhile_stops_a_second_share(wire) -> None:
     store.others = [{"id": "bridge-2", "borrower_slug": "maya", "amount": D(45)}]  # Emma's share already open
     wire(store, nessie)
     assert safety_net._fund("bridge-1") is None and nessie.sent == []
+
+
+def test_a_scoped_repayment_pass_touches_only_the_bridges_it_was_given(monkeypatch) -> None:
+    mine = {"id": "bridge-mine", "due_date": date(2026, 10, 1), "status": "active"}
+    other = {"id": "bridge-other", "due_date": date(2026, 10, 1), "status": "active"}
+    paid = []
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(safety_net.pool, "connection", lambda: Conn())
+    monkeypatch.setattr(safety_net.safety_repo, "outstanding_bridges", lambda conn: [mine, other])
+    monkeypatch.setattr(safety_net.repo, "persona", lambda conn, slug: {})
+    monkeypatch.setattr(safety_net, "_repay_floor", lambda conn, b: D(300))
+    monkeypatch.setattr(safety_net, "_safe_to_repay", lambda *a: True)
+    monkeypatch.setattr(safety_net, "_pay_back", lambda b, early: paid.append(b["id"]) or b)
+    for b in (mine, other):
+        b["borrower_slug"] = "maya"
+    safety_net.repay_due(date(2026, 10, 2), only={"bridge-mine"})
+    assert paid == ["bridge-mine"]

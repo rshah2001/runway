@@ -164,7 +164,7 @@ def payday(borrower: str, *, arrives: bool) -> list[dict]:
             b = safety_repo.bridge(conn, b["id"])
             why = safety_net._repay_wait_reason(conn, b, person, safety_net._repay_floor(conn, b), today)
             outcomes.append({"bridge": b, "why": why})
-    repaid = {r["id"] for r in safety_net.repay_due(today)}
+    repaid = {r["id"] for r in safety_net.repay_due(today, only={b["id"] for b in open_})}  # theirs only
     return [
         {
             "lender": o["bridge"]["lender_name"],
