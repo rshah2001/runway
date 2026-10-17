@@ -29,8 +29,9 @@ const KIND_LABEL: Record<string, string> = { bill: 'Bill', subscription: 'Subscr
 export default function TodayScreen() {
   const wide = useWide();
   const focused = useIsFocused();
-  // design preview: ?v=a, ?v=b or ?v=compare (both side by side); anything else is today's screen
-  const { v } = useLocalSearchParams<{ v?: string }>();
+  const { v: param } = useLocalSearchParams<{ v?: string }>();
+  // the interactive Today is the default; ?v=classic keeps the old rings screen, ?v=b / ?v=compare the runway option
+  const v = param ?? 'a';
   const store = useStore();
   const forecast = useLoad(() => api.forecast(30));
   const me = useLoad(() => api.me());
