@@ -1,5 +1,5 @@
 /**
- * Runway's chat, reachable from a floating button on every screen (it replaced the Ask tab).
+ * Runway's chat, opened from the round button in the phone bottom bar or the corner button on desktop.
  * Desktop: a chat window anchored to the bottom-right corner. Phones: a full-screen sheet.
  * The conversation lives as long as the app, so closing and reopening keeps it.
  *
@@ -54,7 +54,6 @@ const closeChat = () => setStore({ chatOpen: false });
 /** Floating button + the chat surface. Mounted once in the root layout, above the tabs. */
 export function ChatLauncher() {
   const wide = useWide();
-  const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const { height } = useWindowDimensions();
   const { chatOpen } = useStore();
@@ -87,10 +86,9 @@ export function ChatLauncher() {
       ? { opacity: v, transform: [{ translateY: (1 - v) * 8 }, { scale: 0.96 + v * 0.04 }] }
       : { opacity: 1, transform: [{ translateY: (1 - v) * height }] };
   });
-  const fabStyle = useAnimatedStyle(() => ({ opacity: wide ? 1 : 1 - p.get() }));
+  const fabStyle = useAnimatedStyle(() => ({ opacity: 1 }));
 
-  // Sit above each platform's tab bar (web desktop has its nav at the top, so just the corner).
-  const fabBottom = wide ? 28 : Platform.OS === 'android' ? 96 + insets.bottom : Platform.OS === 'ios' ? 64 + insets.bottom : 84;
+  const fabBottom = 28; // desktop corner (phones use the bottom-bar button)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -100,7 +98,8 @@ export function ChatLauncher() {
           <ChatPanel wide={wide} />
         </Animated.View>
       )}
-      <Animated.View style={[s.fabWrap, { bottom: fabBottom, right: wide ? 32 : 18 }, fabStyle]} pointerEvents={!wide && chatOpen ? 'none' : 'box-none'}>
+      {/* Desktop only: on phones the chat button sits in the bottom bar (components/app-tabs.tsx). */}
+      {wide && <Animated.View style={[s.fabWrap, { bottom: fabBottom, right: 32 }, fabStyle]} pointerEvents="box-none">
         <PressableScale onPress={() => setStore({ chatOpen: !chatOpen })} style={s.fab} accessibilityRole="button"
           accessibilityLabel={chatOpen ? 'Close chat' : 'Ask Runway'}>
           {chatOpen ? <Icon name="close" size={22} color="#111" /> : (
@@ -109,7 +108,7 @@ export function ChatLauncher() {
             </Svg>
           )}
         </PressableScale>
-      </Animated.View>
+      </Animated.View>}
     </View>
   );
 }
@@ -154,7 +153,7 @@ function ChatPanel({ wide }: { wide: boolean }) {
       <View style={[s.head, { paddingTop: top }]}>
         <View style={{ flex: 1 }}>
           <Caps size={wide ? 22 : 28} style={{ textTransform: 'none', letterSpacing: 0.3 }}>Ask Runway</Caps>
-          <T tone="dim" style={{ fontSize: 13 }}>Answers come from your forecast. Runway never guesses a number.</T>
+          <T tone="dim" style={{ fontSize: 13 }}>Ask anything about your money. Answers use your real numbers.</T>
         </View>
         {!wide && (
           <PressableScale onPress={closeChat} style={s.close} accessibilityRole="button" accessibilityLabel="Close chat">

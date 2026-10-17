@@ -149,7 +149,7 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true }:
       </Svg>
       {scroll ? (
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 104 }} // room for the floating chat button
+          contentContainerStyle={{ paddingBottom: 124 }} // room for the floating bottom bar / chat button
           refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.text2} /> : undefined}>
           {inner}
         </ScrollView>

@@ -12,12 +12,12 @@ import { Swoosh } from '@/components/rw/icons';
 import { Ring } from '@/components/rw/ring';
 import { ActRow } from '@/components/rw/rows';
 import { RunwayStrip } from '@/components/rw/runway-strip';
-import { Badge, Btn, Card, CardHeader, Caps, LoadState, Num, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
+import { Btn, Card, CardHeader, Caps, LoadState, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
 import { C, MAX_WIDTH } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { money, monthDay, weekday, weekdayDate } from '@/lib/format';
-import { daysFromToday, dipCount, isClear, nextPaycheck, payCycleDays, runwayDays, safeToSpend, upcoming, withApprovedTransfer } from '@/lib/runway';
+import { daysFromToday, isClear, nextPaycheck, payCycleDays, runwayDays, safeToSpend, upcoming, withApprovedTransfer } from '@/lib/runway';
 import { setStore, useStore } from '@/lib/store';
 import type { Forecast, PendingAction } from '@/lib/types';
 
@@ -64,16 +64,11 @@ export default function TodayScreen() {
   const f = withApprovedTransfer(forecast.data, overlay);
 
   const rings = <RingsRow f={f} />;
-  const status = (
-    <View style={[s.pair, wide && { flexDirection: 'column' }]}>
-      <ForecastCard f={f} />
-      <LowestCard f={f} />
-    </View>
-  );
+  const low = <LowLine f={f} />;
   const runway = <RunwayCard f={f} takeoffKey={takeoffKey} />;
   const coming = (
     <Card style={s.block}>
-      <CardHeader title="Bills & pay · next 2 weeks" chevron />
+      <CardHeader title="Next 2 weeks" />
       <View style={{ gap: 8, marginTop: 12 }}>
         {upcoming(f).map((e, i) => (
           <ActRow key={`${e.date}-${e.label}-${i}`} kind={e.kind} amount={`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`}
@@ -88,16 +83,14 @@ export default function TodayScreen() {
     <Page onRefresh={() => { forecast.reload(); me.reload(); }} refreshing={forecast.loading && !!forecast.data}>
       {!wide && (
         <View style={s.top}>
+          <View style={s.brand}><Swoosh /><Caps size={20} style={{ letterSpacing: 7, fontFamily: 'BarlowCondensed_500Medium' }}>Runway</Caps></View>
           <AccountButton />
-          <View style={s.day}><Caps tone="dim" size={14}>‹</Caps><Caps size={14} style={{ letterSpacing: 2 }}>Today</Caps><Caps tone="dim" size={14}>›</Caps></View>
-          <View style={s.circ}><Caps size={15}>···</Caps></View>
         </View>
       )}
-      {!wide && <View style={s.wordmark}><Swoosh /><Caps size={22} style={{ letterSpacing: 9, fontFamily: 'BarlowCondensed_500Medium' }}>Runway</Caps></View>}
 
       {wide ? (
         <>
-          <View style={s.wideRow}><View style={{ flex: 1.4 }}>{rings}</View><View style={{ flex: 1 }}>{status}</View></View>
+          <View style={{ maxWidth: 640, width: '100%', alignSelf: 'center' }}>{rings}{low}</View>
           <View style={[s.wideRow, { alignItems: 'flex-start' }]}>
             <View style={{ flex: 1.4 }}><SectionTitle>My Runway</SectionTitle>{runway}</View>
             <View style={{ flex: 1 }}><SectionTitle>Upcoming</SectionTitle>{coming}</View>
@@ -106,7 +99,7 @@ export default function TodayScreen() {
       ) : (
         <>
           {rings}
-          {status}
+          {low}
           <SectionTitle>My Runway</SectionTitle>
           {runway}
           <SectionTitle>Upcoming</SectionTitle>
@@ -136,7 +129,7 @@ function RingsRow({ f }: { f: Forecast }) {
     <View style={[s.rings, { gap: wide ? 16 : 4 }]}>
       <Ring size={size} label="Runway" value={clear ? `${horizon}+` : String(days)} unit="days" frac={days / horizon}
         color={clear ? C.green : days < 7 ? C.red : C.amber}
-        caption={clear ? `never under ${money(f.safe_floor, 0)}` : `until you dip under ${money(f.safe_floor, 0)}`} />
+        caption={clear ? "you're covered" : 'until money runs low'} />
       <Ring size={size} label="Safe to spend" value={money(safe, 0)} unit="today" frac={todayBalance > 0 ? safe / todayBalance : 0}
         color={safe > 0 ? C.green : C.amber} caption={safe > 0 ? 'free after bills' : 'nothing spare yet'} />
       <Ring size={size} label="Payday" value={until === null ? '—' : String(until)} unit={until === 1 ? 'day' : 'days'}
@@ -146,36 +139,20 @@ function RingsRow({ f }: { f: Forecast }) {
   );
 }
 
-function ForecastCard({ f }: { f: Forecast }) {
-  const n = dipCount(f);
-  return (
-    <Card style={{ flex: 1 }}>
-      <CardHeader title="Forecast" chevron />
-      <View style={s.metric}>
-        <Badge tone={n ? 'red' : 'green'}>{n ? '!' : '✓'}</Badge>
-        <View style={{ flex: 1 }}>
-          <Caps tone={n ? 'red' : 'green'}>{n ? 'Below floor' : 'Within range'}</Caps>
-          <T tone="dim" style={{ fontSize: 14 }}>{n} dip{n === 1 ? '' : 's'} · next 30 days</T>
-        </View>
-      </View>
-    </Card>
-  );
-}
-
-/** The tightest day, in words: how low, when, and how far from the floor. */
-function LowestCard({ f }: { f: Forecast }) {
+/**
+ * The tightest day in one plain sentence (it replaced the Forecast and Lowest point cards).
+ * "Cushion" = the safety floor: the money we keep in checking for surprises.
+ */
+function LowLine({ f }: { f: Forecast }) {
   const gap = f.low.balance - f.safe_floor;
   return (
-    <Card style={{ flex: 1 }}>
-      <CardHeader title="Lowest point" chevron />
-      <View style={s.metric}>
-        <Num size={28} tone={gap < 0 ? 'red' : 'green'}>{money(f.low.balance, 0)}</Num>
-        <View style={{ flex: 1 }}>
-          <Caps tone="dim" size={13}>{weekdayDate(f.low.date)}</Caps>
-          <T tone="dim" style={{ fontSize: 13 }}>{gap < 0 ? `${money(-gap, 0)} under your floor` : `${money(gap, 0)} above your floor`}</T>
-        </View>
-      </View>
-    </Card>
+    <View style={s.lowLine} accessible>
+      <View style={[s.lowDot, { backgroundColor: gap < 0 ? C.red : C.green }]} />
+      <T style={{ flex: 1, fontSize: 15 }}>
+        Lowest: <T style={{ fontFamily: 'Barlow_600SemiBold', color: gap < 0 ? C.red : C.green }}>{money(f.low.balance, 0)}</T> on {weekdayDate(f.low.date)}
+        <T tone="dim">{gap < 0 ? ` · ${money(-gap, 0)} below your ${money(f.safe_floor, 0)} cushion` : ` · above your ${money(f.safe_floor, 0)} cushion`}</T>
+      </T>
+    </View>
   );
 }
 
@@ -202,8 +179,8 @@ function RunwayCard({ f, takeoffKey }: { f: Forecast; takeoffKey: number }) {
 
   return (
     <Card style={s.block}>
-      <CardHeader title="Checking · next 30 days"
-        right={<Caps tone={clear ? 'green' : 'red'}>{clear ? `Clear · ${horizon}+ days` : `${days} days left`}</Caps>} />
+      <CardHeader title="Next 30 days"
+        right={<Caps tone={clear ? 'green' : 'red'}>{clear ? 'All month' : `${days} days left`}</Caps>} />
       <View style={{ marginTop: 6, marginBottom: 4 }}>
         <RunwayStrip days={days} horizon={horizon} endLabel={days < horizon ? monthDay(f.points[days].date) : ''}
           lastLabel={monthDay(f.points[horizon].date)} takeoffKey={takeoffKey} />
@@ -213,11 +190,11 @@ function RunwayCard({ f, takeoffKey }: { f: Forecast; takeoffKey: number }) {
       ) : (
         <View style={s.fix}>
           <View style={{ flex: 1 }}>
-            <Caps size={16}>{clear ? "You're covered" : 'Cover the dip'}</Caps>
+            <Caps size={16}>{clear ? "You're covered" : `Money runs low on ${monthDay(f.points[days].date)}`}</Caps>
             <T tone="dim" style={{ fontSize: 13 }}>
-              {clear ? `Checking stays above ${money(f.safe_floor, 0)} all month.` : askError
+              {clear ? `Your money stays above your ${money(f.safe_floor, 0)} cushion all month.` : askError
                 ? "Couldn't get a suggestion. Try again, or ask in the chat."
-                : `Runway's agent proposes a transfer — you approve it.`}
+                : 'Runway can suggest a quick fix. Nothing moves until you say yes.'}
             </T>
           </View>
           {clear ? <Btn label="Ask" ghost onPress={openChat} /> : <Btn label={asking ? 'Thinking…' : 'Fix it'} disabled={asking} onPress={getFix} />}
@@ -228,13 +205,11 @@ function RunwayCard({ f, takeoffKey }: { f: Forecast; takeoffKey: number }) {
 }
 
 const s = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
-  circ: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
-  day: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 32, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card },
-  wordmark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingTop: 4 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  lowLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: C.card },
+  lowDot: { width: 8, height: 8, borderRadius: 4 },
   rings: { flexDirection: 'row', paddingTop: 18, alignItems: 'flex-start' },
-  pair: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  metric: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
   block: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 },
   fix: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: C.card2 },
   wideRow: { flexDirection: 'row', gap: 24, alignItems: 'center' },
