@@ -123,6 +123,11 @@ def _load_demo(persona: str, today: date) -> PersonaData:
     plan = build_plan(spec, today)
     # the seed tunes some personas' opening balance to tell the same demo story on any day; match it
     checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
+    return demo_data(spec, plan, checking)
+
+
+def demo_data(spec: PersonaSpec, plan: list, checking: float) -> PersonaData:
+    """PersonaData built straight from a seed plan (also used by the seed to tune demo balances)."""
     history: list[Txn] = []
     for op in plan:
         account = _ACCOUNT[op.account]
@@ -138,4 +143,4 @@ def _load_demo(persona: str, today: date) -> PersonaData:
             kind: TxnKind = "deposit" if incoming else "transfer"
             history.append(Txn(op.on, kind, op.amount if incoming else -op.amount, op.description, "P2P", account))
     bills = [UpcomingBill(b.day, b.amount, b.nickname) for b in spec.bills]
-    return PersonaData(persona, checking, spec.savings, bills, sorted(history, key=lambda t: t.date))
+    return PersonaData(spec.slug, checking, spec.savings, bills, sorted(history, key=lambda t: t.date))

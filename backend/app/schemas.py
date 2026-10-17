@@ -65,6 +65,7 @@ class PendingAction(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    persona: str = Field("maya", pattern=r"^[a-z]{1,32}$")  # TODO(auth): from the logged-in user
 
 
 class ChatResponse(BaseModel):
