@@ -4,7 +4,11 @@
  * takeoff before the app replaces it (`enter…` commits the session).
  */
 import { api } from './api';
-import { isSignedIn, login, logout } from './auth';
+import { router } from 'expo-router';
+import { Platform } from 'react-native';
+
+import { httpStatus } from '../hooks/use-load';
+import { completeWebSignIn, forgetSession, isSignedIn, login, logout } from './auth';
 import { setSession } from './session';
 
 export type Profile = { persona: string; name: string };
@@ -15,16 +19,40 @@ async function signedInProfile(): Promise<Profile> {
   return { persona: me.first_name.toLowerCase(), name: me.first_name };
 }
 
-/** On launch: resume an Auth0 session, else the login screen. */
+/** On launch: finish a sign-in Auth0 just returned from (web), resume a session, else the login screen. */
 export async function bootSession(): Promise<void> {
+  // back from Auth0: once handled, drop ?code=…&state=… from the address (via the router, which
+  // would otherwise put its own copy of the URL back)
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && /[?&](code|error)=/.test(window.location.search)) {
+    setTimeout(() => {
+      try {
+        router.replace('/');
+      } catch {
+        // router not mounted yet: the address keeps a used, one-time code — harmless
+      }
+    }, 0);
+  }
+  try {
+    await completeWebSignIn();
+  } catch (e) {
+    setSession({ mode: 'signed-out', notice: `Sign-in didn’t finish: ${e instanceof Error ? e.message : 'please try again'}.` });
+    return;
+  }
   try {
     if (await isSignedIn()) {
       const p = await signedInProfile();
       setSession({ mode: 'signed-in', ...p });
       return;
     }
-  } catch {
-    // an expired or unlinked session falls through to the login screen
+  } catch (e) {
+    // an expired or unlinked session goes back to the login screen, saying why
+    const code = httpStatus(e instanceof Error ? e.message : '');
+    await forgetSession();
+    setSession({
+      mode: 'signed-out',
+      notice: code === 403 ? 'This account isn’t linked to a Runway profile yet.' : `Sign-in didn’t finish${code ? ` (error ${code})` : ''}. Please try again.`,
+    });
+    return;
   }
   setSession({ mode: 'signed-out' });
 }

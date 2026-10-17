@@ -106,7 +106,13 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    return data.health()
+    report = data.health()
+    cfg = auth_config()
+    if cfg is not None:
+        # public identifiers (they ship in the website too) — lets anyone check the server and the
+        # app agree on which Auth0 tenant and API a sign-in token must come from
+        report["auth"] = {"issuer": cfg.issuer, "audience": cfg.audience, "linked_logins": len(cfg.personas)}
+    return report
 
 
 @app.get("/personas", response_model=list[Persona])

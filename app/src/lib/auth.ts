@@ -15,7 +15,9 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
-// On web, Auth0 redirects back into a popup; this closes it and hands the result to the opener.
+// Web signs in with a same-tab redirect (see `login`), not a popup: phone browsers block popups that
+// aren't opened in the same instant as the tap, and a popup tab on a phone can't hand the result
+// back. This call stays harmless — it only acts if a popup-based sign-in is somehow in flight.
 WebBrowser.maybeCompleteAuthSession();
 
 const DOMAIN = (process.env.EXPO_PUBLIC_AUTH0_DOMAIN ?? '').replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -42,17 +44,38 @@ let discovery: AuthSession.DiscoveryDocument | null = null;
 
 /**
  * Where Auth0 sends the user back; each value must be in the Auth0 app's Allowed Callback URLs.
- * Native: runway://auth (caught by the browser session). Web: the site root, e.g. http://localhost:8081 —
- * a page that loads this module, so maybeCompleteAuthSession() can close the sign-in popup.
+ * Native: runway://auth (caught by the browser session). Web: the site root, e.g. http://localhost:8081,
+ * where `completeWebSignIn` picks up the returning code.
  */
 export function redirectUri(): string {
   return AuthSession.makeRedirectUri({ scheme: 'runway', path: Platform.OS === 'web' ? undefined : 'auth' });
 }
 
-/** Opens Auth0's sign-in page. Resolves true when signed in, false if the user closed it. */
+// Web redirect sign-in: what we must remember across the trip to Auth0 (this tab only).
+const PKCE_KEY = 'runway.pkce';
+
+/**
+ * Opens Auth0's sign-in page. Native: the system sign-in sheet; resolves true when signed in, false
+ * if the user closed it. Web: goes to Auth0 in this tab (the promise never settles — the page
+ * leaves), and `completeWebSignIn` finishes the job when Auth0 sends the user back.
+ */
 export async function login(): Promise<boolean> {
   requireConfig();
   const config = await getDiscovery();
+  if (Platform.OS === 'web') {
+    const request = new AuthSession.AuthRequest({
+      clientId: CLIENT_ID,
+      redirectUri: redirectUri(),
+      scopes: SCOPES,
+      usePKCE: true,
+      extraParams: { audience: AUDIENCE },
+    });
+    const url = await request.makeAuthUrlAsync(config);
+    // the PKCE verifier proves the returning code is ours; `state` ties the return to this request
+    window.sessionStorage.setItem(PKCE_KEY, JSON.stringify({ state: request.state, verifier: request.codeVerifier }));
+    window.location.assign(url);
+    return new Promise<boolean>(() => {}); // the page is leaving for Auth0
+  }
   const request = new AuthSession.AuthRequest({
     clientId: CLIENT_ID,
     redirectUri: redirectUri(),
@@ -73,6 +96,42 @@ export async function login(): Promise<boolean> {
       extraParams: { code_verifier: request.codeVerifier ?? '' },
     },
     config,
+  );
+  await save(fromTokens(tokens));
+  return true;
+}
+
+/** Our own words for the errors Auth0 can send back — its error_description is never shown, since
+ * anyone can put text in a link's address. */
+const SIGN_IN_ERRORS: Record<string, string> = {
+  access_denied: 'You cancelled the sign-in, or this account isn’t allowed in',
+  login_required: 'Please sign in again',
+  consent_required: 'Please sign in again',
+  interaction_required: 'Please sign in again',
+  unauthorized: 'This account isn’t allowed to use Runway',
+};
+
+/**
+ * Web only: finishes a redirect sign-in when Auth0 has just sent the user back (`?code=…&state=…`).
+ * Resolves true when a session was saved, false when there was nothing to finish (including any
+ * return this tab didn't start — a forged or replayed link). Throws one of our fixed messages if
+ * Auth0 sent back an error for our own request. Always removes the code from the address bar.
+ */
+export async function completeWebSignIn(): Promise<boolean> {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code'), state = params.get('state'), error = params.get('error');
+  if (!code && !error) return false;
+  const saved = window.sessionStorage.getItem(PKCE_KEY);
+  window.sessionStorage.removeItem(PKCE_KEY);
+  window.history.replaceState(null, '', window.location.pathname); // never leave the code in the URL
+  const pkce = saved ? (JSON.parse(saved) as { state?: string; verifier?: string }) : null;
+  // a code or an error only counts if it answers the request this tab sent (matching state)
+  if (!pkce?.verifier || !state || pkce.state !== state) return false;
+  if (error) throw new Error(SIGN_IN_ERRORS[error] ?? 'Auth0 couldn’t sign you in');
+  const tokens = await AuthSession.exchangeCodeAsync(
+    { clientId: CLIENT_ID, code: code!, redirectUri: redirectUri(), extraParams: { code_verifier: pkce.verifier } },
+    await getDiscovery(),
   );
   await save(fromTokens(tokens));
   return true;
@@ -124,7 +183,16 @@ export async function logout(): Promise<void> {
   }
   const returnTo = redirectUri();
   const url = `${ISSUER}/v2/logout?client_id=${encodeURIComponent(CLIENT_ID)}&returnTo=${encodeURIComponent(returnTo)}`;
+  if (Platform.OS === 'web') {
+    window.location.assign(url); // same tab, like sign-in; Auth0 sends the user back to the site
+    return;
+  }
   await WebBrowser.openAuthSessionAsync(url, returnTo); // otherwise the next login skips the password
+}
+
+/** Forgets the session on this device only (no trip to Auth0) — e.g. a sign-in that isn't linked. */
+export async function forgetSession(): Promise<void> {
+  await clear();
 }
 
 /** Whether a session is stored (it may still need a refresh). */
