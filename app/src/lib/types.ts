@@ -213,3 +213,27 @@ export type SafetyDecision = {
   executed: boolean; // false = dry run (real transfers off) or nothing to do
   bridge: Bridge | null;
 };
+
+// ---------- Quiet Support Agreements (backend/app/schemas.py SupportAgreement / SupportSummary) ----------
+export type AgreementState = 'active' | 'paused' | 'needs_supporter' | 'needs_recipient' | 'needs_both' | 'revoked';
+
+/** One agreement as ONE side sees it. Never carries anyone's balance, income, spending or forecast. */
+export type SupportAgreement = {
+  supporter: string;
+  supporter_name: string;
+  recipient: string;
+  recipient_name: string;
+  my_side: 'supporter' | 'recipient';
+  state: AgreementState;
+  i_agreed: boolean;
+  they_agreed: boolean;
+  limit: number | null; // the supporter's own cap for this person
+  outstanding: number; // supporter: owed to me · recipient: what I owe them
+  version: number;
+};
+
+export type SupportSummary = {
+  persona: string;
+  supporting: SupportAgreement[]; // people I may help
+  supporters: SupportAgreement[]; // people who may help me
+};

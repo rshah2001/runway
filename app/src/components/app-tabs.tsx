@@ -1,6 +1,6 @@
 // Navigation for every platform, built on expo-router/ui so routes and focus come from the router.
 //  - Phones (Android, iOS, phone browsers): a floating pill with icon-only tabs (Today, Spending,
-//    Family), and the round chat button beside it, over a dark fade.
+//    Circles), and the round chat button beside it, over a dark fade.
 //  - Desktop website: a top bar with the wordmark, tabs and account; chat lives in the corner window.
 // Tab switches don't animate (tabs are peers, used dozens of times a session); only press feedback.
 import { TabList, type TabListProps, TabSlot, TabTrigger, type TabTriggerSlotProps, Tabs } from 'expo-router/ui';
@@ -18,7 +18,8 @@ import { C, F, MAX_WIDTH } from '@/constants/runway';
 const ICON: Record<string, { d: string; fill?: boolean; circles?: [number, number, number][] }> = {
   today: { d: 'M12 3.2 3 10.4V20a1 1 0 0 0 1 1h5.5v-6h5v6H20a1 1 0 0 0 1-1v-9.6z', fill: true },
   spending: { d: 'M5 20v-7M10 20V5M15 20v-9M20 20v-4' },
-  family: { d: 'M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16.5 14.6c3 .1 4.6 1.9 5.2 5.4', circles: [[9, 8, 3.5], [17.5, 9, 2.8]] },
+  // two linked rings: people who agreed to look out for each other
+  circles: { d: '', circles: [[9, 12, 5.5], [15, 12, 5.5]] },
 };
 
 export default function AppTabs() {
@@ -28,7 +29,7 @@ export default function AppTabs() {
       <Bar wide={wide}>
         <TabTrigger name="today" href="/" asChild><Tab icon="today" wide={wide}>Today</Tab></TabTrigger>
         <TabTrigger name="spending" href="/spending" asChild><Tab icon="spending" wide={wide}>Spending</Tab></TabTrigger>
-        <TabTrigger name="family" href="/family" asChild><Tab icon="family" wide={wide}>Family</Tab></TabTrigger>
+        <TabTrigger name="circles" href="/circles" asChild><Tab icon="circles" wide={wide}>Circles</Tab></TabTrigger>
       </Bar>
     </TabList>
   );
