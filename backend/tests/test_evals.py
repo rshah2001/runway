@@ -96,3 +96,10 @@ def test_privacy_eval_passes_on_the_deterministic_path(monkeypatch) -> None:
 
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert privacy_eval.run(use_gemini=False) == 0
+
+
+def test_guardian_keeps_every_promise_on_generated_networks() -> None:
+    """Pair limit, exposure, cushion, no overshoot, confidence, determinism — zero violations."""
+    from evals import guardian_eval
+
+    assert guardian_eval.run(scenarios=300) == 0
