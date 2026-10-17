@@ -94,12 +94,25 @@ export type SpendingTransaction = {
   account: string;
 };
 
+export type CategoryChange = { category: string; this: number; last: number; change: number }; // change < 0 = spending less
+
+/** Against the previous month: the SAME days of it while this month is in progress. */
+export type SpendingCompare = {
+  previous_month: string; // 'YYYY-MM'
+  through_day: number | null; // compared through this day of each month; null = whole months
+  this_total: number;
+  last_total: number;
+  change: number; // negative = spending less than last month
+  categories: CategoryChange[]; // biggest change first
+};
+
 export type Spending = {
   month: string; // 'YYYY-MM'
   total: number;
   categories: CategorySpend[]; // biggest first
   daily: DailySpend[]; // from the Tiger Data continuous aggregate in live mode
   transactions: SpendingTransaction[]; // newest first
+  compare?: SpendingCompare | null; // vs the previous month
 };
 
 // ---------- peer-to-peer ----------

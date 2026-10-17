@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import data, forecast_history, safety_views
+from app import data, forecast_history, safety_views, spending_compare
 from app.agent import chat as agent
 from app.auth.deps import OptionalUser, persona_for, require_owner
 from app.auth.tokens import User
@@ -249,11 +249,22 @@ def spending(
     persona: str = PERSONA,
 ) -> Spending:
     persona = persona_for(user, persona)
-    month = month or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m")
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    month = month or today.strftime("%Y-%m")
     try:
-        return data.spending(month, persona)
+        this = data.spending(month, persona)
     except data.PersonaNotFound:
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
+    year, mon = map(int, month.split("-"))
+    previous = f"{year - (mon == 1)}-{(mon - 2) % 12 + 1:02d}"
+    try:  # informational: a failed read of last month never breaks this month's screen
+        last = data.spending(previous, persona)
+    except Exception:
+        log.exception("spending: couldn't read %s for the comparison", previous)
+        return this
+    # a month in progress is compared with the same days of the last one; a finished month, whole
+    through = today.day if month == today.strftime("%Y-%m") else None
+    return this.model_copy(update={"compare": spending_compare.compare(this, last, through_day=through)})
 
 
 # ---------- peer-to-peer ----------
