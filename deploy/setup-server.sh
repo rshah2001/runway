@@ -26,7 +26,7 @@ if [ ! -f /opt/runway/.env ]; then
 # Server secrets — edit with: sudo -u deploy nano /opt/runway/.env  (then push or re-run the deploy)
 SITE_ADDRESS=:80
 NESSIE_API_KEY=
-NESSIE_BASE_URL=http://api.nessieisreal.com
+NESSIE_BASE_URL=https://api.nessieisreal.com
 GEMINI_API_KEY=
 DATABASE_URL=
 AUTH0_DOMAIN=

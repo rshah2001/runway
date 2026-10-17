@@ -1,7 +1,7 @@
 """Nessie API client — owner: rshah2001.
 
 MOCK: returns the demo persona's accounts. Replace with real calls to
-http://api.nessieisreal.com (key from NESSIE_API_KEY), cached in Tiger Data.
+https://api.nessieisreal.com (key from NESSIE_API_KEY), cached in Tiger Data.
 See docs/NESSIE.md for the endpoint list.
 """
 

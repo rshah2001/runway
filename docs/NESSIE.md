@@ -1,6 +1,6 @@
 # Nessie API notes
 
-Docs: http://api.nessieisreal.com · Base URL: `http://api.nessieisreal.com` · Auth: `?key=YOUR_KEY`
+Docs: https://api.nessieisreal.com · Base URL: `https://api.nessieisreal.com` · Auth: `?key=YOUR_KEY`
 query param on every request. Keep the key in `.env` (`NESSIE_API_KEY`), never in code.
 
 ## What we use, and for what
@@ -18,6 +18,7 @@ query param on every request. Keep the key in `.env` (`NESSIE_API_KEY`), never i
 
 ## Gotchas
 
+- **HTTPS only.** `http://api.nessieisreal.com` just times out ("Host is down"); always use `https://`.
 - **The sandbox starts nearly empty.** We seed our own data: `backend/seed/` creates 3 personas
   (e.g. "Maya, paycheck-to-paycheck UF junior") with ~4 months of purchases, deposits and bills.
   Realistic data = a convincing demo.
