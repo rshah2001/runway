@@ -70,7 +70,8 @@ class Decision:
     floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
     allocations: tuple[tuple[str, Decimal], ...] = ()  # (supporter, amount): one bridge each
     versions: tuple[tuple[str, int], ...] = ()  # the consent each share relied on; re-checked before money moves
-    # supporters who agreed but were kept out because helping wasn't safe for THEM: (slug, their cushion, why)
+    # supporters who agreed but were kept out because helping wasn't safe for THEM: (slug, their cushion, why).
+    # Logged for the audit trail only — never sent to them, since its timing would reveal someone's shortfall.
     held: tuple[tuple[str, Decimal, str], ...] = ()
 
 
@@ -508,8 +509,8 @@ def act(decision: Decision) -> dict | None:
         with pool.connection() as conn:
             return safety_repo.bridge(conn, ids[0])
     funded = [b for b in (_fund(i) for i in ids) if b is not None]
-    if funded:
-        _tell_the_protected(decision)
+    if decision.held:  # audit only: telling a held-back supporter would reveal WHEN their person was short
+        log.info("decision for %s protected %s", decision.borrower, [(s, why) for s, _, why in decision.held])
     if len(funded) < len(ids):  # some shares landed, some didn't: say so, never "covered"
         got = sum((Decimal(b["amount"]) for b in funded), Decimal(0))
         with pool.connection() as conn:
@@ -521,26 +522,6 @@ def act(decision: Decision) -> dict | None:
             )
             conn.commit()
     return funded[0] if funded else None
-
-
-def _tell_the_protected(decision: Decision) -> None:
-    """A supporter who agreed but wasn't asked, because helping would have hurt THEM, hears so — in their
-    own words and numbers only. It names nobody and says nothing about anyone else's money, so it can't
-    reveal who was short or why; it shows the supporter that Runway protected them."""
-    with pool.connection() as conn:
-        for slug, floor, why in decision.held:
-            if why == "cushion":
-                msg = (
-                    "Runway kept your support on hold this week — helping would have taken you "
-                    f"under the {_money(floor)} you keep."
-                )
-            else:
-                msg = (
-                    "Runway kept your support on hold this week — your forecast is still learning, "
-                    "so nothing moves automatically."
-                )
-            safety_repo.add_event(conn, slug, "support_on_hold", msg)
-        conn.commit()
 
 
 def withdraw_requests(borrower_slug: str) -> int:

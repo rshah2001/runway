@@ -709,7 +709,6 @@ const EVENT_ICON: Record<string, [string, string]> = {
   repay_late: ['transfer', C.amber],
   bridge_failed: ['close', C.red],
   bridge_declined: ['close', C.text2],
-  support_on_hold: ['shield', '#7cb8ff'], // Runway protected you: helping wasn't safe for you this week
 };
 
 function EventRow({ e, first }: { e: SafetyEvent; first: boolean }) {

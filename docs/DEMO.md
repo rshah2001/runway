@@ -17,7 +17,7 @@
 | 0:25 | Maya → **Circles**, the circle map | "Three people agreed to help her quietly. Each line is a separate agreement — both people said yes. Nobody here can see anyone's balance." |
 | 0:45 | Tap **Cover it with my circle** | "Runway's Network Guardian checks each supporter's *own* forecast for the whole time the money is out." |
 | 1:00 | Result: covered by **Sam $90 + Emma $45** | "Two real Nessie transfers, just now. Maya only sees who covered her and when it goes back." Then, *as the narrator, not on Maya's screen*: "Behind that, Sam authorized $150, but a loan payment lands before Maya could repay — his *safe* amount was $90. Jordan authorized $300, but his mortgage is due that week: $0. **Runway protects the protector.**" |
-| 1:25 | (optional third login) **Jordan's** Circles history | "Jordan's own app just says Runway kept his support on hold because helping would have taken him under what he keeps. It doesn't say who asked, and Maya never learns why." |
+| 1:25 | (optional) GitHub: `tests/test_demo_scenario.py` | "That decision is pinned in our tests on the real forecast engine, every day of the demo. And Jordan isn't even notified — a 'you were held back' message would tell him *when* Maya was short." |
 | 1:35 | Sam's **phone** → Today / Circles | "This is Sam's view. *$90 with Maya, expected back Friday.* That's all. Not her balance, not her spending, not why she needed it — not even that Emma helped." |
 | 2:00 | Sam's phone → Ask Runway: *"What's Maya's balance?"* | "And the assistant can't be talked into it either — we tested 13 attacks, including prompt injection, with the guard switched off: 15 out of 15." |
 | 2:25 | GitHub: `guardian.py`, transfer journal | "Under the hood: a deterministic engine — the AI never does the maths. Every transfer is journaled before it's sent, and an unclear bank response is reconciled, never retried, so nobody gets paid twice." |
@@ -30,7 +30,7 @@ transfers from the last run; say "here's the one from earlier — each line is a
 
 1. **(0:00–0:15) Hook.** Black screen, text: *"Asking for money is hard. Being asked can be harder."* Cut to Maya's Today, the dip on the 22nd.
 2. **(0:15–0:40) The circle.** Circles map; voice-over on two-sided consent and "nobody sees anyone's balance". Show the consent sheet ("What Emma will and won't see").
-3. **(0:40–1:10) The moment.** Tap *Cover it with my circle* → Sam $90 + Emma $45. Cut to Jordan's own history: *support on hold — helping would have taken you under what you keep*. Caption: *Runway protects the protector.*
+3. **(0:40–1:10) The moment.** Tap *Cover it with my circle* → Sam $90 + Emma $45. Narrate Jordan's $0 from his side (his mortgage week), over the test that pins it. Caption: *Runway protects the protector.*
 4. **(1:10–1:30) The other side.** Sam's phone: *$90 with Maya, expected back Fri*. Ask Runway "What's Maya's balance?" → refusal.
 5. **(1:30–1:50) Proof.** Quick cuts: `guardian.py` formula, `test_demo_scenario.py` passing, privacy eval table (15/15, guard off), Nessie transfer ids in the history.
 6. **(1:50–2:00) Close.** "Runway. Support without the spotlight." + sixsevenbucksleft.vip.

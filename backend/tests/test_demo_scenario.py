@@ -36,7 +36,7 @@ def test_maya_is_covered_by_sam_90_and_emma_45_and_jordan_is_protected(offset: i
     assert dict(d.allocations) == {"sam": D(90), "emma": D(45)}  # Jordan gives nothing
 
 
-def test_jordan_is_protected_and_told_without_naming_anyone() -> None:
+def test_jordan_is_protected_and_the_reason_is_his_own_cushion() -> None:
     today = date(2026, 10, 18)
     helpers = [
         Helper(project(lender, today), D(str(limit)), D(0), True, False, DEFAULT_EXPOSURE)
