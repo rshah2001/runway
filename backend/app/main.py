@@ -71,7 +71,10 @@ def background_pass() -> None:
     """Every interval: pull Nessie into Tiger Data, then let the safety net act (repayments,
     push approvals, new bridges) — the last part only when real writes are on."""
     sync_personas(prepare=False)
-    from app import safety_net
+    from app import demo, safety_net
+
+    if demo.held():  # a demo reset paused automatic bridges so the dip is still there on stage
+        return
 
     safety_net.tick()
 
@@ -277,8 +280,9 @@ def run_safety_net(
                 bridge=None,
             )
         ]
-    from app import safety_net
+    from app import demo, safety_net
 
+    demo.release()  # running it by hand is the live moment: automatic passes resume after it
     return [safety_views.decision(d, b) for d, b in safety_net.run([persona] if persona else None)]
 
 
@@ -323,6 +327,68 @@ def approve_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
 @app.post("/safety-net/bridges/{bridge_id}/decline", response_model=Bridge)
 def decline_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
     return _bridge_action(bridge_id, approve=False, user=user)
+
+
+@app.post("/safety-net/bridges/{bridge_id}/repay", response_model=Bridge)
+def repay_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
+    """The borrower pays a bridge back early (a real Nessie move back to the lender). Only the
+    borrower can, and never if it would take them under the amount they keep."""
+    if not get_settings().live:
+        b = next((x for x in safety_views.demo_summary("maya").borrowed if x.id == bridge_id), None)
+        if b is None:
+            raise HTTPException(409, "That bridge isn't waiting to be paid back.")
+        authorize_money(user, b.borrower)
+        return b.model_copy(update={"status": "repaid"})
+    from app import safety_net
+    from app.db import pool, safety_repo
+
+    with pool.connection() as conn:
+        borrower = (safety_repo.bridge(conn, bridge_id) or {}).get("borrower_slug")
+    if borrower is None:
+        raise HTTPException(404, "No such bridge.")
+    authorize_money(user, borrower)  # only the borrower pays back
+    if not _live_writes():
+        raise HTTPException(503, "Real transfers are switched off, so nothing can be paid back right now.")
+    try:
+        return safety_views.bridge(safety_net.repay_now(bridge_id))
+    except safety_net.RepayRefused as e:
+        raise HTTPException(409, str(e)) from None
+
+
+# ---------- demo controls ----------
+# A signed-in demo login (Maya, Jordan or Sam) can rebuild the demo and pause automatic bridges, so
+# the story can be rehearsed and is fresh for the judges. Only the demo personas are ever touched.
+
+
+def _demo_user(user: User | None) -> None:
+    from app import demo
+
+    if user is None:
+        raise HTTPException(
+            401, "Sign in with a demo account to reset the demo.", headers={"WWW-Authenticate": "Bearer"}
+        )
+    if persona_for(user, "") not in demo.DEMO_PERSONAS:
+        raise HTTPException(403, "Only the demo accounts can reset the demo.")
+    if not get_settings().live:
+        raise HTTPException(503, "The demo reset needs the live Nessie connection.")
+
+
+@app.post("/demo/reset", status_code=202)
+def demo_reset(user: OptionalUser) -> dict:
+    from app import demo
+
+    _demo_user(user)
+    if not demo.start_reset():
+        raise HTTPException(409, "A reset is already running.")
+    return demo.status()
+
+
+@app.get("/demo/status")
+def demo_status(user: OptionalUser) -> dict:
+    from app import demo
+
+    _demo_user(user)
+    return demo.status()
 
 
 @app.get("/forecast", response_model=Forecast)

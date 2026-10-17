@@ -166,7 +166,7 @@ function InteractiveToday({ f, name, refreshing, onRefresh }: { f: Forecast; nam
             <AccountButton />
           </View>
         )}
-        <TodayInteractive f={f} name={name} wide={wide} scrollY={scrollY} viewport={height} />
+        <TodayInteractive f={f} name={name} wide={wide} scrollY={scrollY} viewport={height} onMoneyMoved={onRefresh} />
         <View style={s.credit}><View style={s.dot} /><T tone="faint" style={{ fontSize: 13 }}>Balances from Capital One Nessie</T></View>
       </Animated.ScrollView>
     </Page>

@@ -166,6 +166,15 @@ export type Bridge = {
 
 export type SafetyEvent = { at: string; kind: string; message: string; bridge_id: string | null };
 
+/** GET /demo/status: the demo reset, and how long automatic bridges are paused for the live demo. */
+export type DemoStatus = {
+  state: 'idle' | 'running' | 'done' | 'failed';
+  started: string | null;
+  finished: string | null;
+  error: string | null; // the kind of failure only
+  hold_until: string | null;
+};
+
 export type SafetyNetSummary = {
   persona: string;
   next_payday: string | null;

@@ -38,7 +38,8 @@ import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { fromIso, money, monthDay, weekdayDate } from '@/lib/format';
 import { isClear, nextPaycheck, runwayDays, safeToSpend } from '@/lib/runway';
-import type { Forecast } from '@/lib/types';
+import { useSession } from '@/lib/session';
+import type { BridgeStatus, Forecast, SafetyLimit, SafetyNetSummary } from '@/lib/types';
 
 // Apple's default: critically damped, no overshoot. `duration` stands in for "response".
 const SNAP = { dampingRatio: 1, duration: 180 }; // cursor gliding between days while scrubbing
@@ -54,8 +55,10 @@ function shifted(f: Forecast, delta: number): Forecast {
   return { ...f, points, low };
 }
 
-export function TodayInteractive({ f, name, wide, scrollY, viewport }: {
+export function TodayInteractive({ f, name, wide, scrollY, viewport, onMoneyMoved }: {
   f: Forecast; name?: string; wide: boolean; scrollY?: SharedValue<number>; viewport?: number;
+  /** real money moved (a bridge, a repayment, a demo reset): re-fetch the forecast */
+  onMoneyMoved?: () => void;
 }) {
   const [spend, setSpend] = useState(0); // what-if amount, 0 = off
   const [ghost, setGhost] = useState<number | null>(null); // a proposed fix, previewed on the chart
@@ -121,13 +124,21 @@ export function TodayInteractive({ f, name, wide, scrollY, viewport }: {
     </Reveal3D>
   );
 
-  // the answer in a sentence, then anything the family safety net did — newest first
-  const news = (family.data?.events ?? []).slice(0, 2);
+  const moved = () => {
+    family.reload();
+    onMoneyMoved?.();
+  };
+  // the answer in a sentence, then the family safety net from this person's side
   const notes = (
     <Reveal3D order={3} scrollY={scrollY} viewport={viewport}>
       <View style={{ gap: 10 }}>
-        <Callout tone={covered ? 'good' : 'bad'} title={spend ? a.title.replace('You’re', 'You’d be') : a.title} text={a.detail} />
-        {news.map((e) => <Callout key={e.at} tone="info" title="From your family" text={e.message} />)}
+        <Callout tone={covered ? 'good' : 'bad'} title={spend ? a.title.replace('You’re', 'You’d be') : a.title} text={a.detail}>
+          {!covered && !spend && family.data && family.data.limits_for_me.some((l) => l.enabled && l.remaining > 0)
+            && !family.data.borrowed.some((b) => OUT.includes(b.status) || b.status === 'pending_approval') ? (
+              <AskFamily onDone={moved} />
+            ) : null}
+        </Callout>
+        {family.data ? <Family sum={family.data} onMoved={moved} /> : null}
       </View>
     </Reveal3D>
   );
@@ -152,6 +163,194 @@ export function TodayInteractive({ f, name, wide, scrollY, viewport }: {
       ) : (
         <>{notes}{chart}{coming}</>
       )}
+      <DemoReset onDone={moved} />
+    </View>
+  );
+}
+
+/* ---------------- family safety net ---------------- */
+
+const OUT: BridgeStatus[] = ['active', 'repay_failed']; // money is with the borrower
+const DEMO = ['maya', 'jordan', 'sam'];
+
+/** A small two-step action: the first tap asks, the second does it. Feedback on press-down. */
+function ActionButton({ label, confirm, onPress, tone = 'light' }: {
+  label: string; confirm?: string; onPress: () => Promise<void>; tone?: 'light' | 'ghost';
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    if (confirm && !asking) return setAsking(true);
+    setBusy(true);
+    try {
+      await onPress();
+    } finally {
+      setBusy(false);
+      setAsking(false);
+    }
+  };
+  return (
+    <View style={s.actionRow}>
+      <Pressable onPress={run} disabled={busy} accessibilityRole="button"
+        style={({ pressed }) => [s.action, tone === 'ghost' && s.actionGhost, (pressed || busy) && { opacity: 0.7, transform: [{ scale: 0.97 }] }]}>
+        <Text style={[s.actionText, tone === 'ghost' && { color: C.text }]}>{busy ? 'One moment…' : asking ? confirm : label}</Text>
+      </Pressable>
+      {asking && !busy ? <Pressable onPress={() => setAsking(false)} accessibilityRole="button"><Text style={s.cancel}>Cancel</Text></Pressable> : null}
+    </View>
+  );
+}
+
+/** Errors from a money action, in the server's own plain words (409s explain why). */
+function useNote() {
+  const [note, setNote] = useState<string | null>(null);
+  const guard = (fn: () => Promise<unknown>) => async () => {
+    setNote(null);
+    try {
+      await fn();
+    } catch (e) {
+      const m = e instanceof Error ? e.message : '';
+      setNote(m.match(/"detail":"([^"]+)"/)?.[1] ?? 'That didn’t go through. Please try again.');
+    }
+  };
+  return { note, guard };
+}
+
+/** "Ask family to cover it": runs the safety net now — it covers the dip within a lender's limit, or asks them. */
+function AskFamily({ onDone }: { onDone: () => void }) {
+  const { note, guard } = useNote();
+  return (
+    <View style={{ marginTop: 10 }}>
+      <ActionButton label="Ask family to cover it" onPress={guard(async () => {
+        await api.runSafetyNet();
+        onDone();
+      })} />
+      {note ? <Text style={s.noteText}>{note}</Text> : null}
+    </View>
+  );
+}
+
+/** Everything the safety net is doing for this person, from their side. */
+function Family({ sum, onMoved }: { sum: SafetyNetSummary; onMoved: () => void }) {
+  const { note, guard } = useNote();
+  const borrowed = sum.borrowed.filter((b) => OUT.includes(b.status));
+  const waitingOnOthers = sum.borrowed.filter((b) => b.status === 'pending_approval');
+  const lent = sum.lent.filter((b) => OUT.includes(b.status));
+  const shownIds = new Set([...borrowed, ...lent, ...sum.approvals_waiting, ...waitingOnOthers].map((b) => b.id));
+  const news = sum.events.filter((e) => !e.bridge_id || !shownIds.has(e.bridge_id)).slice(0, 2);
+  return (
+    <>
+      {borrowed.map((b) => (
+        <Callout key={b.id} tone="info" title={`${b.lender_name} has your back`}
+          text={`${b.lender_name} covered ${money(b.amount, 0)} before ${monthDay(b.shortfall_date)}. It goes back automatically on payday, ${weekdayDate(b.due_date)}.`}>
+          <View style={{ marginTop: 10 }}>
+            <ActionButton label={`Pay ${b.lender_name} back now`} confirm={`Pay ${money(b.amount, 0)} back now?`}
+              onPress={guard(async () => {
+                await api.repayBridge(b.id);
+                onMoved();
+              })} />
+          </View>
+        </Callout>
+      ))}
+      {waitingOnOthers.map((b) => (
+        <Callout key={b.id} tone="warn" title={`Asked ${b.lender_name}`}
+          text={`${money(b.amount, 0)} is over ${b.lender_name}’s limit, so they’re approving it. You’ll see it here the moment they do.`} />
+      ))}
+      {sum.approvals_waiting.map((b) => (
+        <Callout key={b.id} tone="warn" title={`${b.borrower_name} needs ${money(b.amount, 0)}`} text={b.reason}>
+          {b.approval_channel === 'auth0_push' ? (
+            <Text style={s.noteText}>Approve it on your phone — Auth0 sent you a request.</Text>
+          ) : (
+            <View style={s.twoActions}>
+              <ActionButton label="Approve" onPress={guard(async () => {
+                await api.approveBridge(b.id);
+                onMoved();
+              })} />
+              <ActionButton label="Decline" tone="ghost" onPress={guard(async () => {
+                await api.declineBridge(b.id);
+                onMoved();
+              })} />
+            </View>
+          )}
+        </Callout>
+      ))}
+      {lent.map((b) => (
+        <Callout key={b.id} tone="info" title={`${b.borrower_name} has ${money(b.amount, 0)} of yours`}
+          text={`It comes back automatically on ${weekdayDate(b.due_date)}. Your own balance stays above what you keep.`} />
+      ))}
+      {sum.limits_i_set.map((l) => (
+        <LimitChips key={`${l.lender}-${l.borrower}`} limit={l} onSet={guard(async () => onMoved())} />
+      ))}
+      {news.map((e) => <Callout key={`${e.at}-${e.kind}`} tone="info" title="From your family" text={e.message} />)}
+      {note ? <Text style={s.noteText}>{note}</Text> : null}
+    </>
+  );
+}
+
+const LIMITS = [0, 50, 100, 200];
+
+/** The lender sets how much they'll cover automatically — the person whose money it is decides. */
+function LimitChips({ limit, onSet }: { limit: SafetyLimit; onSet: () => Promise<void> }) {
+  const [value, setValue] = useState(limit.enabled ? limit.limit : 0);
+  const [failed, setFailed] = useState(false);
+  const pick = async (n: number) => {
+    const before = value;
+    setValue(n); // answer the tap at once; put it back if the server says no
+    setFailed(false);
+    try {
+      await api.setSafetyLimit(limit.lender, limit.borrower, n, n > 0);
+      await onSet();
+    } catch {
+      setValue(before);
+      setFailed(true);
+    }
+  };
+  return (
+    <View style={s.limitBox}>
+      <Text style={s.calloutTitle}>{`You’ll cover ${limit.borrower_name} up to`}</Text>
+      <View style={[s.chips, { marginTop: 8 }]}>
+        {LIMITS.map((n) => (
+          <Chip key={n} on={value === n} label={n === 0 ? 'Off' : money(n, 0)} onPress={() => pick(n)} />
+        ))}
+      </View>
+      <Text style={s.noteText}>
+        {failed ? 'Couldn’t save that. Please try again.' : value === 0 ? 'Runway won’t send any of your money automatically.'
+          : `Under ${money(value, 0)}, Runway covers ${limit.borrower_name} automatically. Over it, you’re asked first.`}
+      </Text>
+    </View>
+  );
+}
+
+/** Demo accounts only: rebuild the demo story and pause automatic help until it's shown live. */
+function DemoReset({ onDone }: { onDone: () => void }) {
+  const session = useSession();
+  const [state, setState] = useState<string | null>(null);
+  if (session.mode !== 'signed-in' || !DEMO.includes(session.persona)) return null;
+  const reset = async () => {
+    setState('Rebuilding Maya, Jordan and Sam… about a minute.');
+    try {
+      await api.demoReset();
+      for (let i = 0; i < 90; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const st = await api.demoStatus();
+        if (st.state === 'done') {
+          setState('The demo is fresh. Automatic help is paused until someone taps “Ask family to cover it”.');
+          onDone();
+          return;
+        }
+        if (st.state === 'failed') {
+          setState(`The reset didn’t finish (${st.error ?? 'error'}). Try again.`);
+          return;
+        }
+      }
+      setState('Still rebuilding — refresh in a minute.');
+    } catch (e) {
+      setState(e instanceof Error && e.message.includes('409') ? 'A reset is already running.' : 'Couldn’t start the reset.');
+    }
+  };
+  return (
+    <View style={s.demo}>
+      <ActionButton label="Reset demo" confirm="Reset all three demo accounts?" tone="ghost" onPress={reset} />
+      {state ? <Text style={s.noteText}>{state}</Text> : null}
     </View>
   );
 }
@@ -178,11 +377,12 @@ function Pill({ tone, text }: { tone: Tone; text: string }) {
 }
 
 /** A plain sentence with a coloured edge: what's happening, in words. */
-function Callout({ tone, title, text }: { tone: Tone; title: string; text: string }) {
+function Callout({ tone, title, text, children }: PropsWithChildren<{ tone: Tone; title: string; text: string }>) {
   return (
-    <View style={[s.callout, { borderLeftColor: TONES[tone].fg, backgroundColor: TONES[tone].bg }]} accessible>
+    <View style={[s.callout, { borderLeftColor: TONES[tone].fg, backgroundColor: TONES[tone].bg }]}>
       <Text style={s.calloutTitle}>{title}</Text>
       <Text style={s.calloutText}>{text}</Text>
+      {children}
     </View>
   );
 }
@@ -559,6 +759,15 @@ const s = StyleSheet.create({
   cardTitle: { ...SYS, fontSize: 19, fontWeight: '600', color: C.text },
 
   callout: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  action: { alignSelf: 'flex-start', height: 40, paddingHorizontal: 18, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  actionGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(140,165,190,0.3)' },
+  actionText: { ...SYS, fontSize: 15, fontWeight: '600', color: '#111' },
+  cancel: { ...SYS, fontSize: 15, color: C.text2 },
+  twoActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  noteText: { ...SYS, fontSize: 14, lineHeight: 20, color: C.text2, marginTop: 8 },
+  limitBox: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(140,165,190,0.16)' },
+  demo: { alignItems: 'center', marginTop: 8 },
   calloutTitle: { ...SYS, fontSize: 16, fontWeight: '700', color: C.text },
   calloutText: { ...SYS, fontSize: 15, lineHeight: 22, color: C.text2, marginTop: 3 },
 
