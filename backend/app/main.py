@@ -290,7 +290,7 @@ def recurring() -> list[Recurring]:
 
 @app.post("/agent/chat", response_model=ChatResponse)
 def agent_chat(req: ChatRequest) -> ChatResponse:
-    return agent.chat(req.message)
+    return agent.chat(req.message, persona=req.persona)
 
 
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
@@ -311,7 +311,8 @@ def approve(action_id: str) -> PendingAction:
             raise HTTPException(422, "Only positive transfers can be approved right now")
         action.status = "approved"  # claimed: a concurrent approve now gets 409
     try:
-        data.move_savings_to_checking(action.amount, action.description)
+        # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
+        data.move_savings_to_checking(action.amount, action.description, agent.persona_of(action_id))
     except data.TransferNotMade as e:
         action.status = "awaiting_approval"  # nothing moved, so a retry is safe
         log.warning("transfer not made: %s", e)

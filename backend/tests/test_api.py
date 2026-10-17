@@ -172,3 +172,35 @@ def test_safety_net_run_reports_what_it_would_do() -> None:
 )
 def test_lender_sets_limits(body: dict, status: int) -> None:
     assert client.put("/safety-net/limits", json=body).status_code == status
+
+
+def test_approval_moves_the_money_of_the_persona_it_was_proposed_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A "fix it" proposed for Sam must move Sam's savings when approved — never the default Maya's."""
+    from app import data
+    from app.agent import tools
+    from app.schemas import PendingAction
+
+    moved = {}
+    monkeypatch.setattr(
+        data, "move_savings_to_checking", lambda amount, desc, slug="maya": moved.setdefault("slug", slug)
+    )
+    action = PendingAction(id="test-sam-fix", kind="transfer", description="Move $50 from Savings", amount=50)
+    tools.PENDING[action.id], tools.ACTION_PERSONA[action.id] = action, "sam"
+    assert client.post(f"/actions/{action.id}/approve").status_code == 200
+    assert moved["slug"] == "sam"
+
+
+def test_chat_passes_the_persona_to_the_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agent import chat as agent
+    from app.schemas import ChatResponse
+
+    seen = {}
+    monkeypatch.setattr(
+        agent, "chat", lambda message, persona="maya": seen.setdefault("p", persona) and ChatResponse(reply="ok")
+    )
+    client.post("/agent/chat", json={"message": "hi", "persona": "jordan"})
+    assert seen["p"] == "jordan"
+
+
+def test_chat_rejects_a_bad_persona() -> None:
+    assert client.post("/agent/chat", json={"message": "hi", "persona": "../x"}).status_code == 422

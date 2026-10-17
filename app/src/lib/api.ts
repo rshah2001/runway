@@ -53,7 +53,8 @@ export const api = {
     request<SafetyDecision[]>(`/safety-net/run${persona ? `?persona=${persona}` : ''}`, { method: 'POST' }),
   approveBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/approve`, { method: 'POST' }),
   declineBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/decline`, { method: 'POST' }),
-  chat: (message: string) =>
-    request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message }) }),
+  // the agent answers with this persona's numbers, in the voice for their age
+  chat: (message: string, persona = 'maya') =>
+    request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),
   approve: (actionId: string) => request<PendingAction>(`/actions/${actionId}/approve`, { method: 'POST' }),
 };
