@@ -258,6 +258,12 @@ def propose_transfer(
     }
 
 
+def discard(action_id: str) -> None:
+    """Forget a proposal that was never shown to the user, so it can never be approved."""
+    PENDING.pop(action_id, None)
+    ACTION_PERSONA.pop(action_id, None)
+
+
 def persona_of(action_id: str) -> str:
     """Whose transfer a pending action is, so approval moves that persona's money."""
     return ACTION_PERSONA.get(action_id, engine.DEFAULT_PERSONA)
