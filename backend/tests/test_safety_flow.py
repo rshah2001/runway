@@ -350,3 +350,14 @@ def test_a_scoped_repayment_pass_touches_only_the_bridges_it_was_given(monkeypat
         b["borrower_slug"] = "maya"
     safety_net.repay_due(date(2026, 10, 2), only={"bridge-mine"})
     assert paid == ["bridge-mine"]
+
+
+def test_a_supporters_fresh_forecast_is_rechecked_before_their_share_moves(monkeypatch) -> None:
+    from tests.test_safety_net import helper
+
+    sam = helper("sam", 390, 150).projection  # cautious balance $390, cushion $300: room $90
+    monkeypatch.setattr(safety_net, "project", lambda conn, slug, today=None: sam)
+    end = date(2026, 10, 26)
+    assert safety_net._cash_still_safe(None, "sam", D(90), end, [])
+    waiting = [{"lender_slug": "sam", "status": "pending_approval", "amount": D(40)}]  # promised elsewhere
+    assert not safety_net._cash_still_safe(None, "sam", D(90), end, waiting)

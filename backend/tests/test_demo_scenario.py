@@ -68,4 +68,5 @@ def test_maya_and_alex_short_the_same_week_are_split_fairly(offset: int) -> None
     assert alone.amount == D(85)
     out = {d.borrower: d for d in network_pass([decision("alex"), decision("maya")])}
     assert dict(out["maya"].allocations) == {"sam": D(90), "emma": D(45)}
-    assert dict(out["alex"].allocations) == {"emma": D(50)} and "uncovered" in out["alex"].reason
+    assert dict(out["alex"].allocations) == {"emma": D(50)} and "couldn't be covered" in out["alex"].reason
+    assert "short" not in out["alex"].reason.split(". ", 1)[1] and "others" not in out["alex"].reason.lower()

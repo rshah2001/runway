@@ -469,10 +469,25 @@ def _request_approval(conn, b: dict) -> str:
     return "in_app"
 
 
-def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, version: int | None) -> bool:
+def _cash_still_safe(conn, lender: str, amount: Decimal, end: date, committed: list[dict]) -> bool:
+    """The supporter's FRESH cautious forecast, minus everything they've promised but not yet sent,
+    still stays at or above their cushion through `end` after this share. Re-read here (not trusted
+    from planning) because an earlier decision in the same pass may already have used their room."""
+    p = project(conn, lender)
+    window = [bal for d, bal in (p.days_low or p.days) if d <= end]
+    unfunded = sum(
+        (Decimal(b["amount"]) for b in committed if b["lender_slug"] == lender and b["status"] in safety_repo.UNFUNDED),
+        Decimal(0),
+    )
+    return bool(window) and min(window) - unfunded - amount >= p.floor
+
+
+def _still_safe(
+    conn, lender: str, borrower: str, amount: Decimal, auto: bool, version: int | None, end: date | None = None
+) -> bool:
     """Re-validate one share under the people's locks, from fresh rows: the agreement is still active and
-    unchanged, the supporter isn't borrowing, and the share still fits their pair limit (automatic only)
-    and their total exposure. The forecast-based cash room was computed moments ago in plan()."""
+    unchanged, the supporter isn't borrowing, the share still fits their pair limit (automatic only) and
+    their total exposure, and (given `end`) their fresh cautious forecast still clears their cushion."""
     if not _consent_still_holds(conn, lender, borrower, version):
         return False
     committed = safety_repo.open_bridges(conn)  # incl. approvals waiting and transfers in flight
@@ -487,6 +502,8 @@ def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, v
         lim = next(iter(safety_repo.limits(conn, lender=lender, borrower=borrower)), None)
         if lim is None or not lim["enabled"] or Decimal(lim["limit_amount"]) - Decimal(lim["outstanding"]) < amount:
             return False
+    if end is not None and not _cash_still_safe(conn, lender, amount, end, committed):
+        return False
     return True
 
 
@@ -514,6 +531,7 @@ def act(decision: Decision) -> dict | None:
     shares = decision.allocations or ((decision.lender, decision.amount),)
     versions = dict(decision.versions)
     decision_id = f"dec-{secrets.token_hex(6)}"
+    end = (decision.due_date or _today()) + timedelta(days=REPAY_GRACE_DAYS)  # the money is out until then
     ids: list[str] = []
     with pool.connection() as conn:
         safety_repo.lock_people(conn, decision.borrower, *(slug for slug, _ in shares))
@@ -526,7 +544,7 @@ def act(decision: Decision) -> dict | None:
             log.info("decision for %s no longer fits the recipient's own limits; re-planning", decision.borrower)
             return None
         if not all(
-            _still_safe(conn, slug, decision.borrower, amount, auto, versions.get(slug)) for slug, amount in shares
+            _still_safe(conn, slug, decision.borrower, amount, auto, versions.get(slug), end) for slug, amount in shares
         ):
             conn.rollback()
             log.info("decision for %s no longer holds under the lock; re-planning next pass", decision.borrower)
@@ -896,14 +914,18 @@ def network_pass(decisions: list[Decision]) -> list[Decision]:
         gap = d.reason.split(". ")[0]
         if not shares:
             nobody = dataclasses.replace(
-                d, action="no_safe_helper", allocations=(), reason=f"{gap}. Others needed the same help first."
+                d,
+                action="no_safe_helper",
+                allocations=(),
+                reason=f"{gap}. It couldn't be covered automatically this time.",
             )
             out.append(d if d.action != "auto_bridge" else nobody)
             continue
         covered = sum((a for _, a in shares), Decimal(0))
         who = " and ".join(f"{_money(a)} from {s.title()}" for s, a in shares)
-        part = "" if covered >= d.amount else f" — {_money(d.amount - covered)} of it stays uncovered for now"
-        reason = f"{gap}. Covered {who}{part}, shared fairly with others short this week."
+        part = "" if covered >= d.amount else f"; {_money(d.amount - covered)} couldn't be covered automatically"
+        # about this person only: never that others were short or wanted the same supporter
+        reason = f"{gap}. Covered {who}{part}."
         out.append(
             dataclasses.replace(d, action="auto_bridge", lender=shares[0][0], allocations=tuple(shares), reason=reason)
         )
