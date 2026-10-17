@@ -233,7 +233,7 @@ def test_tools_hand_the_model_its_tone_inputs() -> None:
     assert tools.get_forecast(persona="maya", today=TODAY)["status"] == "overdraft_risk"
     assert tools.get_forecast(persona="sam", today=TODAY)["status"] == "healthy"
     big = tools.simulate_purchase(500, "friday", persona="maya", today=TODAY)
-    assert big["status"] == "overdraft_risk" and big["low_point_under_100"] is True
+    assert big["status"] == "overdraft_risk"
     later = tools.simulate_purchase(25, "2026-12-05", persona="maya", today=TODAY)
     assert later["verdict"] == "safe" and later["status"] == "overdraft_risk"  # the earlier dip still counts
     assert tools.find_recurring(persona="maya", today=TODAY)["status"] == "overdraft_risk"
@@ -276,5 +276,5 @@ def test_each_persona_gets_its_voice_and_the_same_rules() -> None:
 
 
 def test_voice_examples_contain_no_figures() -> None:
-    # "$" or a standalone number; digits inside a field name like low_point_under_100 are fine
+    # "$" or a standalone number
     assert not any(re.search(r"\$|(?<!\w)\d", text) for text in voice.VOICES.values())

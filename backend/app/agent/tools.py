@@ -70,10 +70,7 @@ def _shortfall(f: Forecast) -> float:
 
 def _mood(low_balance: float, safe_floor: float) -> dict[str, Any]:
     """Tone inputs for the agent, computed here so the model never compares numbers itself."""
-    return {
-        "status": engine.status(low_balance, safe_floor),
-        "low_point_under_100": low_balance < 100,
-    }
+    return {"status": engine.status(low_balance, safe_floor)}
 
 
 def _low_summary(f: Forecast) -> dict[str, Any]:
