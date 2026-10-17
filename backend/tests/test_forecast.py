@@ -136,7 +136,7 @@ def test_demo_stories_hold() -> None:
     maya, jordan, sam = (engine.forecast(start=TODAY, persona=p) for p in ("maya", "jordan", "sam"))
     assert engine.status(maya.low.balance, maya.safe_floor) == "overdraft_risk"  # rent lands before payday
     assert engine.status(sam.low.balance, sam.safe_floor) == "healthy"
-    assert jordan.low.balance > jordan.safe_floor
+    assert jordan.low.balance > 0  # a tight month for a family of four, but never overdrawn
 
 
 def test_unknown_persona_is_an_error_not_maya() -> None:

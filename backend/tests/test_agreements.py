@@ -53,7 +53,7 @@ def test_plan_only_ever_asks_supporters_with_an_active_agreement(monkeypatch: py
     monkeypatch.setattr(safety_net.repo, "personas", lambda c: [{"slug": "maya"}, {"slug": "sam"}])
     monkeypatch.setattr(safety_net, "project", lambda c, s, t: proj("maya", 208) if s == "maya" else sam.projection)
     monkeypatch.setattr(safety_net.prefs, "setting", lambda *a, **k: True)
-    monkeypatch.setattr(safety_net.safety_repo, "outstanding_bridges", lambda c: [])
+    monkeypatch.setattr(safety_net.safety_repo, "open_bridges", lambda c: [])
     monkeypatch.setattr(safety_net.safety_repo, "open_bridge_for_borrower", lambda c, s: None)
     monkeypatch.setattr(
         safety_net.safety_repo,
@@ -67,6 +67,27 @@ def test_plan_only_ever_asks_supporters_with_an_active_agreement(monkeypatch: py
         assert d.action == "auto_bridge" and d.lender == "sam" and d.versions == (("sam", 7),)
     else:
         assert d.action == "no_safe_helper" and d.lender is None
+
+
+def test_money_promised_but_not_yet_sent_cannot_be_offered_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    consent = ("t", "t")
+    sam = helper("sam", 5000, 100)
+    monkeypatch.setattr(safety_net.repo, "personas", lambda c: [{"slug": "maya"}, {"slug": "sam"}])
+    monkeypatch.setattr(safety_net, "project", lambda c, s, t: proj("maya", 208) if s == "maya" else sam.projection)
+    monkeypatch.setattr(safety_net.prefs, "setting", lambda *a, **k: True)
+    waiting = {"lender_slug": "sam", "borrower_slug": "jordan", "amount": D(4800), "status": "pending_approval"}
+    monkeypatch.setattr(safety_net.safety_repo, "open_bridges", lambda c: [waiting])
+    monkeypatch.setattr(safety_net.safety_repo, "open_bridge_for_borrower", lambda c, s: None)
+    monkeypatch.setattr(
+        safety_net.safety_repo,
+        "limits",
+        lambda c, borrower: [{"lender_slug": "sam", "limit_amount": 100, "outstanding": 0, "enabled": True}],
+    )
+    monkeypatch.setattr(safety_net.agreements_repo, "involving", lambda c, s: [row(*consent, version=7)])
+    monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(500))
+    monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(9000))
+    d = safety_net.plan(None, "maya", TODAY)
+    assert d.action == "no_safe_helper"  # $5,000 − $4,800 promised to Jordan leaves Sam under his cushion
 
 
 @pytest.mark.usefixtures("auth_off")

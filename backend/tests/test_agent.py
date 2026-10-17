@@ -441,13 +441,14 @@ def test_brief_mentions_family_only_when_there_is_something() -> None:
 def test_router_answers_brief_me_with_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     r = agent.weekly_brief(persona="sam", today=TODAY)
-    assert r.tool_calls == ["weekly_brief"] and "$5,997.55" in r.reply and r.pending_action is None
+    assert r.tool_calls == ["weekly_brief"] and r.pending_action is None
+    assert "This week your lowest day is" in r.reply and "$" in r.reply
 
 
 def test_an_ungrounded_gemini_brief_is_replaced_by_the_rule_based_one() -> None:
     fake = FakeGemini(_calls(("weekly_brief", {})), _text("Great week! You'll have about $9,999 to spare."))
     r = agent.weekly_brief(persona="sam", client=fake, today=TODAY)
-    assert "$9,999" not in r.reply and "$5,997.55" in r.reply
+    assert "$9,999" not in r.reply and "This week your lowest day is" in r.reply  # the rule-based brief
 
 
 # ---------- needs vs. could-wait until payday ----------

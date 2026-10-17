@@ -150,7 +150,7 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
             customer_id = nessie.create_customer(spec.first_name, spec.last_name, ADDRESS)["_id"]
 
         plan = build_plan(spec, today)
-        checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
+        checking = demo_opening_balance(spec, plan, today) if spec.tuned else spec.checking
         accounts = {
             "checking": nessie.create_account(customer_id, "Checking", "Everyday Checking", checking)["_id"],
             "savings": nessie.create_account(customer_id, "Savings", "Savings", spec.savings)["_id"],

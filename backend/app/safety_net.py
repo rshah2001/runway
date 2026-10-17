@@ -192,11 +192,15 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     if not prefs.setting(borrower_slug, "family_cover", conn, strict=True):
         name = projections[borrower_slug].first_name
         return Decision(borrower_slug, "family_off", f"{name} turned family cover off, so nobody is asked.")
-    outstanding = safety_repo.outstanding_bridges(conn)
-    owing = {b["borrower_slug"] for b in outstanding}
-    lent_out: dict[str, Decimal] = {}
-    for b in outstanding:
-        lent_out[b["lender_slug"]] = lent_out.get(b["lender_slug"], Decimal(0)) + Decimal(b["amount"])
+    committed = safety_repo.open_bridges(conn)  # incl. approvals still waiting and transfers in flight
+    owing = {b["borrower_slug"] for b in committed if b["status"] in safety_repo.OUTSTANDING}
+    lent_out: dict[str, Decimal] = {}  # everything a supporter has committed, for their exposure cap
+    unfunded: dict[str, Decimal] = {}  # committed but not yet out of their balance: not in the forecast
+    for b in committed:
+        amount = Decimal(b["amount"])
+        lent_out[b["lender_slug"]] = lent_out.get(b["lender_slug"], Decimal(0)) + amount
+        if b["status"] in safety_repo.UNFUNDED:
+            unfunded[b["lender_slug"]] = unfunded.get(b["lender_slug"], Decimal(0)) + amount
     # only supporters with an ACTIVE agreement (both people said yes) are ever considered
     consented = {
         a["supporter"]: a
@@ -205,7 +209,7 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     }
     helpers = [
         Helper(
-            projection=projections[lim["lender_slug"]],
+            projection=_less(projections[lim["lender_slug"]], unfunded.get(lim["lender_slug"], Decimal(0))),
             limit=Decimal(lim["limit_amount"]),
             outstanding=Decimal(lim["outstanding"]),
             enabled=lim["enabled"],
@@ -219,6 +223,16 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     decision = decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
     versions = tuple((slug, consented[slug]["version"]) for slug, _ in decision.allocations if slug in consented)
     return dataclasses.replace(decision, versions=versions)
+
+
+def _less(p: Projection, amount: Decimal) -> Projection:
+    """A supporter's forecast with money they've already promised (but not yet sent) taken out, so the
+    same dollars can't be offered to two people."""
+    if not amount:
+        return p
+    return dataclasses.replace(
+        p, days=[(d, bal - amount) for d, bal in p.days], days_low=[(d, bal - amount) for d, bal in p.days_low]
+    )
 
 
 def _exposure_limit(conn, slug: str) -> Decimal:
@@ -408,10 +422,10 @@ def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, v
     and their total exposure. The forecast-based cash room was computed moments ago in plan()."""
     if not _consent_still_holds(conn, lender, borrower, version):
         return False
-    outstanding = safety_repo.outstanding_bridges(conn)
-    if any(b["borrower_slug"] == lender for b in outstanding):  # no chains: a borrower never lends
+    committed = safety_repo.open_bridges(conn)  # incl. approvals waiting and transfers in flight
+    if any(b["borrower_slug"] == lender for b in committed):  # no chains: a borrower never lends
         return False
-    lent = sum((Decimal(b["amount"]) for b in outstanding if b["lender_slug"] == lender), Decimal(0))
+    lent = sum((Decimal(b["amount"]) for b in committed if b["lender_slug"] == lender), Decimal(0))
     if lent + amount > _exposure_limit(conn, lender):
         return False
     if auto:

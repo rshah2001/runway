@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 
 log = logging.getLogger("runway.demo")
 
-DEMO_PERSONAS = ("maya", "jordan", "sam")
+DEMO_PERSONAS = ("maya", "jordan", "sam", "emma")
 HOLD_MINUTES = 60  # long enough to rehearse or present; the nightly reseed starts the day fresh
 
 _lock = threading.Lock()

@@ -143,7 +143,7 @@ def _load_demo(persona: str, today: date) -> PersonaData:
     spec = _spec(persona)
     plan = build_plan(spec, today)
     # the seed tunes some personas' opening balance to tell the same demo story on any day; match it
-    checking = demo_opening_balance(spec, plan, today) if spec.demo_low_before_payday else spec.checking
+    checking = demo_opening_balance(spec, plan, today) if spec.tuned else spec.checking
     from app import prefs
 
     # the seed tunes against the default cushion; the person's own amount applies to what they see

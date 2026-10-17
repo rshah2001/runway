@@ -31,6 +31,15 @@ _demo: dict[str, float] = {}  # offline / demo mode only
 _demo_settings: dict[tuple[str, str], bool] = {}
 
 
+def default_floor(slug: str) -> float:
+    """What someone keeps until they choose their own amount: their persona's own cushion if it has
+    one (Jordan keeps $1,500 for a family of four), otherwise $300."""
+    from seed.personas import PERSONAS  # local: seed imports app modules
+
+    spec = next((p for p in PERSONAS if p.slug == slug), None)
+    return spec.cushion if spec is not None and spec.cushion is not None else DEFAULT_FLOOR
+
+
 class FloorOutOfRange(ValueError):
     """The requested amount isn't between $0 and MAX_FLOOR."""
 
@@ -47,7 +56,7 @@ def floor(slug: str, conn=None, *, strict: bool = False) -> float:
     `strict=True` (anything that moves money) it raises instead — acting on a guessed cushion could
     move family money someone didn't need, or hold back money they did."""
     if not get_settings().live:
-        return _demo.get(slug, DEFAULT_FLOOR)
+        return _demo.get(slug, default_floor(slug))
     if strict:
         if conn is not None:
             return _read(conn, slug)
@@ -64,14 +73,14 @@ def floor(slug: str, conn=None, *, strict: bool = False) -> float:
             return _read(c, slug)
     except Exception:
         log.exception("prefs: couldn't read the floor for %s, using the default", slug)
-        return DEFAULT_FLOOR
+        return default_floor(slug)
 
 
 def _read(conn, slug: str) -> float:
     from app.db import repo
 
     value = repo.safe_floor(conn, slug)
-    return DEFAULT_FLOOR if value is None else float(value)
+    return default_floor(slug) if value is None else float(value)
 
 
 def set_floor(slug: str, amount: float) -> float:

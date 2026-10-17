@@ -241,7 +241,7 @@ def test_a_limit_change_after_the_request_means_nothing_moves(wire) -> None:
 def fresh_rows(monkeypatch: pytest.MonkeyPatch):
     rows = {"outstanding": [], "limit": {"enabled": True, "limit_amount": D(150), "outstanding": D(0)}, "cap": D(500)}
     monkeypatch.setattr(safety_net, "_consent_still_holds", lambda *a: True)
-    monkeypatch.setattr(safety_net.safety_repo, "outstanding_bridges", lambda conn: rows["outstanding"])
+    monkeypatch.setattr(safety_net.safety_repo, "open_bridges", lambda conn: rows["outstanding"])
     monkeypatch.setattr(safety_net.safety_repo, "limits", lambda conn, lender, borrower: [rows["limit"]])
     monkeypatch.setattr(safety_net, "_exposure_limit", lambda conn, slug: rows["cap"])
     return rows

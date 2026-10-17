@@ -58,7 +58,7 @@ def test_the_forecast_and_me_use_the_persons_own_amount(auth_off: None) -> None:
     assert r.status_code == 200 and r.json()["safe_floor"] == 100
     assert client.get("/forecast?persona=maya").json()["safe_floor"] == 100
     assert client.get("/me?persona=maya").json()["safe_floor"] == 100
-    assert client.get("/forecast?persona=jordan").json()["safe_floor"] == 300  # nobody else changes
+    assert client.get("/forecast?persona=jordan").json()["safe_floor"] == 1500  # his own default; nobody else changes
 
 
 def test_out_of_range_amounts_are_refused(auth_off: None) -> None:

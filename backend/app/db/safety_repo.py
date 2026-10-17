@@ -6,7 +6,8 @@ import psycopg
 
 Row = dict[str, Any]
 OUTSTANDING = ("active", "repaying", "repay_failed", "reconcile")  # money that hasn't (certainly) come back yet
-OPEN = ("pending_approval", *OUTSTANDING)
+OPEN = ("pending_approval", "funding", *OUTSTANDING)  # anything that still commits a supporter's money
+UNFUNDED = ("pending_approval", "funding")  # committed, but not yet out of the supporter's balance
 SETTABLE = {
     "funded_at",
     "repaid_at",
@@ -96,6 +97,11 @@ def open_bridge_for_borrower(conn: psycopg.Connection, borrower: str) -> Row | N
     return conn.execute(
         f"{_BRIDGE} WHERE b.borrower_slug = %s AND b.status = ANY(%s) LIMIT 1", (borrower, list(OPEN))
     ).fetchone()
+
+
+def open_bridges(conn: psycopg.Connection) -> list[Row]:
+    """Every bridge that still commits someone's money: waiting for approval, being sent, or out."""
+    return conn.execute(f"{_BRIDGE} WHERE b.status = ANY(%s) ORDER BY b.due_date", (list(OPEN),)).fetchall()
 
 
 def outstanding_bridges(conn: psycopg.Connection) -> list[Row]:
