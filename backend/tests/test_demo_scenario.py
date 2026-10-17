@@ -45,3 +45,27 @@ def test_jordan_is_protected_and_the_reason_is_his_own_cushion() -> None:
     ]
     d = decide(project("maya", today), helpers, today)
     assert [(slug, why) for slug, _, why in d.held] == [("jordan", "cushion")]
+
+
+@pytest.mark.parametrize("offset", range(5))
+def test_maya_and_alex_short_the_same_week_are_split_fairly(offset: int) -> None:
+    """Demo 5: Sam's $90 of safe room is shared by Maya and his roommate Alex. Fewest options first:
+    Maya (no alternative to Sam) is covered in full; Alex gets Emma's $50 and $35 stays uncovered."""
+    from app.safety_net import network_pass
+    from seed.personas import DEMO_PAUSED, DEMO_WAITING_FOR_RECIPIENT
+
+    today = date(2026, 10, 18) + timedelta(days=offset)
+
+    def decision(borrower: str):
+        helpers = [
+            Helper(project(s, today), D(str(lim)), D(0), True, False, DEFAULT_EXPOSURE)
+            for s, r, lim in SAFETY_LIMITS
+            if r == borrower and (s, r) not in DEMO_PAUSED and (s, r) not in DEMO_WAITING_FOR_RECIPIENT
+        ]
+        return decide(project(borrower, today), helpers, today)
+
+    alone = decision("alex")
+    assert alone.amount == D(85)
+    out = {d.borrower: d for d in network_pass([decision("alex"), decision("maya")])}
+    assert dict(out["maya"].allocations) == {"sam": D(90), "emma": D(45)}
+    assert dict(out["alex"].allocations) == {"emma": D(50)} and "uncovered" in out["alex"].reason

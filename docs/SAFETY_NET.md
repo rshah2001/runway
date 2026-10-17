@@ -76,6 +76,13 @@ about someone else's money before any model runs (`app/agent/privacy.py`; `evals
 | Jordan, 40 | supporter | $300 | $1,850 mortgage on the 24th, $1,500 family cushion | **$0** |
 | Emma, 32 | supporter | $45 | steady salary | **$45** |
 
+**Several people short at once (Demo 5).** Alex (22, Maya's roommate) is $85 short the same week; Sam backs
+him too ($100), and Emma ($50). Sam's $90 of safe room is shared, so the Guardian splits the week's needs
+together (`guardian.allocate_network`) with a written fairness rule — **fewest options first** (least spare
+capacity beyond the need), then earliest shortfall, then name order: Maya (no alternative to Sam) gets Sam
+$90 + Emma $45; Alex gets Emma's $50 and $35 stays uncovered — $185 of $220 covered vs $135 first-come.
+Pinned in `tests/test_demo_scenario.py` for every demo day.
+
 Reset: the demo accounts' **Reset demo** button (Circles) rebuilds all four and holds automatic help for an
 hour, so the cover happens live when someone taps **Cover it with my circle**.
 

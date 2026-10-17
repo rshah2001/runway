@@ -64,3 +64,44 @@ def test_allocation_is_partial_when_capacity_runs_out_and_never_overcommits() ->
 def test_allocation_is_deterministic_on_ties() -> None:
     caps = [("sam", Capacity(D(50), "cushion", D(50))), ("emma", Capacity(D(50), "cushion", D(50)))]
     assert allocate(D(60), caps) == [("emma", D(50)), ("sam", D(10))]
+
+
+# ---------- several people short at once ----------
+from app.guardian import NetNeed, allocate_network  # noqa: E402
+
+DAY = date(2026, 10, 22)
+
+
+def maya_and_alex(alex_first_by_name: bool = True) -> list[NetNeed]:
+    """Sam's safe room this week is $90, shared. Maya needs $135 (Sam ≤ $150, Emma ≤ $45); Alex needs $85
+    (Sam ≤ $100, Emma ≤ $50). Maya has no alternative to Sam; Alex does."""
+    return [
+        NetNeed("alex", D(85), DAY, (("sam", D(90), D(100)), ("emma", D(3000), D(50)))),
+        NetNeed("maya", D(135), DAY, (("sam", D(90), D(150)), ("emma", D(3000), D(45)))),
+    ]
+
+
+def test_network_serves_the_person_with_fewest_options_first() -> None:
+    split = allocate_network(maya_and_alex())
+    assert split["maya"] == [("sam", D(90)), ("emma", D(45))]  # fully covered
+    assert split["alex"] == [("emma", D(50))]  # $35 stays uncovered — honestly partial
+
+
+def test_network_covers_more_than_first_come_first_served() -> None:
+    fewest_first = sum(a for shares in allocate_network(maya_and_alex()).values() for _, a in shares)
+    # first-come (Alex planned first by name): Sam alone covers Alex, leaving Maya only Sam's $5 + Emma's $45
+    first_come = D(85) + D(5) + D(45)
+    assert fewest_first == D(185) and fewest_first > first_come
+
+
+def test_network_never_spends_a_supporters_room_twice() -> None:
+    split = allocate_network(maya_and_alex())
+    sam_total = sum(a for shares in split.values() for s, a in shares if s == "sam")
+    assert sam_total <= D(90)
+    for n in maya_and_alex():
+        for s, a in split[n.borrower]:
+            assert a <= dict((x, pair) for x, _, pair in n.options)[s]  # pair limits per person
+
+
+def test_network_is_deterministic() -> None:
+    assert allocate_network(maya_and_alex()) == allocate_network(list(reversed(maya_and_alex())))

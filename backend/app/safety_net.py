@@ -74,6 +74,9 @@ class Decision:
     # supporters who agreed but were kept out because helping wasn't safe for THEM: (slug, their cushion, why).
     # Logged for the audit trail only — never sent to them, since its timing would reveal someone's shortfall.
     held: tuple[tuple[str, Decimal, str], ...] = ()
+    # supporters who could help automatically: (slug, shared room, pair room) — for a network pass
+    options: tuple[tuple[str, Decimal, Decimal], ...] = ()
+    allow_multi: bool = True
 
 
 def _md(d: date) -> str:
@@ -158,6 +161,12 @@ def decide(
         for h, c in caps
         if c.amount == 0 and c.bound in ("cushion", "low_confidence")
     )
+    options = tuple(
+        (h.projection.slug, guardian.round_down(c.cash_room), guardian.round_down(h.remaining))
+        for h, c in caps
+        if c.bound not in ("low_confidence", "approval_only", "no_forecast") and c.cash_room > 0 and h.remaining > 0
+    )
+    net = dict(options=options, allow_multi=allow_multi)
     pool_caps = [(h.projection.slug, c) for h, c in caps]
     if not allow_multi:  # the recipient wants one person to cover it, or nobody automatically
         pool_caps = [(s, c) for s, c in pool_caps if c.amount >= need]
@@ -166,7 +175,9 @@ def decide(
         who = " and ".join(f"{names[s]} covers {_money(a)}" for s, a in shares)
         reason = f"{gap}. {who} — within their limits, with their own bills still covered."
         reason += f" Expected back {_md(b.next_payday)}."
-        return Decision(b.slug, "auto_bridge", reason, need, shares[0][0], allocations=tuple(shares), held=held, **base)
+        return Decision(
+            b.slug, "auto_bridge", reason, need, shares[0][0], allocations=tuple(shares), held=held, **net, **base
+        )
 
     # not enough automatic room: ask ONE person whose own cushion allows the whole amount
     approvable = [(h, c) for h, c in caps if c.cash_room >= need]
@@ -175,12 +186,13 @@ def decide(
         slug = h.projection.slug
         reason = f"{gap}. {_money(need)} is more than Runway can move automatically,"
         reason += f" so {names[slug]} is asked to approve it."
-        return Decision(b.slug, "needs_approval", reason, need, slug, allocations=((slug, need),), **base)
+        return Decision(b.slug, "needs_approval", reason, need, slug, allocations=((slug, need),), **net, **base)
     return Decision(
         b.slug,
         "no_safe_helper",
         f"{gap}. Nobody who agreed to help can cover it without risking their own bills.",
         need,
+        **net,
         **base,
     )
 
@@ -249,7 +261,7 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
     decision = decide(
         projections[borrower_slug], helpers, today, has_open_bridge=has_open, owe_room=owe_room, allow_multi=allow_multi
     )
-    versions = tuple((slug, consented[slug]["version"]) for slug, _ in decision.allocations if slug in consented)
+    versions = tuple((slug, a["version"]) for slug, a in consented.items())  # every consenting supporter
     return dataclasses.replace(decision, versions=versions)
 
 
@@ -857,6 +869,47 @@ def poll_push_approvals() -> None:
             decline(b["id"])
 
 
+def network_pass(decisions: list[Decision]) -> list[Decision]:
+    """Several people short at once with supporters in common: re-split with guardian.allocate_network
+    (fewest options first), so whoever happens to be planned first can't take a supporter someone else
+    has no alternative to. Untouched when nobody's supporters overlap."""
+    wanting = ("auto_bridge", "needs_approval", "no_safe_helper")
+    open_needs = [d for d in decisions if d.options and d.action in wanting]
+    seen: dict[str, int] = {}
+    for d in open_needs:
+        for s, _, _ in d.options:
+            seen[s] = seen.get(s, 0) + 1
+    if not any(n > 1 for n in seen.values()):
+        return decisions
+    split = guardian.allocate_network(
+        [
+            guardian.NetNeed(d.borrower, d.amount, d.shortfall_date or date.max, d.options, d.allow_multi)
+            for d in open_needs
+        ]
+    )
+    out = []
+    for d in decisions:
+        shares = split.get(d.borrower)
+        if shares is None:
+            out.append(d)
+            continue
+        gap = d.reason.split(". ")[0]
+        if not shares:
+            nobody = dataclasses.replace(
+                d, action="no_safe_helper", allocations=(), reason=f"{gap}. Others needed the same help first."
+            )
+            out.append(d if d.action != "auto_bridge" else nobody)
+            continue
+        covered = sum((a for _, a in shares), Decimal(0))
+        who = " and ".join(f"{_money(a)} from {s.title()}" for s, a in shares)
+        part = "" if covered >= d.amount else f" — {_money(d.amount - covered)} of it stays uncovered for now"
+        reason = f"{gap}. Covered {who}{part}, shared fairly with others short this week."
+        out.append(
+            dataclasses.replace(d, action="auto_bridge", lender=shares[0][0], allocations=tuple(shares), reason=reason)
+        )
+    return out
+
+
 def run(slugs: list[str] | None = None) -> list[tuple[Decision, dict | None]]:
     """Plan for each borrower and act on it — but only act when real writes are on; otherwise this
     is a dry run that reports what the agent *would* do."""
@@ -864,17 +917,23 @@ def run(slugs: list[str] | None = None) -> list[tuple[Decision, dict | None]]:
     with _lock:
         with pool.connection() as conn:
             targets = slugs or [p["slug"] for p in repo.personas(conn)]
+        planned = []
         for slug in targets:
             try:
                 with pool.connection() as conn:
-                    decision = plan(conn, slug)
-                    if decision.action == "no_safe_helper" and writes_enabled():  # once a day per person
-                        day_id = f"dec-{slug}-{_today():%Y%m%d}-none"
+                    planned.append(plan(conn, slug))
+            except Exception:
+                log.exception("safety net plan failed for %s", slug)
+        for decision in network_pass(planned):
+            try:
+                if decision.action == "no_safe_helper" and writes_enabled():  # once a day per person
+                    with pool.connection() as conn:
+                        day_id = f"dec-{decision.borrower}-{_today():%Y%m%d}-none"
                         safety_repo.record_decision(conn, day_id, decision, Decimal(0), guardian.ALGORITHM_VERSION)
                         conn.commit()
                 out.append((decision, act(decision) if writes_enabled() else None))
             except Exception:
-                log.exception("safety net pass failed for %s", slug)
+                log.exception("safety net pass failed for %s", decision.borrower)
     return out
 
 

@@ -131,7 +131,7 @@ def mine(conn: psycopg.Connection, viewer: str) -> list[Row]:
 # the demo's circles: (id, name, creator, active members, invited members)
 DEMO = [
     ("circle-family", "Family", "sam", ("maya", "jordan", "emma"), ()),
-    ("circle-weekend", "Weekend crew", "emma", ("maya",), ("jordan",)),
+    ("circle-weekend", "Weekend crew", "emma", ("maya", "alex"), ("jordan",)),
 ]
 
 
