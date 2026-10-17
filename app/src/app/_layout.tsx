@@ -38,7 +38,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={theme}>
-      <StatusBar style="light" />
+      <StatusBar style={session.mode === 'signed-out' ? 'dark' : 'light'} />
       {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <LoginScreen /> : <AppTabs />}
     </ThemeProvider>
   );
