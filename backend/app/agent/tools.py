@@ -15,7 +15,7 @@ import secrets
 from datetime import date, timedelta
 from typing import Any
 
-from app.forecast import engine, sources
+from app.forecast import engine, readiness, sources
 from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import Schedule
 from app.forecast.sources import PersonaData
@@ -73,6 +73,24 @@ def _mood(low_balance: float, safe_floor: float) -> dict[str, Any]:
     return {"status": engine.status(low_balance, safe_floor)}
 
 
+def _confidence(sched: Schedule) -> dict[str, Any]:
+    """How sure the forecast is, in words the agent can pass on: readiness status, a ready-made note,
+    and the recent track record when there is one."""
+    ready = sched.readiness
+    if ready is None:
+        return {}
+    out: dict[str, Any] = {"readiness": ready.status, "confidence_note": readiness.confidence_note(ready)}
+    if ready.rolling_error is not None:
+        out["track_record"] = f"week-ahead forecasts off by {money(ready.rolling_error)} on average lately"
+    return out
+
+
+def _range(p: ForecastPoint) -> str | None:
+    if p.balance_low is None or p.balance_high is None:
+        return None
+    return f"{money(p.balance_low)} to {money(p.balance_high)}"
+
+
 def _low_summary(f: Forecast) -> dict[str, Any]:
     return {
         **_mood(f.low.balance, f.safe_floor),
@@ -94,6 +112,8 @@ def get_forecast(days: int = 30, *, persona: str = engine.DEFAULT_PERSONA, today
     upcoming = [{"day": day(e.date), "label": e.label, "amount": money(e.amount)} for e in scheduled[:12]]
     return {
         **_low_summary(f),
+        **_confidence(sched),
+        "lowest_balance_range": _range(f.low),
         "balance_today": money(sched.start_balance),  # the real balance, before today's estimated spending
         "everyday_spending_per_week": money(sched.spend.total(today, 7)),
         "balance_at_end": money(f.points[-1].balance),
@@ -154,6 +174,7 @@ def simulate_purchase(
         "shortfall": money(shortfall),
         "already_below_floor_without_it": base.low.balance < base.safe_floor,
         "lowest_without_it": f"{money(base.low.balance)} on {day(base.low.date)}",
+        **_confidence(sched),
     }
     if shortfall:
         later = _first_safe_day(amount, on, today, sched)
@@ -233,6 +254,7 @@ def propose_transfer(
         "lowest_balance_after": money(f.low.balance + amount),
         "safety_floor": money(f.safe_floor),
         "status": "awaiting the user's approval — nothing has moved yet",
+        **_confidence(sched),
     }
 
 

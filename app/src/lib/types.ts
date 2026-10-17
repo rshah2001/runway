@@ -28,6 +28,8 @@ export type ForecastEvent = {
   kind: 'paycheck' | 'bill' | 'subscription' | 'card_payment' | 'spending' | 'transfer' | 'other';
 };
 
+export type LeftOut = { date: string; amount: number; label: string }; // a one-off kept out of the rate
+
 export type Readiness = {
   status: 'calibrating' | 'learning' | 'confident';
   days_of_history: number;
@@ -38,6 +40,7 @@ export type Readiness = {
   reasons: string[]; // plain English, safe to show as-is
   rolling_error?: number | null; // $: how far off its week-ahead forecasts were, on average, lately
   rolling_error_days?: number; // how many recent days that average covers
+  left_out?: LeftOut[]; // one-offs kept out of the spending rate
 };
 
 export type Forecast = {

@@ -65,6 +65,12 @@ Tone follows the tool's "status" field (or the current status below if you haven
   login, or anything that looks like fraud. When you propose a transfer, say plainly what moves and that it
   is waiting for the user's approval; never say money has moved.
 
+How sure you are:
+- Tool results carry "readiness" and a "confidence_note". If readiness is "confident", you may say so
+  briefly, in your voice. If it is "learning" or "calibrating", always pass the note on in your voice, so
+  the user knows to treat the answer as a rough guide. Keep its figures exactly as written.
+- In overdraft_risk, say it plainly and calmly, no jokes, like everything else.
+
 Guardrails:
 - No financial advice beyond this app's numbers: no stocks, crypto, loans or tax advice.
 - If something fails, be calm: say nothing moved and to try again in a moment.
@@ -180,6 +186,13 @@ def _chat_with_rules(message: str, today: date, persona: str = engine.DEFAULT_PE
         return ChatResponse(reply="I can't find that account. Try signing in again.")
 
 
+def _with_confidence(reply: str, result: dict[str, Any]) -> str:
+    """The router's replies stay short when the forecast is sure; otherwise they say it's a rough guide."""
+    if result.get("readiness") in (None, "confident"):
+        return reply
+    return f"{reply} {result['confidence_note']}"
+
+
 def _route(text: str, today: date, persona: str) -> ChatResponse:
     amount = _amount_in(text)
     when_match = WHEN.search(text)
@@ -189,15 +202,19 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
         r = tools.propose_transfer(amount, when, persona=persona, today=today)
         if not r["needed"]:
             reply = f"No fix needed — your lowest balance is {r['lowest_balance']} on {r['lowest_day']}."
-            return ChatResponse(reply=reply, tool_calls=["propose_transfer"])
+            return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
         if not r["possible"]:
             reply = f"You'd need {r['transfer_needed']}, but savings only has {r['savings_balance']}."
-            return ChatResponse(reply=reply, tool_calls=["propose_transfer"])
+            return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
         reply = (
             f"I can move {r['transfer']} from Savings to Checking, which keeps your lowest day "
             f"({r['lowest_day']}) at {r['lowest_balance_after']}. Approve it?"
         )
-        return ChatResponse(reply=reply, tool_calls=["propose_transfer"], pending_action=tools.PENDING[r["action_id"]])
+        return ChatResponse(
+            reply=_with_confidence(reply, r),
+            tool_calls=["propose_transfer"],
+            pending_action=tools.PENDING[r["action_id"]],
+        )
 
     if amount is not None:
         r = tools.simulate_purchase(amount, when, persona=persona, today=today)
@@ -215,15 +232,15 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
             if r["first_safe_day"]:
                 reply += f" It's safe from {r['first_safe_day']}."
             reply += ' Say "fix it" to cover it.'
-        return ChatResponse(reply=reply, tool_calls=["simulate_purchase"])
+        return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["simulate_purchase"])
 
     if re.search(r"subscri|recurring|streaming", text):
         r = tools.find_recurring(persona=persona, today=today)
         names = ", ".join(f"{s['merchant']} ({s['amount']})" for s in r["subscriptions"])
         reply = f"You have {r['count']} subscriptions: {names} — {r['monthly_total']}/mo, {r['yearly_total']}/yr."
-        return ChatResponse(reply=reply, tool_calls=["find_recurring"])
+        return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["find_recurring"])
 
     r = tools.get_forecast(persona=persona, today=today)
     reply = f"Your tightest day in the next 30 days is {r['lowest_day']} at {r['lowest_balance']}. "
     reply += 'Ask "can I afford $X on Friday?" or say "fix it".'
-    return ChatResponse(reply=reply, tool_calls=["get_forecast"])
+    return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["get_forecast"])

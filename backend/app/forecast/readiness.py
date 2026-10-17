@@ -14,12 +14,13 @@ detector needs MIN_CHARGES on a steady cadence before it schedules income, and a
 income in it shouldn't call itself sure. Every figure in `reasons` comes from here, never the LLM.
 """
 
+from collections.abc import Sequence
 from datetime import date
 
 from app.forecast.recurring import MIN_CHARGES
 from app.forecast.report_card import ReportCard
-from app.forecast.sources import PersonaData
-from app.schemas import Readiness
+from app.forecast.sources import PersonaData, Txn
+from app.schemas import LeftOut, Readiness
 
 CALIBRATING_DAYS = 14
 CONFIDENT_SPEND_DAYS = 30
@@ -48,11 +49,13 @@ def assess(
     *,
     spend_days: int,
     paycheck: tuple[str, float, int] | None,
+    left_out: Sequence[Txn] = (),
 ) -> Readiness:
     """Readiness for one persona as of `today`.
 
     `spend_days` is how many days the spending rate was learned from; `paycheck` is the detected
-    (label, amount, interval_days), or None when no payday rhythm was found.
+    (label, amount, interval_days), or None when no payday rhythm was found; `left_out` are the
+    one-off purchases kept out of the spending rate.
     """
     first = history_start(data)
     days = (today - first).days if first else 0
@@ -79,6 +82,8 @@ def assess(
         reasons.append(f"Your everyday spending rate comes from the last {spend_days} days.")
     else:
         reasons.append(f"Still learning your everyday spending: day {spend_days} of {CONFIDENT_SPEND_DAYS}.")
+    for t in left_out:
+        reasons.append(f"Left out of your usual spending: ${-t.amount:,.2f} {t.label} on {t.date:%b} {t.date.day}.")
 
     if status == "confident":
         progress = 1.0
@@ -94,6 +99,7 @@ def assess(
         spend_days=spend_days,
         progress=progress,
         reasons=reasons,
+        left_out=[LeftOut(date=t.date, amount=-t.amount, label=t.label) for t in left_out],
     )
 
 
@@ -112,4 +118,24 @@ def with_report_card(ready: Readiness, card: ReportCard | None) -> Readiness:
             "rolling_error_days": card.days_checked,
             "reasons": [*ready.reasons, reason],
         }
+    )
+
+
+def _how_long(days: int) -> str:
+    return f"{days // 30} months" if days >= 60 else f"{days} days"
+
+
+def confidence_note(ready: Readiness) -> str:
+    """One plain sentence on how sure the forecast is, for the agent to say in its own voice. Written
+    here, not by the model, so the figures in it are the engine's."""
+    if ready.status == "confident":
+        return f"I've watched {_how_long(ready.days_of_history)} of your money, so I'm sure of this."
+    if ready.status == "learning" and ready.days_of_history < CONFIDENT_SPEND_DAYS:
+        day = f"day {ready.days_of_history} of {CONFIDENT_SPEND_DAYS}"
+        return f"I'm still learning your money, {day}, so take this as a rough guide."
+    if ready.status == "learning":
+        return "I haven't locked onto your payday yet, so take this as a rough guide."
+    return (
+        f"I've only known your money for {_how_long(ready.days_of_history)} and haven't learned your payday yet, "
+        "so this is a sketch, not a forecast."
     )

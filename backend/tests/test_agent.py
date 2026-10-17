@@ -13,7 +13,7 @@ import pytest
 
 from app.agent import chat as agent
 from app.agent import tools, voice
-from app.forecast import engine
+from app.forecast import engine, sources
 
 TODAY = date(2026, 10, 16)  # a Friday; Maya is short before payday, Sam is comfortable
 
@@ -284,3 +284,36 @@ def test_each_persona_gets_its_voice_and_the_same_rules() -> None:
 def test_voice_examples_contain_no_figures() -> None:
     # "$" or a standalone number
     assert not any(re.search(r"\$|(?<!\w)\d", text) for text in voice.VOICES.values())
+
+
+# ---------- how sure it is ----------
+
+
+def _new_user(monkeypatch: pytest.MonkeyPatch, days: int) -> None:
+    """Every load sees only the last `days` of history, as if Runway had just met the persona."""
+    real_load = sources.load
+    monkeypatch.setattr(sources, "load", lambda p, t=None, **kw: sources.recent(real_load(p, t, **kw), t, days))
+
+
+def test_tools_say_how_sure_the_forecast_is() -> None:
+    r = tools.get_forecast(persona="maya", today=TODAY)
+    assert r["readiness"] == "confident" and r["confidence_note"].startswith("I've watched 4 months")
+    assert r["track_record"].startswith("week-ahead forecasts off by $")
+    assert " to " in r["lowest_balance_range"]
+
+
+def test_router_keeps_confident_answers_short() -> None:
+    r = agent.chat("can I afford $15 on 2026-11-07?", persona="maya", today=TODAY)
+    assert "rough guide" not in r.reply and "sketch" not in r.reply
+
+
+@pytest.mark.parametrize(("days", "phrase"), [(20, "day 18 of 30, so take this as a rough guide"), (10, "a sketch")])
+def test_router_says_when_it_is_still_learning(monkeypatch: pytest.MonkeyPatch, days: int, phrase: str) -> None:
+    _new_user(monkeypatch, days)
+    r = agent.chat("can I afford $15 on 2026-11-07?", persona="maya", today=TODAY)
+    assert phrase in r.reply
+
+
+def test_confidence_note_is_grounded() -> None:
+    r = tools.simulate_purchase(15, "2026-11-07", persona="maya", today=TODAY)
+    assert agent.grounded(r["confidence_note"], "", r)
