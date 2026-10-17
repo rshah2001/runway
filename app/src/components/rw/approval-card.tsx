@@ -12,7 +12,7 @@ import { C } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
-import { setStore, useStore } from '@/lib/store';
+import { setStore, useStore, moneyMoved } from '@/lib/store';
 import type { PendingAction } from '@/lib/types';
 
 import { Icon } from './icons';
@@ -39,6 +39,7 @@ export function ApprovalCard({ action, compact = false, onDone, onViewRunway }: 
     try {
       // TODO(auth): Auth0 confirmation happens here once app/src/lib/auth.ts lands.
       await api.approve(action.id);
+      moneyMoved(); // every screen re-fetches the new balances
       if (!isRequest) setStore({ approvedAmount: store.approvedAmount + amount, celebrate: true });
       setPhase('done');
       onDone?.();

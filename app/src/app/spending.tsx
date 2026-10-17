@@ -10,6 +10,7 @@ import { LoadState, Page, PressableScale, useWide } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
+import { useStore } from '@/lib/store';
 import { money, monthName, recentMonths, weekdayDate } from '@/lib/format';
 import type { Recurring, Spending } from '@/lib/types';
 
@@ -20,8 +21,9 @@ export default function SpendingScreen() {
   const wide = useWide();
   const months = recentMonths(3);
   const [month, setMonth] = useState(months[months.length - 1]);
-  const sp = useLoad(() => api.spending(month), month);
-  const subs = useLoad(() => api.recurring());
+  const version = useStore().dataVersion; // money moved anywhere: re-fetch
+  const sp = useLoad(() => api.spending(month), `${month}:${version}`);
+  const subs = useLoad(() => api.recurring(), String(version));
   const isNow = month === months[months.length - 1];
   const d = sp.data;
 

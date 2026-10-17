@@ -12,7 +12,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { C, F } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
 import { api } from '@/lib/api';
-import { type ApprovalRequest, getStore, setStore, useStore } from '@/lib/store';
+import { type ApprovalRequest, getStore, setStore, useStore, moneyMoved } from '@/lib/store';
 
 import { Icon } from './icons';
 import { Sheet } from './sheet';
@@ -41,6 +41,7 @@ export function ApprovalSheet() {
     setPhase('confirming');
     try {
       await api.approve(shown.action.id);
+      moneyMoved(); // every screen re-fetches the new balances
       // Today re-reads the store: the line moves up, turns green, and the plane takes off
       setStore({ approval: null, approvedAmount: getStore().approvedAmount + (shown.action.amount ?? 0), celebrate: true });
     } catch (e) {
