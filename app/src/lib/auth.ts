@@ -40,9 +40,13 @@ let session: Session | null = null;
 let restored = false;
 let discovery: AuthSession.DiscoveryDocument | null = null;
 
-/** Where Auth0 sends the user back. Add the value for each platform to the Auth0 app's callback URLs. */
+/**
+ * Where Auth0 sends the user back; each value must be in the Auth0 app's Allowed Callback URLs.
+ * Native: runway://auth (caught by the browser session). Web: the site root, e.g. http://localhost:8081 —
+ * a page that loads this module, so maybeCompleteAuthSession() can close the sign-in popup.
+ */
 export function redirectUri(): string {
-  return AuthSession.makeRedirectUri({ scheme: 'runway', path: 'auth' });
+  return AuthSession.makeRedirectUri({ scheme: 'runway', path: Platform.OS === 'web' ? undefined : 'auth' });
 }
 
 /** Opens Auth0's sign-in page. Resolves true when signed in, false if the user closed it. */
