@@ -4,10 +4,10 @@ Thin, typed wrapper over https://api.nessieisreal.com. Request shapes match the 
 which differs from the old public SDKs (verified by probing, Oct 2026 — see docs/NESSIE.md):
   * transactions need status "pending" | "cancelled" | "completed"
   * transfers have no payee field — a transfer is a record on one account only
-  * Nessie never changes balances itself; Runway computes live balances in Tiger Data
+  * Nessie never changes balances itself; the backend computes live balances in Tiger Data
   * purchases, customers and merchants cannot be deleted (accounts, bills and transfers can)
   * balances and transaction amounts are silently truncated to whole dollars ($15.49 → 15), so
-    Runway writes every money field as integer cents (minor units, as payment systems do) and
+    the backend writes every money field as integer cents (minor units, as payment systems do) and
     converts back with `from_cents` on read
 """
 

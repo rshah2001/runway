@@ -1,4 +1,4 @@
-# Runway app — web, iOS, Android
+# Six Seven Bucks Left app — web, iOS, Android
 
 One Expo (React Native) codebase ships to all three platforms. Routes live in `src/app/`
 (Expo Router): `index.tsx` (Today), `ask.tsx` (Ask), `spending.tsx` (Spending).
