@@ -174,6 +174,12 @@ export type Bridge = {
 export type SafetyEvent = { at: string; kind: string; message: string; bridge_id: string | null };
 
 /** GET /demo/status: the demo reset, and how long automatic bridges are paused for the live demo. */
+/** GET /alerts/key, PUT /me/push, POST /me/push/test. */
+export type PushStatus = {
+  key: string | null; // the server's public key for Web Push; null = alerts to phones are off
+  sent: number; // browsers reached (test alerts)
+};
+
 export type DemoStatus = {
   state: 'idle' | 'running' | 'done' | 'failed';
   started: string | null;

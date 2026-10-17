@@ -136,6 +136,24 @@ ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS alerts_only boolean;
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS family_cover boolean;
 """
 
+# Heads-up alerts (app/alerts.py): which browsers want a push, and which dips each person was told about
+ALERTS = """
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint    text PRIMARY KEY,  -- the push service URL for one browser; unique per install
+    slug        text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    p256dh      text NOT NULL,
+    auth        text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_slug ON push_subscriptions (slug);
+CREATE TABLE IF NOT EXISTS alerts_sent (
+    slug      text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    dip_date  date NOT NULL,
+    sent_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (slug, dip_date)  -- one alert per dip, however often the forecast is re-run
+);
+"""
+
 SAFETY_NET = """
 CREATE TABLE IF NOT EXISTS safety_limits (
     lender_slug    text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
@@ -303,7 +321,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, ALERTS, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         _compress_once(conn, "transactions", COMPRESSION)
         try:  # the track record is informational: if its DDL fails, everything else still works

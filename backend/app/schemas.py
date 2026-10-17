@@ -268,6 +268,20 @@ class SetPreferences(BaseModel):
     family_cover: bool | None = None
 
 
+class PushSubscription(BaseModel):
+    """One browser's Web Push subscription (PushSubscription.toJSON() in the browser, flattened)."""
+
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # ignored when signed in
+    endpoint: str = Field(pattern=r"^https://", max_length=1000)  # push services are always https
+    p256dh: str = Field(min_length=10, max_length=200)
+    auth: str = Field(min_length=10, max_length=100)
+
+
+class PushStatus(BaseModel):
+    key: str | None  # the VAPID public key the browser subscribes with; None = push alerts are off
+    sent: int = 0  # browsers reached (test alerts)
+
+
 class SetLimit(BaseModel):
     lender: str = Field(pattern=PERSONA_SLUG)  # TODO(auth): must be the logged-in user
     borrower: str = Field(pattern=PERSONA_SLUG)

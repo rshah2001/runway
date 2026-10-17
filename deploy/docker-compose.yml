@@ -24,6 +24,9 @@ services:
       # "1" = Fix it, P2P and the safety net move real Nessie money (signed-in owners only);
       # from the GitHub repo variable LIVE_TRANSFERS at deploy time
       LIVE_TRANSFERS: ${LIVE_TRANSFERS:-}
+      # heads-up alerts (Web Push): the public key is a repo variable; the private key (a GitHub
+      # Actions secret) is written into ../.env by the deploy, like the CIBA secret. Off without both.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     restart: unless-stopped
     expose:
       - "8000"

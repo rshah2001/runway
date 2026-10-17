@@ -37,6 +37,8 @@ from app.schemas import (
     P2PSummary,
     PendingAction,
     Persona,
+    PushStatus,
+    PushSubscription,
     Recurring,
     SafetyDecision,
     SafetyLimit,
@@ -78,8 +80,9 @@ def background_pass() -> None:
         forecast_history.run()
     except Exception:  # the track record is informational: it must never hold up the safety net
         log.exception("forecast history pass failed")
-    from app import demo, safety_net
+    from app import alerts, demo, safety_net
 
+    alerts.run()  # heads-ups don't move money, so they go out even while a demo reset holds bridges
     if demo.held():  # a demo reset paused automatic bridges so the dip is still there on stage
         return
 
@@ -191,7 +194,50 @@ def set_preferences(req: SetPreferences, user: OptionalUser) -> Me:
         value = getattr(req, name)
         if value is not None:
             prefs.set_setting(persona, name, value)
+    if req.family_cover is False and get_settings().live:
+        from app import safety_net
+
+        safety_net.withdraw_requests(persona)  # nobody stays asked on your behalf
     return me(user, persona)
+
+
+# ---------- heads-up alerts (app/alerts.py) ----------
+@app.get("/alerts/key", response_model=PushStatus)
+def alerts_key() -> PushStatus:
+    """The public key a browser subscribes with (public by design); None when alerts are off."""
+    from app import alerts
+
+    keys = alerts.vapid()
+    return PushStatus(key=keys.public_key if keys else None)
+
+
+@app.put("/me/push", response_model=PushStatus)
+def push_subscribe(req: PushSubscription, user: OptionalUser) -> PushStatus:
+    """This browser wants your heads-ups (only for yourself)."""
+    from app import alerts
+
+    keys = alerts.vapid()
+    if keys is None:
+        raise HTTPException(503, "Alerts to your phone aren't set up on this server yet.")
+    persona = _own_settings(user, req.persona)
+    try:
+        alerts.subscribe(persona, req.endpoint, req.p256dh, req.auth)
+    except ValueError:
+        raise HTTPException(422, "That isn't a browser push address.") from None
+    return PushStatus(key=keys.public_key)
+
+
+@app.post("/me/push/test", response_model=PushStatus)
+def push_test(user: OptionalUser, persona: str = PERSONA) -> PushStatus:
+    """Send yourself your current status now, to check alerts reach this phone."""
+    from app import alerts
+    from app.cashflow import LOCAL_TZ
+
+    keys = alerts.vapid()
+    if keys is None:
+        raise HTTPException(503, "Alerts to your phone aren't set up on this server yet.")
+    persona = _own_settings(user, persona)
+    return PushStatus(key=keys.public_key, sent=alerts.test(persona, datetime.now(LOCAL_TZ).date()))
 
 
 @app.get("/spending", response_model=Spending)

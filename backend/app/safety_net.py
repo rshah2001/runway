@@ -202,6 +202,26 @@ def _fund(bridge_id: str) -> dict | None:
         conn.commit()
         if b is None:
             return None
+        # the borrower may have turned family cover off while this waited for the lender's answer:
+        # their switch wins. A failed read puts the bridge back to waiting — never a guessed "on".
+        try:
+            covered = prefs.setting(b["borrower_slug"], "family_cover", conn, strict=True)
+        except Exception:
+            conn.rollback()  # the failed read aborted the transaction
+            safety_repo.transition(conn, bridge_id, ("funding",), "pending_approval")
+            conn.commit()
+            raise
+        if not covered:
+            safety_repo.transition(conn, bridge_id, ("funding",), "declined")
+            _both(
+                conn,
+                b,
+                "bridge_declined",
+                "You turned family cover off, so nothing was moved.",
+                f"{b['borrower_name']} doesn't need this one anymore. Nothing was moved.",
+            )
+            conn.commit()
+            return None
         lender, borrower = repo.persona(conn, b["lender_slug"]), repo.persona(conn, b["borrower_slug"])
     amount = float(b["amount"])
     try:
@@ -316,6 +336,28 @@ def act(decision: Decision) -> dict | None:
             )
         conn.commit()
     return _fund(bridge_id) if decision.action == "auto_bridge" else b
+
+
+def withdraw_requests(borrower_slug: str) -> int:
+    """Family cover was just turned off: withdraw every request still waiting for a relative's answer,
+    so nobody is left being asked. Returns how many were withdrawn. (_fund re-checks the switch too,
+    for an answer that arrives at the same moment.)"""
+    withdrawn = 0
+    with pool.connection() as conn:
+        for b in safety_repo.bridges_for(conn, borrower_slug):
+            if b["borrower_slug"] != borrower_slug or b["status"] != "pending_approval":
+                continue
+            if safety_repo.transition(conn, b["id"], ("pending_approval",), "declined"):
+                withdrawn += 1
+                _both(
+                    conn,
+                    b,
+                    "bridge_declined",
+                    f"You turned family cover off, so {b['lender_name']} isn't being asked anymore.",
+                    f"{b['borrower_name']} doesn't need this one anymore. Nothing was moved.",
+                )
+        conn.commit()
+    return withdrawn
 
 
 def approve(bridge_id: str) -> dict | None:

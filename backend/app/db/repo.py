@@ -228,7 +228,8 @@ def finish_request(conn: psycopg.Connection, request_id: str, status: str, payme
 def safe_floor(conn: psycopg.Connection, slug: str) -> float | None:
     """The amount this person keeps in checking, or None if they never set one."""
     row = conn.execute("SELECT safe_floor FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
-    return float(row["safe_floor"]) if row else None
+    # a row can exist with only on/off settings saved: a NULL floor means "never set it" too
+    return float(row["safe_floor"]) if row and row["safe_floor"] is not None else None
 
 
 def set_safe_floor(conn: psycopg.Connection, slug: str, amount: float) -> None:
