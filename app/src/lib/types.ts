@@ -283,3 +283,7 @@ export type Scenario = {
 };
 
 export type Scenarios = { floor: number; payday: string | null; need: number; scenarios: Scenario[] };
+
+// ---------- Named circles (backend/app/circles.py) — membership only, never money ----------
+export type CircleMember = { slug: string; name: string; state: 'invited' | 'active' };
+export type CircleView = { id: string; name: string; made_by_me: boolean; my_state: 'invited' | 'active'; members: CircleMember[] };

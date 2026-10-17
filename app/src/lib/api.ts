@@ -1,6 +1,7 @@
 import type {
   ActivityItem,
   Bridge,
+  CircleView,
   ChatResponse,
   DemoStatus,
   Forecast,
@@ -80,6 +81,12 @@ export const api = {
   supportExposure: (limit: number, persona = currentPersona()) =>
     request<SupportSummary>('/support/exposure', { method: 'PUT', body: JSON.stringify({ persona, limit }) }),
   activity: (persona = currentPersona()) => request<ActivityItem[]>(`/activity?persona=${persona}`),
+  // named circles: membership only — joining one never grants access to anyone's money
+  circles: (persona = currentPersona()) => request<CircleView[]>(`/circles?persona=${persona}`),
+  createCircle: (name: string, persona = currentPersona()) =>
+    request<CircleView[]>('/circles', { method: 'POST', body: JSON.stringify({ persona, name }) }),
+  circleAction: (id: string, action: 'invite' | 'remove' | 'accept' | 'decline' | 'leave', slug?: string, persona = currentPersona()) =>
+    request<CircleView[]>(`/circles/${id}/${action}`, { method: 'POST', body: JSON.stringify({ persona, slug }) }),
   // Time Machine: your own forecast with no help / one supporter / your circle / unsafe help (blocked)
   scenarios: (persona = currentPersona()) => request<Scenarios>(`/forecast/scenarios?persona=${persona}`),
   supportRevoke: (supporter: string, recipient: string, persona = currentPersona()) =>

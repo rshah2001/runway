@@ -222,6 +222,9 @@ def main() -> None:
             [(lender, borrower) for lender, borrower, _ in SAFETY_LIMITS],
             waiting_for_recipient=DEMO_WAITING_FOR_RECIPIENT,
         )
+        from app import circles
+
+        circles.setup_demo(conn)  # the demo circles, once (a person's own changes are kept)
         conn.commit()
         db_schema.refresh_daily_spend(conn)
     log.info("done — %s", ", ".join(p.slug for p in PERSONAS))

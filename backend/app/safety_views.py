@@ -329,6 +329,45 @@ def activity_for(viewer: str) -> list:
         return activity.feed(viewer, safety_repo.bridges_for(conn, viewer), limits, floor)
 
 
+def circles_for(viewer: str) -> list:
+    """`viewer`'s named circles (in or invited), live or demo. Names and states only."""
+    from app.circles import DEMO, VISIBLE
+    from app.schemas import CircleMember, CircleView
+
+    if not get_settings().live:
+        from seed.personas import PERSONAS
+
+        names = {p.slug: p.first_name for p in PERSONAS}
+        out = []
+        for cid, name, creator, active, invited in DEMO:
+            members = {creator: "active", **{s: "active" for s in active}, **{s: "invited" for s in invited}}
+            if viewer in members:
+                out.append(
+                    CircleView(
+                        id=cid,
+                        name=name,
+                        made_by_me=creator == viewer,
+                        my_state=members[viewer],
+                        members=[CircleMember(slug=s, name=names[s], state=st) for s, st in members.items()],
+                    )
+                )
+        return out
+    from app import circles
+    from app.db import pool
+
+    with pool.connection() as conn:
+        return [
+            CircleView(
+                id=c["id"],
+                name=c["name"],
+                made_by_me=c["created_by"] == viewer,
+                my_state=c["my_state"],
+                members=[CircleMember(**m) for m in c["members"] if m["state"] in VISIBLE],
+            )
+            for c in circles.mine(conn, viewer)
+        ]
+
+
 def support_for(viewer: str) -> SupportSummary:
     """`viewer`'s own agreements, live or demo — the one place the API and the assistant both read."""
     if not get_settings().live:

@@ -109,6 +109,9 @@ def rebuild() -> None:
 
         # the rehearsal starts from the script: both agreed, except the offer Jordan hasn't answered
         agreements.setup_demo(conn, pairs, force=True, waiting_for_recipient=DEMO_WAITING_FOR_RECIPIENT)
+        from app import circles
+
+        circles.setup_demo(conn, force=True)  # the circles back to the script
         for slug in DEMO_PERSONAS:  # everyone's total cap back to the default
             conn.execute("UPDATE money_preferences SET support_exposure_limit = NULL WHERE slug = %s", (slug,))
         conn.commit()
