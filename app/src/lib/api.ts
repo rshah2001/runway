@@ -78,6 +78,8 @@ export const api = {
     request<SupportSummary>('/support/consent', { method: 'POST', body: JSON.stringify({ persona, supporter, recipient }) }),
   supportMode: (recipient: string, mode: 'auto' | 'approval', persona = currentPersona()) =>
     request<SupportSummary>('/support/mode', { method: 'PUT', body: JSON.stringify({ persona, recipient, mode }) }),
+  supportReceiving: (maxOwed: number | null, allowMulti: boolean, persona = currentPersona()) =>
+    request<SupportSummary>('/support/receiving', { method: 'PUT', body: JSON.stringify({ persona, max_owed: maxOwed, allow_multi: allowMulti }) }),
   supportExposure: (limit: number, persona = currentPersona()) =>
     request<SupportSummary>('/support/exposure', { method: 'PUT', body: JSON.stringify({ persona, limit }) }),
   activity: (persona = currentPersona()) => request<ActivityItem[]>(`/activity?persona=${persona}`),

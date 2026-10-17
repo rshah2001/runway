@@ -278,6 +278,23 @@ def set_exposure_limit(conn: psycopg.Connection, slug: str, amount: float) -> No
     )
 
 
+def receiving(conn: psycopg.Connection, slug: str) -> tuple[float | None, bool]:
+    """(the most this person will owe at once or None, whether several people may help at once)."""
+    row = conn.execute("SELECT max_owed, allow_multi FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
+    if not row:
+        return None, True
+    return (float(row["max_owed"]) if row["max_owed"] is not None else None), row["allow_multi"] is not False
+
+
+def set_receiving(conn: psycopg.Connection, slug: str, max_owed: float | None, allow_multi: bool) -> None:
+    conn.execute(
+        """INSERT INTO money_preferences (slug, max_owed, allow_multi) VALUES (%s, %s, %s)
+           ON CONFLICT (slug) DO UPDATE SET max_owed = EXCLUDED.max_owed, allow_multi = EXCLUDED.allow_multi,
+             updated_at = now()""",
+        (slug, max_owed, allow_multi),
+    )
+
+
 def clear_safe_floors(conn: psycopg.Connection, slugs: list[str]) -> None:
     """Back to every default (floor and on/off settings) for these people."""
     conn.execute("DELETE FROM money_preferences WHERE slug = ANY(%s)", (slugs,))

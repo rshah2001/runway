@@ -62,6 +62,7 @@ def test_plan_only_ever_asks_supporters_with_an_active_agreement(monkeypatch: py
     )
     monkeypatch.setattr(safety_net.agreements_repo, "involving", lambda c, s: [row(*consent, version=7)])
     monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(500))
+    monkeypatch.setattr(safety_net.repo, "receiving", lambda c, s: (None, True))
     d = safety_net.plan(None, "maya", TODAY)
     if consent == ("t", "t"):
         assert d.action == "auto_bridge" and d.lender == "sam" and d.versions == (("sam", 7),)
@@ -85,7 +86,9 @@ def test_money_promised_but_not_yet_sent_cannot_be_offered_twice(monkeypatch: py
     )
     monkeypatch.setattr(safety_net.agreements_repo, "involving", lambda c, s: [row(*consent, version=7)])
     monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(500))
+    monkeypatch.setattr(safety_net.repo, "receiving", lambda c, s: (None, True))
     monkeypatch.setattr(safety_net, "_exposure_limit", lambda c, s: D(9000))
+    monkeypatch.setattr(safety_net.repo, "receiving", lambda c, s: (None, True))
     d = safety_net.plan(None, "maya", TODAY)
     assert d.action == "no_safe_helper"  # $5,000 − $4,800 promised to Jordan leaves Sam under his cushion
 

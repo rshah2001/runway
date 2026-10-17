@@ -376,9 +376,11 @@ def support_for(viewer: str) -> SupportSummary:
 
     with pool.connection() as conn:
         cap = repo.exposure_limit(conn, viewer)
-        return support_summary(
+        max_owed, allow_multi = repo.receiving(conn, viewer)
+        summary = support_summary(
             viewer,
             agreements_repo.involving(conn, viewer),
             exposure_limit=500 if cap is None else cap,
             committed=safety_repo.committed_by(conn, viewer),
         )
+        return summary.model_copy(update={"max_owed": max_owed, "allow_multi": allow_multi})

@@ -103,7 +103,14 @@ def _capacity(h: Helper, today: date, end: date) -> guardian.Capacity:
 
 
 def decide(
-    b: Projection, helpers: list[Helper], today: date, *, has_open_bridge: bool = False, floor: Decimal | None = None
+    b: Projection,
+    helpers: list[Helper],
+    today: date,
+    *,
+    has_open_bridge: bool = False,
+    floor: Decimal | None = None,
+    owe_room: Decimal | None = None,
+    allow_multi: bool = True,
 ) -> Decision:
     """What the agent should do for borrower `b` today. Pure — no I/O.
 
@@ -129,6 +136,10 @@ def decide(
 
     if need > MAX_BRIDGE:
         return Decision(b.slug, "no_safe_helper", f"{gap} — the gap is bigger than any bridge.", need, **base)
+    # the recipient's own cap on what they'll owe at once (their setting, their side only)
+    if owe_room is not None and need > owe_room:
+        reason = f"{gap}, but that's more than the {_money(max(Decimal(0), owe_room))} more you said you'd owe at once."
+        return Decision(b.slug, "no_safe_helper", reason, need, **base)
     # repaying on payday must not just move the shortfall a few days later
     after_payday = b.low(b.next_payday, b.next_payday + timedelta(days=REPAY_CHECK_DAYS))
     if after_payday and after_payday[1] - need < floor:
@@ -147,7 +158,10 @@ def decide(
         for h, c in caps
         if c.amount == 0 and c.bound in ("cushion", "low_confidence")
     )
-    shares = guardian.allocate(need, [(h.projection.slug, c) for h, c in caps])
+    pool_caps = [(h.projection.slug, c) for h, c in caps]
+    if not allow_multi:  # the recipient wants one person to cover it, or nobody automatically
+        pool_caps = [(s, c) for s, c in pool_caps if c.amount >= need]
+    shares = guardian.allocate(need, pool_caps)
     if shares and sum(a for _, a in shares) >= need:
         who = " and ".join(f"{names[s]} covers {_money(a)}" for s, a in shares)
         reason = f"{gap}. {who} — within their limits, with their own bills still covered."
@@ -229,7 +243,12 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
         if lim["lender_slug"] in consented
     ]
     has_open = safety_repo.open_bridge_for_borrower(conn, borrower_slug) is not None
-    decision = decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
+    max_owed, allow_multi = repo.receiving(conn, borrower_slug)
+    owed_now = sum((Decimal(b["amount"]) for b in committed if b["borrower_slug"] == borrower_slug), Decimal(0))
+    owe_room = None if max_owed is None else Decimal(str(max_owed)) - owed_now
+    decision = decide(
+        projections[borrower_slug], helpers, today, has_open_bridge=has_open, owe_room=owe_room, allow_multi=allow_multi
+    )
     versions = tuple((slug, consented[slug]["version"]) for slug, _ in decision.allocations if slug in consented)
     return dataclasses.replace(decision, versions=versions)
 

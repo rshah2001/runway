@@ -253,6 +253,8 @@ export type SupportSummary = {
   supporters: SupportAgreement[]; // people who may help me
   exposure_limit?: number; // the most I let Runway have out across everyone I support
   committed?: number; // what I have out (or promised) right now as a supporter
+  max_owed?: number | null; // as a recipient: the most I'll owe at once (null = no cap)
+  allow_multi?: boolean; // as a recipient: several people may cover one gap together
 };
 
 /** One support transfer or repayment from MY side, with a plain why (backend/app/activity.py). */
