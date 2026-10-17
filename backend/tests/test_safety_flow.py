@@ -28,6 +28,15 @@ class Store:
             "mode": "auto",
             "shortfall_date": DUE,
             "due_date": DUE,
+            "agreement_version": 1,
+        }
+        self.agreement = {
+            "supporter_consent_at": "yes",
+            "recipient_consent_at": "yes",
+            "revoked_at": None,
+            "limit_amount": D(150),
+            "enabled": True,
+            "version": 1,
         }
         self.journal: dict[str, dict] = {}
         self.events: list[tuple[str, str]] = []
@@ -119,6 +128,7 @@ def wire(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(safety_net.safety_repo, "add_event", store.add_event)
         monkeypatch.setattr(safety_net.safety_repo, "bridge", lambda conn, bridge_id: dict(store.bridge))
         monkeypatch.setattr(safety_net.safety_repo, "lock_people", lambda conn, *slugs: store.locks.append(slugs))
+        monkeypatch.setattr(safety_net.agreements_repo, "get", lambda conn, s, r: dict(store.agreement))
         monkeypatch.setattr(safety_net.journal_repo, "claim", store.claim)
         monkeypatch.setattr(safety_net.journal_repo, "finish", store.finish)
         monkeypatch.setattr(safety_net.journal_repo, "for_ref", store.for_ref)
@@ -209,3 +219,18 @@ def test_lock_order_is_sorted_so_two_passes_cannot_deadlock() -> None:
 
     safety_repo.lock_people(Conn(), "sam", "maya", "sam")
     assert taken == ["runway:maya", "runway:sam"]
+
+
+def test_a_revoked_agreement_stops_a_waiting_approval_from_moving_money(wire) -> None:
+    store, nessie = Store("pending_approval"), Nessie()
+    store.agreement.update(supporter_consent_at=None, recipient_consent_at=None, revoked_at="now", version=2)
+    wire(store, nessie)
+    assert safety_net._fund("bridge-1") is None
+    assert store.bridge["status"] == "declined" and nessie.sent == []
+
+
+def test_a_limit_change_after_the_request_means_nothing_moves(wire) -> None:
+    store, nessie = Store("pending_approval"), Nessie()
+    store.agreement["version"] = 2  # the supporter changed something after the bridge was asked for
+    wire(store, nessie)
+    assert safety_net._fund("bridge-1") is None and nessie.sent == []

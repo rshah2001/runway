@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app import agreements
 from app.db import pool, repo, safety_repo
 from app.db import schema as db_schema
 from app.ingest import start_of_day, sync_customer, ts_for
@@ -214,6 +215,9 @@ def main() -> None:
     with pool.connection() as conn:
         for lender, borrower, amount in SAFETY_LIMITS:  # defaults; a lender's own change is never overwritten
             safety_repo.seed_limit(conn, lender, borrower, amount)
+        # the scripted relationships get both consents through an auditable setup step; a pair either
+        # person has acted on (agreed or revoked) is left exactly as they left it
+        agreements.setup_demo(conn, [(lender, borrower) for lender, borrower, _ in SAFETY_LIMITS])
         conn.commit()
         db_schema.refresh_daily_spend(conn)
     log.info("done — %s", ", ".join(p.slug for p in PERSONAS))

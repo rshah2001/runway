@@ -100,9 +100,14 @@ def rebuild() -> None:
 
     with pool.connection() as conn:
         prefs.reset(DEMO_PERSONAS, conn)  # everyone back to the default cushion
+        pairs = []
         for lender, borrower, amount in SAFETY_LIMITS:
             if lender in DEMO_PERSONAS and borrower in DEMO_PERSONAS:
                 safety_repo.set_limit(conn, lender, borrower, amount, True)
+                pairs.append((lender, borrower))
+        from app import agreements
+
+        agreements.setup_demo(conn, pairs, force=True)  # the rehearsal starts from the script: both agreed
         conn.commit()
         db_schema.refresh_daily_spend(conn)  # after the commit, as the seed does
     from app import alerts

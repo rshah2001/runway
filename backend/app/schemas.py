@@ -286,6 +286,38 @@ class PushStatus(BaseModel):
     sent: int = 0  # browsers reached (test alerts)
 
 
+# ---------- Quiet Support Agreements ----------
+AgreementState = Literal["active", "paused", "needs_supporter", "needs_recipient", "needs_both", "revoked"]
+
+
+class SupportAgreement(BaseModel):
+    """One agreement as ONE side sees it. Never carries anyone's balance, income, spending or forecast."""
+
+    supporter: str
+    supporter_name: str
+    recipient: str
+    recipient_name: str
+    my_side: Literal["supporter", "recipient"]
+    state: AgreementState
+    i_agreed: bool
+    they_agreed: bool
+    limit: float | None  # the supporter's own cap for this person (None until they set one)
+    outstanding: float  # supporter view: owed to me; recipient view: what I owe them
+    version: int
+
+
+class SupportSummary(BaseModel):
+    persona: str
+    supporting: list[SupportAgreement]  # people I may help
+    supporters: list[SupportAgreement]  # people who may help me
+
+
+class AgreementChange(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # who is acting (ignored when signed in)
+    supporter: str = Field(pattern=PERSONA_SLUG)
+    recipient: str = Field(pattern=PERSONA_SLUG)
+
+
 class SetLimit(BaseModel):
     lender: str = Field(pattern=PERSONA_SLUG)  # TODO(auth): must be the logged-in user
     borrower: str = Field(pattern=PERSONA_SLUG)

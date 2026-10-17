@@ -13,6 +13,7 @@ Nessie (only with LIVE_TRANSFERS=1) and claims each bridge with an atomic status
 bridge can never be funded or repaid twice.
 """
 
+import dataclasses
 import logging
 import math
 import secrets
@@ -24,10 +25,10 @@ from typing import Literal
 
 import psycopg
 
-from app import auth0_ciba, prefs, reconcile
+from app import agreements, auth0_ciba, prefs, reconcile
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
-from app.db import journal_repo, pool, repo, safety_repo
+from app.db import agreements_repo, journal_repo, pool, repo, safety_repo
 from app.ingest import sync_customer
 from app.nessie.client import NessieClient
 from app.nessie.moves import TransferNotMade, move_money
@@ -67,6 +68,7 @@ class Decision:
     low_balance: Decimal | None = None
     due_date: date | None = None
     floor: Decimal | None = None  # the borrower's floor this decision used (kept on the bridge)
+    agreement_version: int | None = None  # the consent this decision relied on; re-checked before money moves
 
 
 def _md(d: date) -> str:
@@ -170,6 +172,12 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
         name = projections[borrower_slug].first_name
         return Decision(borrower_slug, "family_off", f"{name} turned family cover off, so nobody is asked.")
     owing = {b["borrower_slug"] for b in safety_repo.outstanding_bridges(conn)}
+    # only supporters with an ACTIVE agreement (both people said yes) are ever considered
+    consented = {
+        a["supporter"]: a
+        for a in agreements_repo.involving(conn, borrower_slug)
+        if a["recipient"] == borrower_slug and agreements.is_active(a)
+    }
     helpers = [
         Helper(
             projection=projections[lim["lender_slug"]],
@@ -179,9 +187,20 @@ def plan(conn, borrower_slug: str, today: date | None = None) -> Decision:
             is_borrowing=lim["lender_slug"] in owing,
         )
         for lim in safety_repo.limits(conn, borrower=borrower_slug)
+        if lim["lender_slug"] in consented
     ]
     has_open = safety_repo.open_bridge_for_borrower(conn, borrower_slug) is not None
-    return decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
+    decision = decide(projections[borrower_slug], helpers, today, has_open_bridge=has_open)
+    if decision.lender in consented:
+        decision = dataclasses.replace(decision, agreement_version=consented[decision.lender]["version"])
+    return decision
+
+
+def _consent_still_holds(conn, lender: str, borrower: str, version: int | None) -> bool:
+    """Re-check, under the people's locks, that the agreement a decision relied on is still active and
+    unchanged — a revoke, pause or limit change in between means nothing moves."""
+    row = agreements_repo.get(conn, lender, borrower)
+    return agreements.is_active(row) and version is not None and row["version"] == version
 
 
 def _both(conn, b: dict, kind: str, to_borrower: str, to_lender: str) -> None:
@@ -229,6 +248,17 @@ def _fund(bridge_id: str) -> dict | None:
         except Exception:
             conn.rollback()
             raise
+        if covered and not _consent_still_holds(conn, b["lender_slug"], b["borrower_slug"], b.get("agreement_version")):
+            safety_repo.transition(conn, bridge_id, ("funding",), "declined")
+            _both(
+                conn,
+                b,
+                "bridge_declined",
+                "Your support agreement changed, so nothing was moved.",
+                f"Your support agreement with {b['borrower_name']} changed, so nothing was moved.",
+            )
+            conn.commit()
+            return None
         if not covered:
             safety_repo.transition(conn, bridge_id, ("funding",), "declined")
             _both(
@@ -350,6 +380,9 @@ def act(decision: Decision) -> dict | None:
         if safety_repo.open_bridge_for_borrower(conn, decision.borrower):  # re-check under the lock
             conn.rollback()
             return None
+        if not _consent_still_holds(conn, decision.lender, decision.borrower, decision.agreement_version):
+            conn.rollback()
+            return None
         try:
             safety_repo.insert_bridge(
                 conn,
@@ -365,6 +398,7 @@ def act(decision: Decision) -> dict | None:
                     "due_date": decision.due_date,
                     "approval_channel": None,
                     "borrower_floor": decision.floor,
+                    "agreement_version": decision.agreement_version,
                 },
             )
         except psycopg.errors.UniqueViolation:  # the database's own one-open-bridge-per-pair rule

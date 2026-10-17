@@ -26,6 +26,7 @@ from app.db import schema as db_schema
 from app.forecast import engine
 from app.ingest import sync_personas
 from app.schemas import (
+    AgreementChange,
     Bridge,
     ChatRequest,
     ChatResponse,
@@ -48,6 +49,7 @@ from app.schemas import (
     SetSafeFloor,
     SimulateRequest,
     Spending,
+    SupportSummary,
 )
 from app.sync_loop import run_periodically
 
@@ -333,6 +335,58 @@ def safety_net_summary(user: OptionalUser, persona: str = PERSONA) -> SafetyNetS
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
 
 
+# ---------- Quiet Support Agreements: consent, from each person's own side ----------
+@app.get("/support", response_model=SupportSummary)
+def support_summary(user: OptionalUser, persona: str = PERSONA) -> SupportSummary:
+    """My agreements — as supporter and as recipient. No one's balance, income or spending, ever."""
+    persona = persona_for(user, persona)
+    if not get_settings().live:
+        return safety_views.demo_support(persona)
+    from app.db import agreements_repo, pool
+
+    with pool.connection() as conn:
+        return safety_views.support_summary(persona, agreements_repo.involving(conn, persona))
+
+
+def _change_agreement(req: AgreementChange, user: User | None, action: str) -> SupportSummary:
+    actor = _own_settings(user, req.persona)  # you only ever act for yourself
+    if actor not in (req.supporter, req.recipient) or req.supporter == req.recipient:
+        raise HTTPException(403, "You can only change your own side of an agreement")
+    names = {p.slug for p in data.personas()}
+    if req.supporter not in names or req.recipient not in names:
+        raise HTTPException(404, "Unknown persona")
+    if not get_settings().live:
+        return safety_views.demo_support(actor)
+    from app import agreements
+    from app.db import agreements_repo, pool, safety_repo
+
+    with pool.connection() as conn:
+        safety_repo.lock_people(conn, req.supporter, req.recipient)  # same locks as money decisions
+        if action == "consent":
+            agreements.consent(conn, actor, req.supporter, req.recipient)
+        else:
+            agreements.revoke(conn, actor, req.supporter, req.recipient)
+            if actor == req.recipient:  # nobody is left being asked on the recipient's behalf
+                for b in safety_repo.pending_approvals(conn, lender=req.supporter):
+                    if b["borrower_slug"] == req.recipient:
+                        safety_repo.transition(conn, b["id"], ("pending_approval",), "declined")
+        conn.commit()
+        return safety_views.support_summary(actor, agreements_repo.involving(conn, actor))
+
+
+@app.post("/support/consent", response_model=SupportSummary)
+def support_consent(req: AgreementChange, user: OptionalUser) -> SupportSummary:
+    """Say yes to your own side: as supporter ("Runway may cover them, within my limit") or as
+    recipient ("Runway may ask them to cover me"). Automatic help needs both."""
+    return _change_agreement(req, user, "consent")
+
+
+@app.post("/support/revoke", response_model=SupportSummary)
+def support_revoke(req: AgreementChange, user: OptionalUser) -> SupportSummary:
+    """Either person withdraws. New help stops; money already out still comes back on payday."""
+    return _change_agreement(req, user, "revoke")
+
+
 @app.put("/safety-net/limits", response_model=SafetyLimit)
 def set_safety_limit(req: SetLimit, user: OptionalUser) -> SafetyLimit:
     authorize_money(user, req.lender)  # only the lender sets their own limit
@@ -345,7 +399,11 @@ def set_safety_limit(req: SetLimit, user: OptionalUser) -> SafetyLimit:
         from app.db import pool, safety_repo
 
         with pool.connection() as conn:
+            from app import agreements
+
+            safety_repo.lock_people(conn, req.lender, req.borrower)
             safety_repo.set_limit(conn, req.lender, req.borrower, req.limit, req.enabled)
+            agreements.limit_changed(conn, req.lender, req.borrower, req.limit, req.enabled)
             safety_repo.add_event(
                 conn, req.borrower, "limit_changed", f"{names[req.lender]} set your safety net to ${req.limit:,.0f}."
             )

@@ -233,6 +233,56 @@ CREATE UNIQUE INDEX IF NOT EXISTS bridges_one_open_pair ON bridges (borrower_slu
     WHERE status IN ('pending_approval', 'funding', 'active', 'repaying', 'repay_failed', 'reconcile');
 """
 
+# Quiet Support Agreements: a limit is the supporter's number; this is the CONSENT, and it takes both
+# people. Automatic help needs both stamps. Legacy limits (set before agreements existed) are migrated
+# in with NO consent — a seeded number is not anyone's yes.
+AGREEMENTS = """
+CREATE TABLE IF NOT EXISTS support_agreements (
+    supporter                 text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    recipient                 text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    supporter_consent_at      timestamptz,
+    supporter_consent_source  text,           -- 'in_app' | 'set_limit' | 'demo_setup'
+    recipient_consent_at      timestamptz,
+    recipient_consent_source  text,
+    revoked_at                timestamptz,
+    revoked_by                text,
+    version                   integer NOT NULL DEFAULT 1,   -- bumps on every limit or consent change
+    created_at                timestamptz NOT NULL DEFAULT now(),
+    updated_at                timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (supporter, recipient),
+    CHECK (supporter <> recipient),
+    CHECK ((supporter_consent_at IS NULL) = (supporter_consent_source IS NULL)),
+    CHECK ((recipient_consent_at IS NULL) = (recipient_consent_source IS NULL))
+);
+CREATE TABLE IF NOT EXISTS support_agreement_events (   -- the audit trail: who agreed to what, when
+    id         bigserial PRIMARY KEY,
+    supporter  text NOT NULL,
+    recipient  text NOT NULL,
+    actor      text NOT NULL,                 -- a persona slug, or 'migration' / 'demo_setup'
+    action     text NOT NULL,
+    detail     jsonb NOT NULL DEFAULT '{}',
+    at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS support_agreement_events_pair ON support_agreement_events (supporter, recipient, at DESC);
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS support_exposure_limit numeric(12, 2)
+    CHECK (support_exposure_limit >= 0 AND support_exposure_limit <= 5000);
+ALTER TABLE bridges ADD COLUMN IF NOT EXISTS agreement_version integer;
+ALTER TABLE bridges ADD COLUMN IF NOT EXISTS decision_id text;
+
+-- legacy limits come in as agreements with no consent (idempotent; a revoked row is never re-created)
+WITH added AS (
+    INSERT INTO support_agreements (supporter, recipient)
+    SELECT lender_slug, borrower_slug FROM safety_limits
+    ON CONFLICT (supporter, recipient) DO NOTHING
+    RETURNING supporter, recipient
+)
+INSERT INTO support_agreement_events (supporter, recipient, actor, action)
+SELECT supporter, recipient, 'migration', 'migrated_without_consent' FROM added;
+-- an approval request made before consent existed can't be approved into money now
+UPDATE bridges SET status = 'declined', status_changed_at = now()
+WHERE status = 'pending_approval' AND agreement_version IS NULL;
+"""
+
 HYPERTABLE = """
 SELECT create_hypertable('transactions', by_range('ts', INTERVAL '7 days'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS transactions_customer_ts ON transactions (customer_id, ts DESC);
@@ -353,7 +403,18 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, SAFETY_NET, JOURNAL, MONEY_PREFS, ALERTS, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (
+            TABLES,
+            P2P,
+            SAFETY_NET,
+            JOURNAL,
+            MONEY_PREFS,
+            AGREEMENTS,
+            ALERTS,
+            HYPERTABLE,
+            DAILY_SPEND,
+            POLICIES,
+        ):
             conn.execute(block)
         _compress_once(conn, "transactions", COMPRESSION)
         try:  # the track record is informational: if its DDL fails, everything else still works
