@@ -25,10 +25,16 @@ voice: Maya (20) genz, Jordan (40) direct, Sam (60) classic.
 
 | Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
 |---|---|---|---|---|---|
+| Gemini — Maya (genz voice) | 16 | 100% | 100% | 100% | 0 |
+| Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
+| Gemini — Sam (classic voice) | 13 | 100% | 100% | 100% | 0 |
+| **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **98%** | **100%** | 0 |
 | Rule-based router (offline baseline) | 42 | 100% | 100% | 100% | — |
 
-Gemini results on the three-persona set are added once the current run completes. On the earlier
-Maya-only set (40 questions) Gemini scored 100% / 100% / 100% with 0 API errors.
+Gemini run on 2026-10-17 on the final code, with runtime grounding enforced. The single miss was a
+correct "no" phrased without a negative word ("That purchase would put your account into an
+overdraft…"); it stays a miss because adding "overdraft" to the grader would misread a correct "yes,
+without an overdraft".
 
 Notes on method:
 
