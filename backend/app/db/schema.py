@@ -122,11 +122,35 @@ CREATE INDEX IF NOT EXISTS p2p_requests_persona ON p2p_requests (persona_slug, s
 # family safety net: lenders pre-authorize bridges up to a limit; the agent covers a forecast dip
 # automatically under the limit, asks for an Auth0 push approval over it, and repays on payday
 # what each person wants to keep in checking (app/prefs.py); no row = the default cushion
+# one row per person who changed a setting; a NULL column means "never set it" → the default
 MONEY_PREFS = """
 CREATE TABLE IF NOT EXISTS money_preferences (
-    slug        text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
-    safe_floor  numeric(12, 2) NOT NULL CHECK (safe_floor >= 0 AND safe_floor <= 5000),
-    updated_at  timestamptz NOT NULL DEFAULT now()
+    slug          text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
+    safe_floor    numeric(12, 2) CHECK (safe_floor >= 0 AND safe_floor <= 5000),
+    alerts_only   boolean,  -- Today shows one calm line, and speaks up only before a dip
+    family_cover  boolean,  -- false: family limits never move money to this person
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE money_preferences ALTER COLUMN safe_floor DROP NOT NULL;
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS alerts_only boolean;
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS family_cover boolean;
+"""
+
+# Heads-up alerts (app/alerts.py): which browsers want a push, and which dips each person was told about
+ALERTS = """
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint    text PRIMARY KEY,  -- the push service URL for one browser; unique per install
+    slug        text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    p256dh      text NOT NULL,
+    auth        text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_slug ON push_subscriptions (slug);
+CREATE TABLE IF NOT EXISTS alerts_sent (
+    slug      text NOT NULL REFERENCES personas (slug) ON DELETE CASCADE,
+    dip_date  date NOT NULL,
+    sent_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (slug, dip_date)  -- one alert per dip, however often the forecast is re-run
 );
 """
 
@@ -297,7 +321,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, ALERTS, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         _compress_once(conn, "transactions", COMPRESSION)
         try:  # the track record is informational: if its DDL fails, everything else still works

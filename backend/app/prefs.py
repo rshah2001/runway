@@ -1,4 +1,4 @@
-"""Per-person money preferences — for now, the amount someone wants to keep in checking.
+"""Per-person money preferences: the amount someone keeps in checking, and two on/off settings.
 
 Runway used one cushion for everyone ($300). People differ: one person gets anxious under $100,
 another is calm near $0, a retiree may want $1,000 untouched. This amount is what every "am I
@@ -6,8 +6,14 @@ okay?" answer is measured against for that person: the forecast's dashed line an
 agent's answers, "spare money today", when the safety net steps in, how much it asks for, and —
 for a lender — how far their own balance may go while helping someone else.
 
+The on/off settings answer the two reasons people in our buyer panel said no:
+  * alerts_only — "I avoid looking at my balance." Today shows one calm line and speaks up only
+    before a dip, with the fix; the numbers stay one tap away.
+  * family_cover — "I'd be embarrassed." Off means family limits never move money to you, even if
+    someone set one; on, they only ever see what they covered and when it comes back.
+
 Live: stored in Tiger Data (`money_preferences`). Demo/offline: kept in memory, so the screens and
-tests behave the same. Anyone who never set one gets DEFAULT_FLOOR.
+tests behave the same. Anyone who never set one gets the default.
 """
 
 import logging
@@ -19,7 +25,10 @@ log = logging.getLogger(__name__)
 DEFAULT_FLOOR = 300.0
 MAX_FLOOR = 5000.0  # a cushion, not a savings goal; also keeps a typo from freezing every bridge
 
+DEFAULTS = {"alerts_only": False, "family_cover": True}
+
 _demo: dict[str, float] = {}  # offline / demo mode only
+_demo_settings: dict[tuple[str, str], bool] = {}
 
 
 class FloorOutOfRange(ValueError):
@@ -79,10 +88,56 @@ def set_floor(slug: str, amount: float) -> float:
     return amount
 
 
+def setting(slug: str, name: str, conn=None, *, strict: bool = False) -> bool:
+    """An on/off setting for `slug`. Like `floor`: a failed read gives the default on screens, and
+    raises with `strict=True` (family_cover decides whether family money moves)."""
+    if name not in DEFAULTS:
+        raise ValueError(f"unknown setting {name!r}")
+    if not get_settings().live:
+        return _demo_settings.get((slug, name), DEFAULTS[name])
+    try:
+        if conn is not None:
+            value = _read_setting(conn, slug, name)
+        else:
+            from app.db import pool
+
+            with pool.connection() as c:
+                value = _read_setting(c, slug, name)
+    except Exception:
+        if strict:
+            raise
+        log.exception("prefs: couldn't read %s for %s, using the default", name, slug)
+        return DEFAULTS[name]
+    return DEFAULTS[name] if value is None else value
+
+
+def _read_setting(conn, slug: str, name: str) -> bool | None:
+    from app.db import repo
+
+    return repo.setting(conn, slug, name)
+
+
+def set_setting(slug: str, name: str, on: bool) -> bool:
+    """Save one on/off setting for `slug`; returns it as stored."""
+    if name not in DEFAULTS:
+        raise ValueError(f"unknown setting {name!r}")
+    if not get_settings().live:
+        _demo_settings[(slug, name)] = on
+        return on
+    from app.db import pool, repo
+
+    with pool.connection() as conn:
+        repo.set_setting(conn, slug, name, on)
+        conn.commit()
+    return on
+
+
 def reset(slugs: list[str] | tuple[str, ...], conn=None) -> None:
-    """Back to the default for these people (the demo reset uses this)."""
+    """Back to the defaults for these people (the demo reset uses this)."""
     for s in slugs:
         _demo.pop(s, None)
+        for name in DEFAULTS:
+            _demo_settings.pop((s, name), None)
     if conn is not None and get_settings().live:
         from app.db import repo
 

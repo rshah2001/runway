@@ -33,6 +33,7 @@ export default function FamilyScreen() {
   const sn = useLoad(() => api.safetyNet(), version);
   const p2p = useLoad(() => api.p2p(), version);
   const fc = useLoad(() => api.forecast(30), version);
+  const me = useLoad(() => api.me(), version);
   const reload = moneyMoved; // after any action here, every screen (Today, Spending, this one) re-fetches
 
   const d = sn.data;
@@ -45,7 +46,7 @@ export default function FamilyScreen() {
         : 'People who agreed to cover you until payday. Nobody has to ask.'} />
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sn.error} onRetry={reload} /></View> : (
         <>
-          <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />
+          {me.data?.family_cover !== false && <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />}
 
           {d.approvals_waiting.length > 0 && (
             <>
@@ -74,6 +75,7 @@ export default function FamilyScreen() {
                 })}
               </List>
               <Fine>They set these limits. Money always goes back on your next payday.</Fine>
+              <WhatTheySee on={me.data?.family_cover} onChanged={reload} />
             </>
           )}
 
@@ -161,13 +163,60 @@ function HelpCard({ d, floor, onDone }: { d: SafetyNetSummary; floor?: number; o
   return (
     <View style={[s.ask, { borderColor: `${C.red}55`, marginTop: 8 }]}>
       <Text style={s.askTitle}>You dip to {money(low.balance, 0)} on {weekdayDate(low.date)}</Text>
-      <Text style={s.askBody}>That’s before payday, under the {money(floor, 0)} you keep. Your family agreed to cover gaps like this.</Text>
+      <Text style={s.askBody}>That’s before payday, under the {money(floor, 0)} you keep. Your family agreed to cover gaps like this. Runway does the asking, and they only see the amount and the day it goes back.</Text>
       {note && <Text style={[s.askBody, { color: C.amber }]}>{plain(note)}</Text>}
       <View style={s.askBtns}>
         <PressableScale onPress={ask} disabled={busy} accessibilityRole="button" style={[s.btn, s.yes, busy && { opacity: 0.7 }]}>
-          <Text style={[s.btnText, { color: '#111' }]}>{busy ? 'Asking…' : 'Ask family to cover it'}</Text>
+          <Text style={[s.btnText, { color: '#111' }]}>{busy ? 'Covering…' : 'Cover it with family'}</Text>
         </PressableScale>
       </View>
+    </View>
+  );
+}
+
+/**
+ * What the people covering you can see, and the switch to turn family cover off. People told us the
+ * embarrassment of family seeing their money is why they'd never use a safety net, so the helper's
+ * view is fixed on the server (safety_views.for_lender): who, how much, when it comes back — never
+ * your balance, your spending, or what it was for. Off: no relative's money moves to you, even with a
+ * limit set, and nobody is asked.
+ */
+function WhatTheySee({ on, onChanged }: { on: boolean | undefined; onChanged: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  async function toggle() {
+    if (on === undefined) return;
+    setSaving(true);
+    setFailed(false);
+    try {
+      await api.setPreferences({ family_cover: !on });
+      onChanged();
+    } catch {
+      setFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <View style={s.privacy}>
+      <View style={s.privacyHead}>
+        <Icon name="shield" size={18} color={C.green} />
+        <Text style={s.askTitle}>What they can see</Text>
+      </View>
+      <View style={s.seeRow}><Icon name="check" size={16} color={C.green} /><Text style={s.seeText}>How much they covered, and the day it goes back</Text></View>
+      <View style={s.seeRow}><Icon name="close" size={16} color={C.text3} /><Text style={s.seeText}>Never your balance, your spending, or what it was for</Text></View>
+      <View style={s.seeRow}><Icon name="check" size={16} color={C.green} /><Text style={s.seeText}>You never have to ask: Runway does it for you</Text></View>
+      {on !== undefined && (
+        <PressableScale onPress={toggle} disabled={saving} accessibilityRole="switch" accessibilityState={{ checked: on }}
+          accessibilityLabel="Let family cover me" style={s.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.switchTitle}>Let family cover me</Text>
+            <Text style={s.seeText}>{on ? 'On. Turn it off any time.' : 'Off. Nobody’s money moves to you, and nobody is asked.'}</Text>
+          </View>
+          <View style={[s.track, on && s.trackOn, saving && { opacity: 0.6 }]}><View style={[s.knob, on && s.knobOn]} /></View>
+        </PressableScale>
+      )}
+      {failed && <Text style={[s.seeText, { color: C.red, marginTop: 6 }]}>Couldn’t save that. Please try again.</Text>}
     </View>
   );
 }
@@ -464,6 +513,16 @@ const s = StyleSheet.create({
   step: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontFamily: F.bodySemi, fontSize: 19, color: C.text, lineHeight: 22 },
   stepValue: { fontFamily: F.condBold, fontSize: 19, color: C.text, minWidth: 56, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  privacy: { marginTop: 14, borderRadius: 20, backgroundColor: C.card, padding: 16, gap: 8 },
+  privacyHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  seeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  seeText: { flex: 1, fontFamily: F.body, fontSize: 14, lineHeight: 20, color: C.text2 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line },
+  switchTitle: { fontFamily: F.bodySemi, fontSize: 15, color: C.text },
+  track: { width: 44, height: 26, borderRadius: 13, backgroundColor: C.line, padding: 3 },
+  trackOn: { backgroundColor: C.green },
+  knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  knobOn: { transform: [{ translateX: 18 }] },
   ask: { borderRadius: 20, backgroundColor: C.card, padding: 16, borderWidth: 1, borderColor: `${C.amber}55` },
   askTitle: { fontFamily: F.bodySemi, fontSize: 17, color: C.text },
   askBody: { fontFamily: F.body, fontSize: 14, lineHeight: 20, color: C.text2, marginTop: 4 },
