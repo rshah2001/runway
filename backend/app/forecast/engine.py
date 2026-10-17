@@ -12,6 +12,8 @@ from collections import defaultdict
 from collections.abc import Iterator
 from datetime import date, timedelta
 
+from app.forecast.history import demo_history
+from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import MAYA, Schedule
 from app.schemas import Forecast, ForecastEvent, ForecastPoint, Recurring
 
@@ -153,13 +155,6 @@ def simulate_purchase(amount: float, on: date, label: str, *, start: date | None
 
 
 def recurring(*, start: date | None = None, schedule: Schedule = MAYA) -> list[Recurring]:
-    """Subscriptions with their next charge date.
-
-    Reads the schedule for now; the recurring-transaction detector over purchase history replaces it.
-    """
+    """Recurring card charges detected in the persona's transaction history ("subscription detective")."""
     start = start or date.today()
-    return [
-        Recurring(merchant=c.label, amount=c.amount, interval_days=30, next_date=_next_on_or_after(start, c.day))
-        for c in schedule.monthly
-        if c.kind == "subscription"
-    ]
+    return detect_recurring(demo_history(start, schedule=schedule), start)
