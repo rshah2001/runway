@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { type PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react';
 import { type GestureResponderEvent, type LayoutChangeEvent, Platform, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
+  Easing,
   interpolateColor,
   type SharedValue,
   useAnimatedProps,
@@ -33,7 +34,7 @@ import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, RadialGradi
 
 import { answer, ComingUp, Fix } from '@/components/today/today-options';
 import { T } from '@/components/rw/ui';
-import { C, RADIUS, SYSTEM_FONT } from '@/constants/runway';
+import { C, F, RADIUS, SYSTEM_FONT } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { fromIso, money, monthDay, weekdayDate } from '@/lib/format';
@@ -460,8 +461,13 @@ function linePath(vals: number[], w: number, lo: number, span: number): string {
   return d;
 }
 
-function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
+/**
+ * The 30-day balance line (shared by both Today layouts). `takeoff`: bump it after an approval that
+ * covers every dip, and once the line has moved up a plane rolls along the cushion line and lifts off.
+ */
+export function BalanceChart({ f, spend, ghost, focusIndex, onScrub, takeoff = 0, hint = true }: {
   f: Forecast; spend: number; ghost: number | null; focusIndex: number | null; onScrub: (i: number | null) => void;
+  takeoff?: number; hint?: boolean;
 }) {
   const reduced = useReducedMotion();
   const [w, setW] = useState(0);
@@ -470,7 +476,7 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
 
   // A fixed scale that leaves room for every preview, so moving the line never rescales the chart.
   const top = Math.max(...base, f.safe_floor) + Math.max(0, f.safe_floor - f.low.balance) + 60;
-  const bottom = Math.min(...base, f.safe_floor) - Math.max(...WHAT_IFS);
+  const bottom = Math.min(...base, f.safe_floor) - Math.max(...WHAT_IFS, spend); // room for a custom what-if too
   const lo = bottom - (top - bottom) * 0.06, span = Math.max(top - lo, 1);
   const yOf = (v: number) => PAD.top + (1 - (v - lo) / span) * (CH - PAD.top - PAD.bottom);
   const xOf = (i: number) => PAD.left + (i / (n - 1)) * (w - PAD.left - PAD.right);
@@ -560,6 +566,25 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
 
   const lowI = f.points.findIndex((p) => p.date === f.low.date);
   const dipping = f.low.balance - spend < f.safe_floor;
+  const lineColor = dipping ? '#fff' : C.green; // the line turns green once every day clears the cushion
+
+  // Takeoff: the cushion line is the runway. The plane rolls along it and lifts off after ~55% of the roll.
+  const fly = useSharedValue(0);
+  const lastTakeoff = useRef(takeoff);
+  useEffect(() => {
+    if (takeoff === lastTakeoff.current) return;
+    lastTakeoff.current = takeoff;
+    if (reduced) return;
+    fly.set(0);
+    fly.set(withDelay(500, withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) })));
+  }, [takeoff, reduced, fly]);
+  const plane = useAnimatedStyle(() => {
+    const t = fly.get(), lift = Math.pow(Math.max(0, (t - 0.55) / 0.45), 2);
+    return {
+      opacity: t <= 0 || t >= 1 ? 0 : t < 0.08 ? t / 0.08 : t > 0.85 ? (1 - t) / 0.15 : 1,
+      transform: [{ translateX: PAD.left + t * (w - PAD.left - PAD.right) - 13 }, { translateY: floorY - 14 - lift * 90 }, { rotate: `${90 - lift * 30}deg` }],
+    };
+  });
   const pays = f.events.filter((e) => e.kind === 'paycheck').map((e) => f.points.findIndex((p) => p.date === e.date)).filter((i) => i > 0);
   const anchor = lowI > n * 0.75 ? 'end' : lowI < n * 0.25 ? 'start' : 'middle';
 
@@ -591,7 +616,7 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
           <Svg width={w} height={CH} pointerEvents="none">
             <Defs>
               <LinearGradient id="fillUp" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#ffffff" stopOpacity={0.14} />
+                <Stop offset="0" stopColor={lineColor} stopOpacity={0.14} />
                 <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
               </LinearGradient>
               <ClipPath id="above"><Rect x={0} y={0} width={w} height={floorY} /></ClipPath>
@@ -600,13 +625,13 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
             <G clipPath="url(#above)"><AnimatedPath fill="url(#fillUp)" animatedProps={toAxis} /></G>
             <G clipPath="url(#below)"><AnimatedPath fill={C.red} fillOpacity={0.4} animatedProps={toFloor} /></G>
             <Line x1={0} x2={w} y1={floorY} y2={floorY} stroke={C.text3} strokeWidth={1} strokeDasharray="4 5" />
-            <SvgText x={w - 4} y={floorY - 7} fill={C.text2} fontSize={12} fontFamily={SYSTEM_FONT} textAnchor="end">
-              {`${money(f.safe_floor, 0)} you keep`}
+            <SvgText x={w - 4} y={floorY - 7} fill={C.text3} fontSize={12} fontFamily={F.body} textAnchor="end">
+              {`${money(f.safe_floor, 0)} cushion`}
             </SvgText>
             {ghostD ? (
               <AnimatedPath d={ghostD} fill="none" stroke={C.green} strokeWidth={2} strokeDasharray="6 6" strokeLinecap="round" animatedProps={ghostProps} />
             ) : null}
-            <G clipPath="url(#above)"><AnimatedPath fill="none" stroke="#fff" strokeWidth={2.5} strokeLinejoin="round" animatedProps={lineProps} /></G>
+            <G clipPath="url(#above)"><AnimatedPath fill="none" stroke={lineColor} strokeWidth={2.5} strokeLinejoin="round" animatedProps={lineProps} /></G>
             <G clipPath="url(#below)"><AnimatedPath fill="none" stroke={C.red} strokeWidth={2.5} strokeLinejoin="round" animatedProps={lineProps} /></G>
             {pays.map((i) => (
               <RidingDot key={i} i={i} x={xOf(i)} from={from} to={to} morph={morph} offset={offset} yIn={yIn} />
@@ -620,6 +645,11 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
             <AnimatedCircle r={6} stroke={C.card} strokeWidth={2.5} animatedProps={cursorDot} />
           </Svg>
         )}
+        <Animated.View pointerEvents="none" style={[s.plane, plane]}>
+          <Svg width={26} height={26} viewBox="0 0 24 24" fill="#fff">
+            <Path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" />
+          </Svg>
+        </Animated.View>
         {/* the touch layer sits on top of the drawing */}
         <View style={StyleSheet.absoluteFill} {...touch} {...hover} />
       </View>
@@ -631,7 +661,7 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
         </View>
         <T tone="dim" style={s.axisText}>{monthDay(f.points[n - 1].date)}</T>
       </View>
-      <T tone="faint" style={s.hint}>{Platform.OS === 'web' ? 'Point at the line to see any day.' : 'Drag along the line to see any day.'}</T>
+      {hint && <T tone="faint" style={s.hint}>{Platform.OS === 'web' ? 'Point at the line to see any day.' : 'Drag along the line to see any day.'}</T>}
     </View>
   );
 }
@@ -777,6 +807,7 @@ const s = StyleSheet.create({
   legendDot: { width: 9, height: 9, borderRadius: 5 },
   legendDash: { width: 16, height: 0, borderTopWidth: 2, borderStyle: 'dashed', borderColor: C.green, marginLeft: 10 },
   hint: { ...SYS, fontSize: 13, marginTop: 6 },
+  plane: { position: 'absolute', left: 0, top: 0, width: 26, height: 26 },
 
   whatIf: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 18 },
   whatIfLabel: { ...SYS, fontSize: 15 },

@@ -5,18 +5,18 @@ import { Platform } from 'react-native';
  * One colour per meaning: red = below the floor, green = covered, amber = caution, blue = savings.
  */
 export const C = {
-  bg: '#14181c',
-  bgTop: '#262e36', // top of the page gradient
-  card: '#252b31',
-  card2: '#2e353c',
-  line: '#353d45',
-  tabBar: '#111519',
+  bg: '#0f1215',
+  bgTop: '#15191d', // top of the page gradient (a shade darker than the cards, so they stand out)
+  card: '#1b2024',
+  card2: '#252b30',
+  line: '#2a3035',
+  tabBar: '#0f1215',
   text: '#ffffff',
-  text2: '#a3adb7',
+  text2: '#a7b0b8',
   text3: '#6f7a85',
-  red: '#ff5a4e',
+  red: '#ff6b5e',
   amber: '#f5b83d',
-  green: '#3fd07f',
+  green: '#46d483',
   blue: '#4b9dff',
   slate: '#8fa8c4',
 } as const;
