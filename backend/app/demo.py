@@ -123,3 +123,56 @@ def rebuild() -> None:
     from app import alerts
 
     alerts.reset(list(DEMO_PERSONAS))  # the dip is fresh again, so its heads-up can go out again
+
+
+def payday(borrower: str, *, arrives: bool) -> list[dict]:
+    """Demo 6, on stage: bring the borrower's payday to today and run the REAL repayment check.
+
+    `arrives`: a real Nessie paycheck deposit lands first (then the check repays, if it's safe);
+    otherwise the payday is "late" and the same check postpones — with the reason. Returns one outcome per
+    open bridge: {lender, amount, outcome: 'repaid' | 'waiting', why}. Demo accounts only (the route checks).
+    """
+    from datetime import datetime
+
+    from app import safety_net
+    from app.cashflow import LOCAL_TZ, project
+    from app.db import pool, repo, safety_repo
+    from app.ingest import sync_customer
+    from app.nessie.client import NessieClient
+
+    today = datetime.now(LOCAL_TZ).date()
+    nessie = NessieClient.from_settings()
+    with pool.connection() as conn:
+        person = repo.persona(conn, borrower)
+        open_ = [
+            b
+            for b in safety_repo.outstanding_bridges(conn)
+            if b["borrower_slug"] == borrower and b["status"] in ("active", "repay_failed")
+        ]
+        if not open_:
+            return []
+        if arrives:
+            paycheck = project(conn, borrower, today).paycheck or sum((b["amount"] for b in open_), 0) * 2
+            nessie.create_deposit(person["checking_id"], float(paycheck), today, "Paycheck (demo payday)")
+            sync_customer(conn, nessie, person["customer_id"])
+        # payday is today for these bridges (the demo moves the calendar, not the rules)
+        conn.execute("UPDATE bridges SET due_date = %s WHERE id = ANY(%s)", (today, [b["id"] for b in open_]))
+        conn.commit()
+    outcomes = []
+    with pool.connection() as conn:
+        for b in open_:
+            b = safety_repo.bridge(conn, b["id"])
+            why = safety_net._repay_wait_reason(conn, b, person, safety_net._repay_floor(conn, b), today)
+            outcomes.append({"bridge": b, "why": why})
+    repaid = {r["id"] for r in safety_net.repay_due(today)}
+    return [
+        {
+            "lender": o["bridge"]["lender_name"],
+            "amount": float(o["bridge"]["amount"]),
+            "outcome": "repaid" if o["bridge"]["id"] in repaid else "waiting",
+            "why": None
+            if o["bridge"]["id"] in repaid
+            else (o["why"] or "It didn't go through this time — it's retried."),
+        }
+        for o in outcomes
+    ]

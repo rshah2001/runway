@@ -57,6 +57,7 @@ def _supporter_texts(monkeypatch: pytest.MonkeyPatch, action: str) -> list[str]:
     monkeypatch.setattr(safety_net.safety_repo, "open_bridge_for_borrower", lambda c, s: None)
     monkeypatch.setattr(safety_net.safety_repo, "lock_people", lambda c, *s: None)
     monkeypatch.setattr(safety_net, "_still_safe", lambda *a: True)
+    monkeypatch.setattr(safety_net, "_within_recipient_limits", lambda *a, **k: True)
     monkeypatch.setattr(safety_net.safety_repo, "insert_bridge", lambda c, row: None)
     monkeypatch.setattr(safety_net.safety_repo, "bridge", lambda c, i: bridge)
     monkeypatch.setattr(safety_net, "_request_approval", lambda c, b: "in_app")

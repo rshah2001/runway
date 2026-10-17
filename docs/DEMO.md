@@ -23,6 +23,11 @@
 | 2:25 | GitHub: `guardian.py`, transfer journal | "Under the hood: a deterministic engine — the AI never does the maths. Every transfer is journaled before it's sent, and an unclear bank response is reconciled, never retried, so nobody gets paid twice." |
 | 2:45 | Back to Maya's Today: *Your safety net is active* | "And on Maya's next *verified* payday, it goes back automatically. Support without the spotlight." |
 
+**Optional — Demo 6, repayment (30 s, if time allows):** as Maya, Circles → bottom → **Payday is late**: "her
+paycheck hasn't arrived, so Runway waits — it never pays back early and puts her short again." Then **Payday
+arrives**: a real paycheck lands in Nessie and Runway pays Sam and Emma back — "and on Sam's phone: *You got
+your $90 back from Maya.*" (Both buttons run the real repayment check; only the calendar moves.)
+
 **If the cover doesn't happen live** (network, Nessie): Circles → Support & repayments shows the verified
 transfers from the last run; say "here's the one from earlier — each line is a real Nessie transfer id".
 

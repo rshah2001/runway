@@ -686,6 +686,19 @@ def demo_reset(user: OptionalUser) -> dict:
     return demo.status()
 
 
+@app.post("/demo/payday")
+def demo_payday(user: OptionalUser, arrives: bool = Query(True)) -> list[dict]:
+    """Demo 6: payday comes today for the signed-in demo borrower. arrives=true → a real paycheck deposit
+    lands and the real safe-repayment check runs; arrives=false → payday is late and the same check
+    postpones. Demo accounts only; needs real writes."""
+    from app import demo
+
+    _demo_user(user)
+    if not data.writes_enabled():
+        raise HTTPException(503, "The demo payday needs real transfers turned on.")
+    return demo.payday(persona_for(user, ""), arrives=arrives)
+
+
 @app.get("/demo/status")
 def demo_status(user: OptionalUser) -> dict:
     from app import demo

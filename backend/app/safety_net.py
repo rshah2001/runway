@@ -322,6 +322,19 @@ def _fund(bridge_id: str) -> dict | None:
         except Exception:
             conn.rollback()
             raise
+        if covered and not _within_recipient_limits(
+            conn, b["borrower_slug"], Decimal(b["amount"]), 1, exclude=bridge_id
+        ):
+            safety_repo.transition(conn, bridge_id, ("funding",), "declined")
+            _both(
+                conn,
+                b,
+                "bridge_declined",
+                "Your own limits changed, so nothing was moved.",
+                f"This support for {b['borrower_name']} is no longer needed. Nothing was moved.",
+            )
+            conn.commit()
+            return None
         if covered and not _consent_still_holds(conn, b["lender_slug"], b["borrower_slug"], b.get("agreement_version")):
             safety_repo.transition(conn, bridge_id, ("funding",), "declined")
             _both(
@@ -465,6 +478,19 @@ def _still_safe(conn, lender: str, borrower: str, amount: Decimal, auto: bool, v
     return True
 
 
+def _within_recipient_limits(
+    conn, borrower: str, adding: Decimal, new_count: int, *, exclude: str | None = None
+) -> bool:
+    """Re-read under the borrower's lock: the recipient's own cap on what they owe at once, and whether
+    they accept help from several people. A setting changed after planning always wins."""
+    max_owed, allow_multi = repo.receiving(conn, borrower)
+    others = [b for b in safety_repo.open_bridges(conn) if b["borrower_slug"] == borrower and b["id"] != exclude]
+    owed = sum((Decimal(b["amount"]) for b in others), Decimal(0))
+    if max_owed is not None and owed + adding > Decimal(str(max_owed)):
+        return False
+    return allow_multi or len(others) + new_count <= 1
+
+
 def act(decision: Decision) -> dict | None:
     """Turn an auto_bridge / needs_approval decision into bridges — one per supporter's share, all
     under one decision id — and move the money for automatic ones. Every share is re-validated under
@@ -481,6 +507,11 @@ def act(decision: Decision) -> dict | None:
         safety_repo.lock_people(conn, decision.borrower, *(slug for slug, _ in shares))
         if safety_repo.open_bridge_for_borrower(conn, decision.borrower):  # re-check under the lock
             conn.rollback()
+            return None
+        total = sum((a for _, a in shares), Decimal(0))
+        if not _within_recipient_limits(conn, decision.borrower, total, len(shares)):
+            conn.rollback()
+            log.info("decision for %s no longer fits the recipient's own limits; re-planning", decision.borrower)
             return None
         if not all(
             _still_safe(conn, slug, decision.borrower, amount, auto, versions.get(slug)) for slug, amount in shares
@@ -724,21 +755,28 @@ def reconcile_pending() -> int:
     return settled
 
 
-def _safe_to_repay(conn, b: dict, borrower: dict, keep: Decimal, today: date) -> bool:
-    """All must hold before paying a bridge back: (1) a real paycheck has landed since the bridge was
-    funded — not just "the date passed"; (2) the balance stays at or above the cushion after repaying;
-    (3) the forecast for the next week doesn't dip under the cushion because of the repayment."""
+def _repay_wait_reason(conn, b: dict, borrower: dict, keep: Decimal, today: date) -> str | None:
+    """None when it's safe to pay a bridge back; otherwise why it waits (shown to the borrower only).
+    All must hold: (1) a real paycheck has landed since the bridge was funded — not just "the date
+    passed"; (2) the balance stays at or above the cushion after repaying; (3) the forecast for the next
+    week doesn't dip under the cushion because of the repayment."""
     amount = Decimal(b["amount"])
-    if _checking_balance(conn, borrower) - amount < keep:
-        return False
     p = project(conn, b["borrower_slug"], today)
     since = b["funded_at"].astimezone(LOCAL_TZ).date() if b.get("funded_at") else b["due_date"]
     at_least = p.paycheck / 2 if p.paycheck else amount
     if not repo.paycheck_landed(conn, borrower["checking_id"], since, at_least):
-        return False
+        return "Your paycheck hasn't arrived yet, so it waits for your next verified payday."
+    if _checking_balance(conn, borrower) - amount < keep:
+        return f"Paying it back now would take you under the {_money(keep)} you keep, so it waits."
     low = p.low(today, today + timedelta(days=REPAY_CHECK_DAYS))
     already_scheduled = b["due_date"] >= today  # project() books this repayment on its due date
-    return low is not None and low[1] - (Decimal(0) if already_scheduled else amount) >= keep
+    if low is None or low[1] - (Decimal(0) if already_scheduled else amount) < keep:
+        return "Paying it back now would cause a new dip in the next week, so it waits."
+    return None
+
+
+def _safe_to_repay(conn, b: dict, borrower: dict, keep: Decimal, today: date) -> bool:
+    return _repay_wait_reason(conn, b, borrower, keep, today) is None
 
 
 def repay_due(today: date | None = None) -> list[dict]:

@@ -104,6 +104,10 @@ export const api = {
   // demo controls: signed-in demo accounts only (Maya, Jordan, Sam)
   demoReset: () => request<DemoStatus>('/demo/reset', { method: 'POST' }),
   demoStatus: () => request<DemoStatus>('/demo/status'),
+  // Demo 6: payday comes today — arrives=true deposits a real paycheck first; false = payday is late
+  demoPayday: (arrives: boolean) =>
+    request<{ lender: string; amount: number; outcome: 'repaid' | 'waiting'; why: string | null }[]>(
+      `/demo/payday?arrives=${arrives}`, { method: 'POST' }),
   // the agent answers with this persona's numbers, in the voice for their age
   chat: (message: string, persona = currentPersona()) =>
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),

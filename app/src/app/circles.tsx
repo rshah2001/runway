@@ -81,6 +81,7 @@ export default function CirclesScreen() {
           <Recent events={d.events} payments={p2p.data?.payments ?? []} />
         </>
       )}
+      {d && d.borrowed.some((b) => b.status === 'active' || b.status === 'repay_failed') && <DemoPayday onDone={reload} />}
       <DemoReset onDone={reload} />
     </Page>
     {/* over the whole screen, not inside the scrolling page */}
@@ -601,6 +602,44 @@ function DemoReset({ onDone }: { onDone: () => void }) {
     <View style={{ alignItems: 'center', marginTop: 28, gap: 8 }}>
       <TwoTap label="Reset demo" confirm="Reset all four demo accounts?" light={false} onPress={reset} />
       {state && <Text style={[s.fineText, { textAlign: 'center' }]}>{state}</Text>}
+    </View>
+  );
+}
+
+/**
+ * Demo 6, for presenting: payday comes today. "Arrives" lands a real paycheck in Nessie and runs the real
+ * safe-repayment check; "late" runs the same check without one, so it waits — and says why.
+ */
+function DemoPayday({ onDone }: { onDone: () => void }) {
+  const session = useSession();
+  const [lines, setLines] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (session.mode !== 'signed-in' || !DEMO.includes(session.persona)) return null;
+  async function run(arrives: boolean) {
+    setBusy(true);
+    setLines(null);
+    try {
+      const out = await api.demoPayday(arrives);
+      setLines(out.length ? out.map((o) => o.outcome === 'repaid' ? `Paid ${o.lender} back ${money(o.amount, 0)}.` : `${o.lender}'s ${money(o.amount, 0)} waits: ${o.why}`) : ['Nothing to pay back.']);
+      onDone();
+    } catch (e) {
+      setLines([reason(e, 'That didn’t run. Try again.')]);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <View style={{ alignItems: 'center', marginTop: 28, gap: 8 }}>
+      <Text style={s.fineText}>Demo: bring payday to today</Text>
+      <View style={s.owe}>
+        <PressableScale onPress={() => run(true)} disabled={busy} accessibilityRole="button" style={s.askBtn}>
+          <Text style={s.askBtnText}>{busy ? '…' : 'Payday arrives'}</Text>
+        </PressableScale>
+        <PressableScale onPress={() => run(false)} disabled={busy} accessibilityRole="button" style={[s.askBtn, s.ghostBtn]}>
+          <Text style={[s.askBtnText, { color: C.text }]}>Payday is late</Text>
+        </PressableScale>
+      </View>
+      {lines?.map((l) => <Text key={l} style={[s.fineText, { textAlign: 'center' }]}>{l}</Text>)}
     </View>
   );
 }

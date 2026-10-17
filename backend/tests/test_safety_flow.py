@@ -41,6 +41,8 @@ class Store:
         self.journal: dict[str, dict] = {}
         self.events: list[tuple[str, str]] = []
         self.locks: list[tuple[str, ...]] = []
+        self.receiving: tuple[float | None, bool] = (None, True)  # the recipient's own limits
+        self.others: list[dict] = []  # other open bridges
 
     # ---- connection ----
     def __enter__(self):
@@ -134,6 +136,8 @@ def wire(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(safety_net.journal_repo, "for_ref", store.for_ref)
         monkeypatch.setattr(safety_net.journal_repo, "unresolved", store.unresolved)
         monkeypatch.setattr(safety_net.repo, "persona", lambda conn, slug: people[slug])
+        monkeypatch.setattr(safety_net.repo, "receiving", lambda conn, slug: store.receiving)
+        monkeypatch.setattr(safety_net.safety_repo, "open_bridges", lambda conn: store.others)
         monkeypatch.setattr(safety_net.prefs, "setting", lambda *a, **k: True)
         monkeypatch.setattr(safety_net.NessieClient, "from_settings", classmethod(lambda cls: nessie))
         monkeypatch.setattr(safety_net, "sync_customer", lambda *a: None)
@@ -306,3 +310,19 @@ def test_a_supporter_who_asks_to_approve_every_time_is_never_moved_automatically
     fresh_rows["mode"] = "approval"
     assert not safety_net._still_safe(None, "sam", "maya", D(90), True, 1)
     assert safety_net._still_safe(None, "sam", "maya", D(90), False, 1)  # asking them is still fine
+
+
+def test_a_recipient_who_lowered_their_cap_meanwhile_gets_nothing_moved(wire) -> None:
+    store, nessie = Store("pending_approval"), Nessie()
+    store.receiving = (50.0, True)  # Maya now owes at most $50 at once; this bridge is $100
+    wire(store, nessie)
+    assert safety_net._fund("bridge-1") is None
+    assert store.bridge["status"] == "declined" and nessie.sent == []
+
+
+def test_one_person_only_meanwhile_stops_a_second_share(wire) -> None:
+    store, nessie = Store("pending_approval"), Nessie()
+    store.receiving = (None, False)
+    store.others = [{"id": "bridge-2", "borrower_slug": "maya", "amount": D(45)}]  # Emma's share already open
+    wire(store, nessie)
+    assert safety_net._fund("bridge-1") is None and nessie.sent == []
