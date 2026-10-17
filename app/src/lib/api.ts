@@ -1,18 +1,19 @@
 import type {
+  Bridge,
   ChatResponse,
+  DemoStatus,
   Forecast,
   Me,
   P2PPayment,
   P2PRequest,
   P2PSummary,
-  Bridge,
+  PendingAction,
+  Persona,
+  PushStatus,
+  Recurring,
   SafetyDecision,
   SafetyLimit,
   SafetyNetSummary,
-  DemoStatus,
-  PendingAction,
-  Persona,
-  Recurring,
   Spending,
 } from './types';
 import { authHeader } from './auth';
@@ -38,7 +39,15 @@ export const api = {
   // what you keep in checking: every "am I okay?" is measured against it (only for yourself)
   setSafeFloor: (amount: number, persona = currentPersona()) =>
     request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
+  // alerts-only and family cover: on/off, only for yourself; a field left out stays as it is
+  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean }, persona = currentPersona()) =>
+    request<Me>('/me/preferences', { method: 'PUT', body: JSON.stringify({ persona, ...prefs }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
+  // heads-up alerts to this phone (lib/push.ts): the server's public key, this browser's subscription, a test
+  alertsKey: () => request<PushStatus>('/alerts/key'),
+  pushSubscribe: (sub: { endpoint: string; p256dh: string; auth: string }, persona = currentPersona()) =>
+    request<PushStatus>('/me/push', { method: 'PUT', body: JSON.stringify({ persona, ...sub }) }),
+  pushTest: (persona = currentPersona()) => request<PushStatus>(`/me/push/test?persona=${persona}`, { method: 'POST' }),
   forecast: (days = 30, persona = currentPersona()) => request<Forecast>(`/forecast?days=${days}&persona=${persona}`),
   simulate: (amount: number, date: string, label = 'Purchase', persona = currentPersona()) =>
     request<Forecast>(`/simulate?persona=${persona}`, { method: 'POST', body: JSON.stringify({ amount, date, label }) }),

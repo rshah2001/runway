@@ -95,14 +95,14 @@ the cutoff, as if Runway had just met the person. Same 18 folds.
 
 | Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday in forecast |
 |---|---|---|---|---|
-| 14 | $2,700.01 | 8% | 7% | 0% |
-| 30 | **$205.81** (was $2,737.30) | 66% | 11% | 100% (provisional) |
-| 60 | $198.69 | 70% | 6% | 100% |
-| 90 | $137.65 | 81% | 8% | 100% |
+| 14 | $2,700.01 | 13% | 4% | 0% |
+| 30 | **$205.81** (was $2,737.30) | 90% | 4% | 100% (provisional) |
+| 60 | $198.69 | 88% | 0% | 100% |
+| 90 | $137.65 | 91% | 1% | 100% |
 
 - **Coverage** is the share of month-4 days whose actual balance landed inside the forecast's band.
-  The band is asymmetric, p5–p90 of the balance, so a calibrated one holds about 85%; at 90 days it
-  holds 81%, slightly narrow.
+  The band is asymmetric, p5–p90 of the balance, so a calibrated one holds about 85%. On these
+  seeded personas it now holds 91%: wider than needed, on purpose (see the calibration note below).
 - **Days below the low end** is the number the safety net cares about, because it plans on
   `balance_low`. With a symmetric p10–p90 band, 13% of real days fell below the low end, and in 4 of
   18 months the real lowest day was under the forecast's cautious low. Setting the low end from p95
@@ -116,9 +116,9 @@ the cutoff, as if Runway had just met the person. Same 18 folds.
   a **provisional** payday in the forecast: error at 30 days drops **92%, to $206**, almost the 60-day
   level. Readiness says so ("I've seen 2 paychecks… I'll be sure after the 3rd") and never calls it
   "confident".
-- **What it costs:** at 30 days, 11% of real days fell below the cautious end, just over the 10% target,
-  because a payday seen twice is less certain than one seen three times. So anything that moves money
-  automatically should wait for "confident": the safety net should only bridge automatically when the
+- **What it costs:** a payday seen twice is less certain than one seen three times. With the old,
+  uncalibrated range, 11% of real days at 30 days fell below the cautious end; the calibrated range
+  (above) brings that to 4%. Even so, anything that moves money automatically should wait for "confident": the safety net should only bridge automatically when the
   borrower's readiness is "confident" (a suggested change for `app/safety_net.py`, owned by the backend).
 - **14 days is unchanged on purpose:** two weeks usually holds one paycheck, and one deposit doesn't fit
   any pattern. Coverage there stays low for the same reason: the band models everyday spending, not a
@@ -135,6 +135,13 @@ balance). Two choices matter:
 - **Weekly blocks, not single days.** Spending clusters (a weekly grocery run, a busy weekend);
   resampling whole weeks keeps those clusters, so the band isn't falsely narrow.
 
-Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled. The seed
-generator draws purchases independently each day, which flatters any bootstrap; real transaction data
-would be the real test of the band's calibration.
+Only everyday spending is treated as uncertain; bills and paydays are taken as scheduled.
+
+**Calibrated on outside data (`ml/`).** The seed generator draws purchases independently each day,
+which is the one setting where a plain bootstrap is right. On outside data it wasn't: its cautious end
+was beaten 12–43% of the time instead of 5% (IBM card users, a real UK account, real Czech accounts),
+because it misses month-to-month swings in spending. The live band widens the bootstrap by factors
+learned with split conformal calibration (×3.3 at 30 days of history, ×2.0 at 60, ×1.6 at 90), which
+brings that to 5–11% on data it never saw (Berka at 30 days is the exception). The cost is the table above: on our own personas the band is
+now wider than they need. We calibrate to the outside data, not to our own generator. Full results in
+`ml/README.md`.

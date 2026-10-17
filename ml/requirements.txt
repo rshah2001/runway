@@ -1,0 +1,6 @@
+# Offline experiments only: the backend never imports these (it reads band_calibration.json).
+pandas>=2.2
+numpy>=1.26
+lightgbm>=4.5
+pymysql>=1.1
+openpyxl>=3.1

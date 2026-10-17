@@ -39,6 +39,10 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 | POST | `/p2p/requests/{id}/settle` | the contact pays: real money in; atomic, can't be settled twice |
 | POST | `/agent/chat` `{message}` | `{reply, tool_calls, pending_action?}` |
 | POST | `/actions/{id}/approve` | executes the Nessie call, returns the new forecast |
+| PUT | `/me/preferences` `{alerts_only?, family_cover?}` | your own on/off settings: Today in calm "alerts only" view; family cover off (no relative's money moves to you) |
+| GET | `/alerts/key` | the Web Push public key (`null` = phone alerts off on this server) |
+| PUT | `/me/push` `{endpoint, p256dh, auth}` | this browser gets your heads-ups (only browser push services accepted) |
+| POST | `/me/push/test` | sends you your current status now, to check alerts reach the phone |
 
 ## Tiger Data schema (live — source of truth: `backend/app/db/schema.py`)
 
@@ -52,6 +56,8 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 | `bills` | table | upcoming recurring bills — the forecast's scheduled outflows |
 | `personas`, `merchants` | tables | demo persona ids (+ age), merchant categories |
 | `contacts`, `p2p_payments`, `p2p_requests` | tables | peer-to-peer: each contact is a real Nessie customer; every payment keeps both Nessie record ids |
+| `money_preferences` | table | per person: what they keep in checking, alerts-only, family cover (NULL = default) |
+| `push_subscriptions`, `alerts_sent` | tables | heads-up alerts: which browsers get them, and one row per dip already announced (never twice) |
 
 **For the forecast engine and agent** (`backend/app/db/repo.py` — no SQL needed):
 `accounts_with_balances(conn, customer_id)`, `transactions(conn, customer_id, since, until)`,
