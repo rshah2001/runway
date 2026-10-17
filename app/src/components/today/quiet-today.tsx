@@ -19,6 +19,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { PressableScale } from '@/components/rw/ui';
 import { describe, eventsOn, Fix } from '@/components/today/today-home';
 import { C, F } from '@/constants/runway';
+import { api } from '@/lib/api';
 import { weekdayDate } from '@/lib/format';
 import { enablePush, pushState, type PushState } from '@/lib/push';
 import { isClear, nextPaycheck, runwayDays } from '@/lib/runway';

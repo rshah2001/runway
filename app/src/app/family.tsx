@@ -24,7 +24,7 @@ import type { Bridge, P2PPayment, P2PSummary, SafetyEvent, SafetyLimit, SafetyNe
 const LIMIT_STEP = 50;
 const LIMIT_MAX = 1000;
 /** Bridges still in flight: money that is with someone right now, or about to be. */
-const OPEN: Bridge['status'][] = ['funding', 'active', 'repaying', 'repay_failed'];
+const OPEN: Bridge['status'][] = ['funding', 'active', 'repaying', 'repay_failed', 'reconcile'];
 
 
 export default function FamilyScreen() {

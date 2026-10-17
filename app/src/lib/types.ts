@@ -151,6 +151,7 @@ export type BridgeStatus =
   | 'repaying'
   | 'repaid' // show the lender: "you got it back" (repaid_on)
   | 'repay_failed' // late — no new bridges until it's back
+  | 'reconcile' // the bank left the outcome unclear: being confirmed, never sent twice
   | 'failed';
 
 export type Bridge = {

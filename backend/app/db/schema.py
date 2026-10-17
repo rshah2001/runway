@@ -201,6 +201,38 @@ CREATE TABLE IF NOT EXISTS safety_events (
 CREATE INDEX IF NOT EXISTS safety_events_persona ON safety_events (persona_slug, at DESC);
 """
 
+# Every money move the safety net or P2P makes, written BEFORE the Nessie call: Nessie has no
+# idempotency keys, so this journal (and the [rw:<key>] tag in each memo) is how an unclear outcome is
+# reconciled instead of retried (app/reconcile.py)
+JOURNAL = """
+CREATE TABLE IF NOT EXISTS transfer_journal (
+    key           text PRIMARY KEY,           -- fund:<bridge> | repay:<bridge>:<attempt> | p2p:<persona>:<client key>
+    kind          text NOT NULL CHECK (kind IN ('fund', 'repay', 'p2p')),
+    ref           text NOT NULL,              -- the bridge id or payment id it belongs to
+    from_account  text NOT NULL,
+    to_account    text NOT NULL,
+    amount        numeric(12, 2) NOT NULL CHECK (amount > 0),
+    state         text NOT NULL CHECK (state IN ('started', 'succeeded', 'not_made', 'unknown', 'settled_by_hand')),
+    transfer_id   text,
+    deposit_id    text,
+    error         text,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS transfer_journal_open ON transfer_journal (state, updated_at);
+CREATE INDEX IF NOT EXISTS transfer_journal_ref ON transfer_journal (ref);
+
+-- 'reconcile': a move whose outcome Nessie left unclear; it waits for app/reconcile.py, never a retry
+ALTER TABLE bridges DROP CONSTRAINT IF EXISTS bridges_status_check;
+ALTER TABLE bridges ADD CONSTRAINT bridges_status_check CHECK (status IN ('pending_approval', 'declined',
+    'funding', 'active', 'repaying', 'repaid', 'repay_failed', 'failed', 'reconcile'));
+-- when the status last changed: "stuck" is measured from here, not from created_at
+ALTER TABLE bridges ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
+-- at most one open bridge between the same two people, enforced by the database, not just the code
+CREATE UNIQUE INDEX IF NOT EXISTS bridges_one_open_pair ON bridges (borrower_slug, lender_slug)
+    WHERE status IN ('pending_approval', 'funding', 'active', 'repaying', 'repay_failed', 'reconcile');
+"""
+
 HYPERTABLE = """
 SELECT create_hypertable('transactions', by_range('ts', INTERVAL '7 days'), if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS transactions_customer_ts ON transactions (customer_id, ts DESC);
@@ -321,7 +353,7 @@ def apply(conn: psycopg.Connection) -> None:
     conn.autocommit = True  # continuous-aggregate DDL cannot run inside a transaction block
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        for block in (TABLES, P2P, SAFETY_NET, MONEY_PREFS, ALERTS, HYPERTABLE, DAILY_SPEND, POLICIES):
+        for block in (TABLES, P2P, SAFETY_NET, JOURNAL, MONEY_PREFS, ALERTS, HYPERTABLE, DAILY_SPEND, POLICIES):
             conn.execute(block)
         _compress_once(conn, "transactions", COMPRESSION)
         try:  # the track record is informational: if its DDL fails, everything else still works

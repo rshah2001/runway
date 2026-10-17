@@ -181,6 +181,14 @@ def insert_p2p_payment(conn: psycopg.Connection, p: Row) -> None:
     )
 
 
+def p2p_payment(conn: psycopg.Connection, payment_id: str) -> Row | None:
+    return conn.execute(
+        """SELECT p.*, c.first_name AS contact_name FROM p2p_payments p JOIN contacts c ON c.id = p.contact_id
+           WHERE p.id = %s""",
+        (payment_id,),
+    ).fetchone()
+
+
 def p2p_payments(conn: psycopg.Connection, slug: str, limit: int = 50) -> list[Row]:
     return conn.execute(
         """SELECT p.*, c.first_name AS contact_name FROM p2p_payments p JOIN contacts c ON c.id = p.contact_id

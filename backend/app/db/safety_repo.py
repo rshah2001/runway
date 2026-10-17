@@ -5,7 +5,7 @@ from typing import Any
 import psycopg
 
 Row = dict[str, Any]
-OUTSTANDING = ("active", "repaying", "repay_failed")  # money that hasn't come back yet
+OUTSTANDING = ("active", "repaying", "repay_failed", "reconcile")  # money that hasn't (certainly) come back yet
 OPEN = ("pending_approval", *OUTSTANDING)
 SETTABLE = {
     "funded_at",
@@ -17,6 +17,17 @@ SETTABLE = {
     "back_transfer_id",
     "back_deposit_id",
 }
+
+
+# ---------- locking ----------
+def lock_people(conn: psycopg.Connection, *slugs: str) -> None:
+    """Hold a transaction-scoped lock on each person, always in the same (sorted) order so two passes
+    can't deadlock. Every decision that moves or commits someone's money takes these first, so two
+    passes can never both spend the same supporter's room. Released at commit/rollback — so the claim
+    is committed before the slow Nessie call, never held across it."""
+    conn.execute("SET LOCAL lock_timeout = '10s'")
+    for slug in sorted(set(slugs)):
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"runway:{slug}",))
 
 
 # ---------- limits (only ever written on behalf of the lender) ----------
@@ -107,13 +118,33 @@ def transition(
     if unknown:  # column names are interpolated below, so only ever accept known ones
         raise ValueError(f"not settable: {sorted(unknown)}")
     sets = "".join(f", {k} = %({k})s" for k in fields)
-    sql = f"UPDATE bridges SET status = %(to)s{sets} WHERE id = %(id)s AND status = ANY(%(frm)s) RETURNING id"
+    sql = (
+        f"UPDATE bridges SET status = %(to)s, status_changed_at = now(){sets}"
+        " WHERE id = %(id)s AND status = ANY(%(frm)s) RETURNING id"
+    )
     row = conn.execute(sql, {"to": to_status, "id": bridge_id, "frm": list(from_status), **fields}).fetchone()
     return bridge(conn, bridge_id) if row else None
 
 
+def unsettled(conn: psycopg.Connection, slug: str) -> bool:
+    """True while a money move involving this persona is unclear — a reseed must not delete its accounts."""
+    row = conn.execute(
+        """SELECT 1 FROM bridges b WHERE (b.borrower_slug = %s OR b.lender_slug = %s)
+             AND (b.status IN ('funding', 'repaying', 'reconcile')
+                  OR EXISTS (SELECT 1 FROM transfer_journal j WHERE j.ref = b.id AND j.state IN ('started', 'unknown')))
+           LIMIT 1""",
+        (slug, slug),
+    ).fetchone()
+    return row is not None
+
+
 def forget(conn: psycopg.Connection, slug: str) -> None:
     """Drop bridges and feed entries involving a persona (used when re-seeding it)."""
+    conn.execute(
+        "DELETE FROM transfer_journal WHERE ref IN"
+        " (SELECT id FROM bridges WHERE borrower_slug = %s OR lender_slug = %s)",
+        (slug, slug),
+    )
     conn.execute("DELETE FROM bridges WHERE borrower_slug = %s OR lender_slug = %s", (slug, slug))
     conn.execute("DELETE FROM safety_events WHERE persona_slug = %s", (slug,))
 

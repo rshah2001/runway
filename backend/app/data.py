@@ -11,10 +11,10 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.config import get_settings
-from app.db import pool, repo
+from app.db import journal_repo, pool, repo
 from app.ingest import sync_customer, ts_for
 from app.nessie import demo
-from app.nessie.client import NessieClient
+from app.nessie.client import NessieClient, from_cents, to_cents
 from app.nessie.moves import TransferNeedsReconciliation, TransferNotMade, move_money
 from app.schemas import (
     Account,
@@ -184,6 +184,10 @@ class ContactNotFound(LookupError):
     pass
 
 
+class PaymentInProgress(RuntimeError):
+    """The same Send tap is already being processed (or its outcome is being checked)."""
+
+
 class RequestNotOpen(LookupError):
     pass
 
@@ -245,22 +249,46 @@ def _contact_for(conn, slug: str, contact_id: str) -> dict:
     return c
 
 
-def _record_payment(nessie: NessieClient, p: dict, c: dict, direction: str, amount: float, memo: str) -> dict:
-    """Move the money in Nessie (both sides) and record it. `direction` is from the persona's view."""
+def _record_payment(
+    nessie: NessieClient, p: dict, c: dict, direction: str, amount: float, memo: str, *, key: str | None = None
+) -> dict:
+    """Move the money in Nessie (both sides) and record it. `direction` is from the persona's view.
+
+    The move is journaled under `key` (default: a fresh one) before Nessie is called, and the payment
+    row is written with the journal's success, so a repeated key can never pay twice."""
     today = datetime.now(LOCAL_TZ).date()
+    amount = float(from_cents(to_cents(amount)))  # one rounding for Nessie and for our record
     if direction == "out":
         sender, receiver = p["checking_id"], c["checking_id"]
         deposit_memo = f"From {p['first_name']}: {memo}"
     else:
         sender, receiver = c["checking_id"], p["checking_id"]
         deposit_memo = f"From {c['first_name']}: {memo}"
-    transfer_id, deposit_id = move_money(nessie, sender, receiver, amount, today, memo, deposit_memo)
+    payment_id = f"p2p-{secrets.token_hex(8)}"
+    key = key or f"p2p:{p['slug']}:{payment_id}"
+    with pool.connection() as conn:
+        if not journal_repo.claim(conn, key, "p2p", payment_id, sender, receiver, amount):
+            conn.rollback()
+            raise PaymentInProgress(key)
+        conn.commit()
+    try:
+        transfer_id, deposit_id = move_money(nessie, sender, receiver, amount, today, memo, deposit_memo, key=key)
+    except TransferNotMade as e:
+        with pool.connection() as conn:
+            journal_repo.finish(conn, key, "not_made", error=str(e))
+            conn.commit()
+        raise
+    except Exception as e:
+        with pool.connection() as conn:
+            journal_repo.finish(conn, key, "unknown", error=str(e))
+            conn.commit()
+        raise
     row = {
-        "id": f"p2p-{secrets.token_hex(8)}",
+        "id": payment_id,
         "persona_slug": p["slug"],
         "contact_id": c["id"],
         "direction": direction,
-        "amount": round(amount, 2),
+        "amount": amount,
         "memo": memo,
         "ts": ts_for(today),
         "sender_nessie_id": transfer_id,
@@ -268,18 +296,27 @@ def _record_payment(nessie: NessieClient, p: dict, c: dict, direction: str, amou
     }
     with pool.connection() as conn:
         repo.insert_p2p_payment(conn, row)
+        journal_repo.finish(conn, key, "succeeded", transfer_id=transfer_id, deposit_id=deposit_id)
         conn.commit()
     _resync(nessie, p["customer_id"])
     return {**row, "contact_name": c["first_name"]}
 
 
-def p2p_send(slug: str, contact_id: str, amount: float, memo: str) -> P2PPayment:
-    """The persona pays a contact."""
+def p2p_send(slug: str, contact_id: str, amount: float, memo: str, client_key: str | None = None) -> P2PPayment:
+    """The persona pays a contact. A repeated `client_key` (the same Send tap, retried) returns the
+    first payment instead of paying again; while that first one is still in flight it is refused."""
     if not _writes_enabled():
         return demo.p2p_payment(contact_id, "out", amount, memo)
+    key = f"p2p:{slug}:{client_key}" if client_key else None
     with pool.connection() as conn:
         p, c = _persona(conn, slug), _contact_for(conn, slug, contact_id)
-    return _payment(_record_payment(NessieClient.from_settings(), p, c, "out", amount, memo))
+        if key and (done := journal_repo.get(conn, key)) is not None:
+            if done["state"] == "succeeded" and (row := repo.p2p_payment(conn, done["ref"])) is not None:
+                return _payment(row)
+            if done["state"] == "not_made":
+                raise TransferNotMade(f"{key} was not made — send again with a new tap")
+            raise PaymentInProgress(key)
+    return _payment(_record_payment(NessieClient.from_settings(), p, c, "out", amount, memo, key=key))
 
 
 def p2p_request(slug: str, contact_id: str, amount: float, memo: str) -> P2PRequest:

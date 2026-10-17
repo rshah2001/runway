@@ -273,9 +273,11 @@ def p2p(user: OptionalUser, persona: str = PERSONA) -> P2PSummary:
 def p2p_send(req: P2PSend, user: OptionalUser) -> P2PPayment:
     authorize_money(user, req.persona)
     try:
-        return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo)
+        return data.p2p_send(req.persona, req.contact_id, req.amount, req.memo, req.client_key)
     except (data.PersonaNotFound, data.ContactNotFound):
         raise HTTPException(404, "Unknown persona or contact") from None
+    except data.PaymentInProgress:
+        raise HTTPException(409, "That payment is already being sent") from None
     except data.TransferNotMade as e:
         raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
     except Exception as e:
@@ -372,6 +374,9 @@ def run_safety_net(
         persona = persona_for(user, persona or "")
     elif data.writes_enabled():
         authorize_money(None, persona)
+    # signed out: only the one demo persona asked about — never everyone, which would report each
+    # person's low balance to an anonymous visitor
+    persona = persona or data.DEFAULT_PERSONA
     if not get_settings().live:
         demo = safety_views.demo_summary("maya").borrowed[0]
         return [
@@ -391,7 +396,7 @@ def run_safety_net(
     from app import demo, safety_net
 
     demo.release()  # running it by hand is the live moment: automatic passes resume after it
-    return [safety_views.decision(d, b) for d, b in safety_net.run([persona] if persona else None)]
+    return [safety_views.decision(d, b) for d, b in safety_net.run([persona])]
 
 
 def _bridge_action(bridge_id: str, approve: bool, user: User | None) -> Bridge:

@@ -57,8 +57,12 @@ export const api = {
     request<Spending>(`/spending?persona=${persona}${month ? `&month=${month}` : ''}`),
   // peer-to-peer — amount in dollars (max $1,000 per payment), memo 1–80 chars
   p2p: (persona = currentPersona()) => request<P2PSummary>(`/p2p?persona=${persona}`),
-  p2pSend: (contactId: string, amount: number, memo: string, persona = currentPersona()) =>
-    request<P2PPayment>('/p2p/send', { method: 'POST', body: JSON.stringify({ persona, contact_id: contactId, amount, memo }) }),
+  // one client_key per tap: if the request is retried, the server returns the first payment instead of paying twice
+  p2pSend: (contactId: string, amount: number, memo: string, persona = currentPersona(), clientKey = tapKey()) =>
+    request<P2PPayment>('/p2p/send', {
+      method: 'POST',
+      body: JSON.stringify({ persona, contact_id: contactId, amount, memo, client_key: clientKey }),
+    }),
   p2pRequest: (contactId: string, amount: number, memo: string, persona = currentPersona()) =>
     request<P2PRequest>('/p2p/requests', { method: 'POST', body: JSON.stringify({ persona, contact_id: contactId, amount, memo }) }),
   p2pSettle: (requestId: string) => request<P2PRequest>(`/p2p/requests/${requestId}/settle`, { method: 'POST' }),
@@ -80,3 +84,8 @@ export const api = {
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),
   approve: (actionId: string) => request<PendingAction>(`/actions/${actionId}/approve`, { method: 'POST' }),
 };
+
+/** A unique id for one Send tap (Hermes has no crypto.randomUUID). Matches the API's ^[A-Za-z0-9-]{8,64}$. */
+function tapKey(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}

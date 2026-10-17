@@ -61,3 +61,53 @@ def test_failed_undo_is_flagged_never_hidden() -> None:
     n = FakeNessie(deposit=NessieError("POST", "/d", 400, "bad"), delete=NessieError("DELETE", "/t", 503, ""))
     with pytest.raises(TransferNeedsReconciliation):
         move_money(n, "a", "b", 10, ON, "m", "d")
+
+
+# ---------- Runway 2.0: an unclear deposit is never "undone and safe to retry" ----------
+@pytest.mark.parametrize("err", [NessieError("POST", "/d", 503, ""), NessieError("POST", "/d", 0, "timeout")])
+def test_unclear_deposit_outcome_needs_reconciliation_and_keeps_the_transfer(err) -> None:
+    n = FakeNessie(deposit=err)  # the deposit may have landed: undoing the transfer would pay the borrower for free
+    with pytest.raises(TransferNeedsReconciliation):
+        move_money(n, "a", "b", 10, ON, "m", "d")
+    assert not any(c[0] == "delete" for c in n.calls)
+
+
+def test_undo_of_a_transfer_that_is_already_gone_counts_as_undone() -> None:
+    n = FakeNessie(deposit=NessieError("POST", "/d", 400, "bad"), delete=NessieError("DELETE", "/t", 404, "gone"))
+    with pytest.raises(TransferNotMade):
+        move_money(n, "a", "b", 10, ON, "m", "d")
+
+
+def test_key_tags_both_memos() -> None:
+    seen = []
+
+    class Recording(FakeNessie):
+        def create_transfer(self, account, amount, on, memo):
+            seen.append(memo)
+            return super().create_transfer(account, amount, on, memo)
+
+        def create_deposit(self, account, amount, on, memo):
+            seen.append(memo)
+            return super().create_deposit(account, amount, on, memo)
+
+    move_money(Recording(), "a", "b", 10, ON, "Safety net for Maya", "From Sam", key="fund:bridge-1")
+    assert seen == ["Safety net for Maya [rw:fund:bridge-1]", "From Sam [rw:fund:bridge-1]"]
+
+
+def test_amounts_are_whole_cents_and_at_least_one() -> None:
+    n = FakeNessie()
+    with pytest.raises(ValueError):
+        move_money(n, "a", "b", 0.004, ON, "m", "d")
+    assert n.calls == []
+
+
+def test_a_memo_cannot_forge_a_reconciliation_tag() -> None:
+    seen = []
+
+    class Recording(FakeNessie):
+        def create_transfer(self, account, amount, on, memo):
+            seen.append(memo)
+            return super().create_transfer(account, amount, on, memo)
+
+    move_money(Recording(), "a", "b", 10, ON, "pizza [rw:fund:bridge-1]", "d", key="p2p:maya:tap-1")
+    assert "[rw:fund:bridge-1]" not in seen[0] and seen[0].endswith("[rw:p2p:maya:tap-1]")
