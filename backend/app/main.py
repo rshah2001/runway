@@ -164,7 +164,9 @@ def p2p_settle(request_id: str) -> P2PRequest:
 # ---------- family safety net ----------
 # The agent covers a family member's forecast dip from someone else's money — automatically under
 # the lender's limit, with an Auth0 push approval over it — and repays the lender on payday.
-# TODO(auth): limits may only be set by the logged-in lender; approve/decline only by the bridge's lender.
+# TODO(auth) — required before LIVE_TRANSFERS=1: take the persona from the Auth0 user, not ?persona= or the
+# body; only that user may set their own limits (lender = current user) and approve/decline bridges where
+# they are the lender. Until then real writes are off and these routes only simulate.
 
 
 def _live_writes() -> bool:
@@ -249,6 +251,12 @@ def _bridge_action(bridge_id: str, approve: bool) -> Bridge:
         if row is None or row["status"] != "pending_approval":
             raise HTTPException(409, "That bridge isn't waiting for approval")
         return safety_views.bridge(row).model_copy(update={"status": "active" if approve else "declined"})
+    with pool.connection() as conn:
+        current = safety_repo.bridge(conn, bridge_id)
+    if approve and current and current["approval_channel"] == "auth0_push":
+        # sent to the lender's phone: only the Auth0 push answer (polled in the background) may approve it,
+        # so an in-app call can't bypass the lender's own confirmation
+        raise HTTPException(409, "This bridge is waiting for approval on the lender's phone")
     row = safety_net.approve(bridge_id) if approve else safety_net.decline(bridge_id)
     if row is None:
         raise HTTPException(409, "That bridge isn't waiting for approval, or the transfer didn't go through")
