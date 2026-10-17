@@ -6,7 +6,7 @@ Replace with Gemini tool calling. Rules that must survive the rewrite:
   * money-moving tools only create a PendingAction; nothing executes until /actions/{id}/approve
 """
 import re
-import uuid
+import secrets
 from datetime import date, timedelta
 
 from app.forecast import engine
@@ -21,7 +21,7 @@ def chat(message: str) -> ChatResponse:
 
     if "fix" in text:
         action = PendingAction(
-            id=uuid.uuid4().hex[:8],
+            id=secrets.token_urlsafe(16),  # unguessable: the id alone authorizes approval until Auth0 lands
             kind="transfer",
             description="Move $100 from Savings to Everyday Checking",
             amount=100.0,

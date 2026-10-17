@@ -2,6 +2,8 @@
 
 Run:  uvicorn app.main:app --reload --port 8000   (docs at http://localhost:8000/docs)
 """
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,8 +14,9 @@ from app.schemas import ChatRequest, ChatResponse, Forecast, Me, PendingAction, 
 
 app = FastAPI(title="Runway API")
 
-# the Expo dev server (web) runs on a different port; tighten this before deploying
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# only the app's own origins may call the API; set CORS_ORIGINS (comma-separated) when deploying
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8081,http://localhost:19006").split(",")
+app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"])
 
 
 @app.get("/health")
@@ -48,10 +51,14 @@ def agent_chat(req: ChatRequest) -> ChatResponse:
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
 def approve(action_id: str) -> PendingAction:
-    # owner C: gate this behind Auth0 approval before calling Nessie
+    # TODO(auth): require the Auth0 user (Depends) and check action.owner_id == user.id before
+    # anything else. Until then this only moves money between the mock demo accounts.
     action = agent.PENDING.get(action_id)
     if action is None:
         raise HTTPException(404, "No such pending action")
+    if action.status != "awaiting_approval":
+        raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
+    action.status = "approved"
     nessie.create_transfer("demo-sav", "demo-chk", action.amount or 0, action.description)
     action.status = "executed"
     return action
