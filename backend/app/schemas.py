@@ -134,12 +134,31 @@ class SpendingTransaction(BaseModel):
     account: str
 
 
+class CategoryChange(BaseModel):
+    category: str
+    this: float
+    last: float
+    change: float  # this − last: negative = spending less
+
+
+class SpendingCompare(BaseModel):
+    """Against the previous month — the SAME days of it while this month is in progress (app/spending_compare.py)."""
+
+    previous_month: str  # "YYYY-MM"
+    through_day: int | None  # compared through this day of each month; None = whole months
+    this_total: float
+    last_total: float
+    change: float  # negative = spending less than last month
+    categories: list[CategoryChange]  # biggest change first
+
+
 class Spending(BaseModel):
     month: str  # "YYYY-MM"
     total: float
     categories: list[CategorySpend]  # biggest first
     daily: list[DailySpend]  # from the Tiger Data continuous aggregate in live mode
     transactions: list[SpendingTransaction]  # newest first
+    compare: SpendingCompare | None = None  # vs the previous month
 
 
 # ---------- peer-to-peer ----------

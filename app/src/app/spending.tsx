@@ -12,7 +12,7 @@ import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { useStore } from '@/lib/store';
 import { money, monthName, recentMonths, weekdayDate } from '@/lib/format';
-import type { Recurring, Spending } from '@/lib/types';
+import type { Recurring, Spending, SpendingCompare } from '@/lib/types';
 
 /** One colour per category, biggest first — red, amber, blue, green, then quieter ones. */
 const BAR = [C.red, C.amber, C.blue, C.green, '#a78bfa', '#2bb0c4', '#c2477a', C.slate];
@@ -47,6 +47,7 @@ export default function SpendingScreen() {
           <View key={c.category} style={s.cat} accessible accessibilityLabel={`${c.category}: ${money(c.spent, 0)}`}>
             <View style={s.catTop}>
               <Text style={s.catName}>{c.category}</Text>
+              <Delta change={d.compare?.categories.find((x) => x.category === c.category)?.change} />
               <Amount>{money(c.spent, 0)}</Amount>
             </View>
             <View style={s.track}>
@@ -78,6 +79,7 @@ export default function SpendingScreen() {
     <Page onRefresh={() => { sp.reload(); subs.reload(); }} refreshing={sp.loading && !!sp.data}>
       <TopBar />
       <PageTitle title="Spending" sub={d ? `${isNow ? `${monthName(month)} so far` : monthName(month)} · ${money(d.total, 0)}` : monthName(month)} />
+      {d?.compare && <VsLastMonth c={d.compare} />}
       {picker}
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sp.error} onRetry={sp.reload} /></View> : wide ? (
         <View style={s.wideRow}>
@@ -131,7 +133,33 @@ function Subscriptions({ subs }: { subs: Recurring[] | null }) {
   );
 }
 
+/**
+ * One line against last month — the SAME days of it while this month is in progress, so a half-done
+ * month never looks like "spending less" just because it isn't over. Green when less, amber when more.
+ */
+function VsLastMonth({ c }: { c: SpendingCompare }) {
+  const span = `${monthName(c.previous_month, 'short')}${c.through_day ? ` 1–${c.through_day}` : ''}`;
+  const amount = money(Math.abs(c.change), 0);
+  const [text, tone] = Math.abs(c.change) < 1 ? [`About the same as ${span}`, C.text2]
+    : c.change < 0 ? [`${amount} less than ${span}`, C.green]
+    : [`${amount} more than ${span}`, C.amber];
+  return <Text style={[s.vs, { color: tone }]} accessibilityLabel={`Compared with last month: ${text}`}>{text}</Text>;
+}
+
+/** A category's change against the same days last month: "−$30" (less) or "+$18" (more). */
+function Delta({ change }: { change?: number }) {
+  if (change === undefined || Math.abs(change) < 1) return null;
+  const less = change < 0;
+  return (
+    <Text style={[s.delta, { color: less ? C.green : C.amber }]} accessibilityLabel={`${money(Math.abs(change), 0)} ${less ? 'less' : 'more'} than last month`}>
+      {`${less ? '−' : '+'}${money(Math.abs(change), 0)}`}
+    </Text>
+  );
+}
+
 const s = StyleSheet.create({
+  vs: { fontFamily: F.bodySemi, fontSize: 15, marginTop: -4, marginBottom: 14 },
+  delta: { fontFamily: F.condBold, fontSize: 14, marginLeft: 'auto', marginRight: 10 },
   wideRow: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
   seg: { flexDirection: 'row', marginTop: 18, padding: 3, borderRadius: 999, backgroundColor: C.card },
   segBtn: { flex: 1, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
