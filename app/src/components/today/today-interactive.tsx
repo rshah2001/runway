@@ -16,8 +16,9 @@
  */
 import * as Haptics from 'expo-haptics';
 import { type PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react';
-import { type GestureResponderEvent, type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { type GestureResponderEvent, type LayoutChangeEvent, Platform, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
+  interpolateColor,
   type SharedValue,
   useAnimatedProps,
   useAnimatedStyle,
@@ -28,13 +29,15 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 import { answer, ComingUp, Fix } from '@/components/today/today-options';
 import { T } from '@/components/rw/ui';
-import { C, F, RADIUS } from '@/constants/runway';
-import { money, monthDay, weekdayDate } from '@/lib/format';
-import { isClear } from '@/lib/runway';
+import { C, RADIUS, SYSTEM_FONT } from '@/constants/runway';
+import { useLoad } from '@/hooks/use-load';
+import { api } from '@/lib/api';
+import { fromIso, money, monthDay, weekdayDate } from '@/lib/format';
+import { isClear, nextPaycheck, runwayDays, safeToSpend } from '@/lib/runway';
 import type { Forecast } from '@/lib/types';
 
 // Apple's default: critically damped, no overshoot. `duration` stands in for "response".
@@ -51,65 +54,186 @@ function shifted(f: Forecast, delta: number): Forecast {
   return { ...f, points, low };
 }
 
-export function TodayInteractive({ f, wide, scrollY, viewport }: {
-  f: Forecast; wide: boolean; scrollY?: SharedValue<number>; viewport?: number;
+export function TodayInteractive({ f, name, wide, scrollY, viewport }: {
+  f: Forecast; name?: string; wide: boolean; scrollY?: SharedValue<number>; viewport?: number;
 }) {
   const [spend, setSpend] = useState(0); // what-if amount, 0 = off
   const [ghost, setGhost] = useState<number | null>(null); // a proposed fix, previewed on the chart
   const [scrub, setScrub] = useState<number | null>(null); // day index under the finger/pointer
   const [rowDate, setRowDate] = useState<string | null>(null); // day pointed at from Coming up
+  const family = useLoad(() => api.safetyNet());
 
   const view = shifted(f, -spend);
   const a = answer(view);
   const focusIndex = rowDate ? f.points.findIndex((p) => p.date === rowDate) : null;
   const day = scrub ?? (focusIndex !== null && focusIndex >= 0 ? focusIndex : null);
-  const point = day !== null ? view.points[day] : null;
+  const point = day ? view.points[day] : null; // day 0 is today: the default view
   const dayEvents = point ? f.events.filter((e) => e.date === point.date && e.kind !== 'spending') : [];
+  const covered = isClear(view);
+  const dip = covered ? null : view.points[runwayDays(view)];
+  const pay = nextPaycheck(f);
+  const spare = safeToSpend(view);
+  const lowBad = view.low.balance < view.safe_floor;
 
-  const covered = isClear(f);
   const hero = (
-    <Reveal3D order={0} scrollY={scrollY} viewport={viewport} lift={covered}>
+    <Reveal3D order={0} scrollY={scrollY} viewport={viewport} lift={isClear(f)}>
       <View style={s.hero}>
+        <Text style={s.hello}>{`Hi ${name ?? 'there'}`}</Text>
+        <Text style={s.date}>{longDay(f.points[0].date)}</Text>
         {/* the number follows the cursor: today's balance, or the scrubbed day's */}
-        <T tone="dim" style={s.kicker} accessibilityLiveRegion="polite">
-          {point && day ? weekdayDate(point.date) : spend ? `If you spend ${money(spend, 0)} today` : 'In checking today'}
-        </T>
-        <Text style={[s.balance, point && point.balance < f.safe_floor && { color: C.red }]}>
+        <Text style={s.balLabel} accessibilityLiveRegion="polite">
+          {point ? weekdayDate(point.date) : spend ? `If you spend ${money(spend, 0)} today` : 'In checking'}
+        </Text>
+        <Text style={[s.bal, point && point.balance < f.safe_floor && { color: C.red }]}>
           {money(point ? point.balance : view.points[0].balance, 0)}
         </Text>
-        <T tone="dim" style={s.dayLine}>
-          {point && day
+        <Text style={s.subline}>
+          {point
             ? dayEvents.length
               ? dayEvents.map((e) => `${e.label} ${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`).join(' · ')
               : 'Everyday spending only'
             : ' '}
-        </T>
-        <Text style={[s.title, covered && !spend && { color: C.green }]}>
-          {spend ? (isClear(view) ? `You’d still be covered all month.` : a.title.replace('You’re', 'You’d be')) : a.title}
         </Text>
-        <T tone="dim" style={s.detail}>{a.detail}</T>
-
-        <BalanceChart f={f} spend={spend} ghost={ghost} focusIndex={focusIndex !== null && focusIndex >= 0 ? focusIndex : null}
-          onScrub={setScrub} />
-
-        <WhatIf spend={spend} onChange={setSpend} />
-        <Fix f={f} onProposal={setGhost} />
+        <Pill tone={covered ? 'good' : 'bad'} text={covered ? (spend ? 'Still covered all month' : 'Covered all month') : `Dips on ${monthDay(dip!.date)}`} />
       </View>
     </Reveal3D>
   );
-  const coming = (
+
+  const tiles = (
     <Reveal3D order={1} scrollY={scrollY} viewport={viewport}>
-      <ComingUp f={f} selectedDate={point && day ? point.date : null} onFocusDate={setRowDate} />
+      <View style={s.tiles}>
+        <Tile label="Next payday" value={pay ? money(pay.amount, 0) : 'None'} sub={pay ? weekdayDate(pay.date) : 'in the next month'} />
+        <Tile label="Spare money today" value={money(spare, 0)} sub={spare > 0 ? 'after bills' : 'wait for payday'} />
+        <Tile label="Lowest point" value={money(view.low.balance, 0)} sub={monthDay(view.low.date)} tone={lowBad ? 'bad' : undefined} />
+      </View>
     </Reveal3D>
   );
 
-  return wide ? (
-    <View style={s.wideRow}>
-      <View style={{ flex: 1.45 }}>{hero}</View>
-      <View style={{ flex: 1 }}>{coming}</View>
+  const chart = (
+    <Reveal3D order={2} scrollY={scrollY} viewport={viewport}>
+      <Glass>
+        <Text style={s.cardTitle}>Next 30 days</Text>
+        <BalanceChart f={f} spend={spend} ghost={ghost} focusIndex={focusIndex !== null && focusIndex >= 0 ? focusIndex : null}
+          onScrub={setScrub} />
+        <WhatIf spend={spend} onChange={setSpend} />
+        <Fix f={f} onProposal={setGhost} />
+      </Glass>
+    </Reveal3D>
+  );
+
+  // the answer in a sentence, then anything the family safety net did — newest first
+  const news = (family.data?.events ?? []).slice(0, 2);
+  const notes = (
+    <Reveal3D order={3} scrollY={scrollY} viewport={viewport}>
+      <View style={{ gap: 10 }}>
+        <Callout tone={covered ? 'good' : 'bad'} title={spend ? a.title.replace('You’re', 'You’d be') : a.title} text={a.detail} />
+        {news.map((e) => <Callout key={e.at} tone="info" title="From your family" text={e.message} />)}
+      </View>
+    </Reveal3D>
+  );
+
+  const coming = (
+    <Reveal3D order={4} scrollY={scrollY} viewport={viewport}>
+      <Glass>
+        <ComingUp bare f={f} selectedDate={point ? point.date : null} onFocusDate={setRowDate} />
+      </Glass>
+    </Reveal3D>
+  );
+
+  return (
+    <View style={{ gap: 18 }}>
+      {hero}
+      {tiles}
+      {wide ? (
+        <View style={s.wideRow}>
+          <View style={{ flex: 1.45 }}>{chart}</View>
+          <View style={{ flex: 1, gap: 18 }}>{notes}{coming}</View>
+        </View>
+      ) : (
+        <>{notes}{chart}{coming}</>
+      )}
     </View>
-  ) : (
-    <View style={{ gap: 16 }}>{hero}{coming}</View>
+  );
+}
+
+/** "Saturday, October 17" */
+const longDay = (iso: string) => fromIso(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+type Tone = 'good' | 'bad' | 'warn' | 'info';
+const TONES: Record<Tone, { fg: string; bg: string }> = {
+  good: { fg: C.green, bg: 'rgba(63,208,127,0.14)' },
+  bad: { fg: C.red, bg: 'rgba(255,90,78,0.14)' },
+  warn: { fg: C.amber, bg: 'rgba(245,184,61,0.14)' },
+  info: { fg: C.blue, bg: 'rgba(75,157,255,0.14)' },
+};
+
+/** A status pill: colour plus words, never colour alone. */
+function Pill({ tone, text }: { tone: Tone; text: string }) {
+  return (
+    <View style={[s.pill, { backgroundColor: TONES[tone].bg }]}>
+      <View style={[s.pillDot, { backgroundColor: TONES[tone].fg }]} />
+      <Text style={[s.pillText, { color: TONES[tone].fg }]}>{text}</Text>
+    </View>
+  );
+}
+
+/** A plain sentence with a coloured edge: what's happening, in words. */
+function Callout({ tone, title, text }: { tone: Tone; title: string; text: string }) {
+  return (
+    <View style={[s.callout, { borderLeftColor: TONES[tone].fg, backgroundColor: TONES[tone].bg }]} accessible>
+      <Text style={s.calloutTitle}>{title}</Text>
+      <Text style={s.calloutText}>{text}</Text>
+    </View>
+  );
+}
+
+function Tile({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: Tone }) {
+  return (
+    <Glass style={s.tile} grow>
+      <Text style={s.tileLabel}>{label}</Text>
+      <Text style={[s.tileValue, tone && { color: TONES[tone].fg }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={s.tileSub} numberOfLines={2}>{sub}</Text>
+    </Glass>
+  );
+}
+
+/**
+ * A translucent card. On the website it lifts 2px under the pointer on a spring and its edge
+ * brightens — a hint that what's inside responds. Phones have no hover, so it stays put.
+ */
+function Glass({ children, style, grow }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; grow?: boolean }>) {
+  const reduced = useReducedMotion();
+  const hover = useSharedValue(0);
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ translateY: -2 * hover.get() }],
+    borderColor: interpolateColor(hover.get(), [0, 1], ['rgba(140,165,190,0.16)', 'rgba(140,200,175,0.34)']),
+  }));
+  const card = <Animated.View style={[s.glass, style, anim]}>{children}</Animated.View>;
+  if (Platform.OS !== 'web') return card;
+  const to = (v: number) => hover.set(reduced ? v : withSpring(v, { dampingRatio: 1, duration: 350 }));
+  return (
+    <Pressable onHoverIn={() => to(1)} onHoverOut={() => to(0)} style={grow && { flex: 1 }} accessible={false}>
+      {card}
+    </Pressable>
+  );
+}
+
+/** Still glows behind the page (green, blue, violet) — depth without anything drifting. */
+export function Glows() {
+  return (
+    <Svg style={StyleSheet.absoluteFill} pointerEvents="none" preserveAspectRatio="xMidYMid slice" viewBox="0 0 1000 1000">
+      <Defs>
+        {[['g1', '#1f8f63'], ['g2', '#1e4f9a'], ['g3', '#5a3fa0']].map(([id, c]) => (
+          <RadialGradient key={id} id={id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={c} stopOpacity={0.32} />
+            <Stop offset="1" stopColor={c} stopOpacity={0} />
+          </RadialGradient>
+        ))}
+      </Defs>
+      <Circle cx={120} cy={60} r={420} fill="url(#g1)" />
+      <Circle cx={940} cy={380} r={400} fill="url(#g2)" />
+      <Circle cx={420} cy={980} r={380} fill="url(#g3)" />
+    </Svg>
   );
 }
 
@@ -276,7 +400,7 @@ function BalanceChart({ f, spend, ghost, focusIndex, onScrub }: {
             <G clipPath="url(#above)"><AnimatedPath fill="url(#fillUp)" animatedProps={toAxis} /></G>
             <G clipPath="url(#below)"><AnimatedPath fill={C.red} fillOpacity={0.4} animatedProps={toFloor} /></G>
             <Line x1={0} x2={w} y1={floorY} y2={floorY} stroke={C.text3} strokeWidth={1} strokeDasharray="4 5" />
-            <SvgText x={w - 4} y={floorY - 7} fill={C.text2} fontSize={12} fontFamily={F.body} textAnchor="end">
+            <SvgText x={w - 4} y={floorY - 7} fill={C.text2} fontSize={12} fontFamily={SYSTEM_FONT} textAnchor="end">
               {`${money(f.safe_floor, 0)} you keep`}
             </SvgText>
             {ghostD ? (
@@ -328,7 +452,7 @@ function RidingDot({ i, x, from, to, morph, offset, yIn }: Ride) {
 function RidingLabel({ i, x, from, to, morph, offset, yIn, anchor, text }: Ride & { anchor: 'start' | 'middle' | 'end'; text: string }) {
   const props = useAnimatedProps(() => ({ y: Math.min(CH - 4, yIn(blend(from.get(), to.get(), morph.get(), offset.get())[i]) + 22) }));
   return (
-    <AnimatedSvgText x={x} fill={C.red} fontSize={13} fontFamily={F.bodySemi} textAnchor={anchor} animatedProps={props}>
+    <AnimatedSvgText x={x} fill={C.red} fontSize={13} fontFamily={SYSTEM_FONT} fontWeight="600" textAnchor={anchor} animatedProps={props}>
       {text}
     </AnimatedSvgText>
   );
@@ -411,27 +535,45 @@ function Reveal3D({ order, scrollY, viewport, lift, children }: PropsWithChildre
   );
 }
 
+const SYS = { fontFamily: SYSTEM_FONT } as const;
 const s = StyleSheet.create({
-  wideRow: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
-  hero: { backgroundColor: C.card, borderRadius: RADIUS + 4, padding: 24 },
-  kicker: { fontSize: 15 },
-  balance: { fontFamily: F.condBold, fontSize: 64, lineHeight: 66, color: C.text, letterSpacing: -1, marginTop: 2 },
-  dayLine: { fontSize: 15, minHeight: 20 },
-  title: { fontFamily: F.bodySemi, fontSize: 26, lineHeight: 32, color: C.text, marginTop: 10 },
-  detail: { fontSize: 17, lineHeight: 25, marginTop: 6, maxWidth: 600 },
+  wideRow: { flexDirection: 'row', gap: 18, alignItems: 'flex-start' },
+
+  hero: { alignItems: 'center', paddingTop: 18, paddingBottom: 4 },
+  hello: { ...SYS, fontSize: 26, fontWeight: '700', letterSpacing: -0.4, color: C.text },
+  date: { ...SYS, fontSize: 14, color: C.text2, marginTop: 4 },
+  balLabel: { ...SYS, fontSize: 13, color: C.text2, marginTop: 22 },
+  bal: { ...SYS, fontSize: 60, lineHeight: 66, fontWeight: '800', letterSpacing: -1.8, color: C.text, fontVariant: ['tabular-nums'], marginTop: 2 },
+  subline: { ...SYS, fontSize: 14, color: C.text2, minHeight: 20 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 99, paddingVertical: 6, paddingHorizontal: 14, marginTop: 10 },
+  pillDot: { width: 8, height: 8, borderRadius: 4 },
+  pillText: { ...SYS, fontSize: 14, fontWeight: '700' },
+
+  tiles: { flexDirection: 'row', gap: 10 },
+  tile: { flex: 1, padding: 16 },
+  tileLabel: { ...SYS, fontSize: 13, color: C.text2 },
+  tileValue: { ...SYS, fontSize: 26, fontWeight: '700', letterSpacing: -0.5, color: C.text, fontVariant: ['tabular-nums'], marginTop: 6 },
+  tileSub: { ...SYS, fontSize: 12.5, lineHeight: 17, color: C.text3, marginTop: 2 },
+
+  glass: { backgroundColor: 'rgba(30,38,48,0.72)', borderWidth: 1, borderColor: 'rgba(140,165,190,0.16)', borderRadius: RADIUS + 4, padding: 22 },
+  cardTitle: { ...SYS, fontSize: 19, fontWeight: '600', color: C.text },
+
+  callout: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16 },
+  calloutTitle: { ...SYS, fontSize: 16, fontWeight: '700', color: C.text },
+  calloutText: { ...SYS, fontSize: 15, lineHeight: 22, color: C.text2, marginTop: 3 },
 
   axis: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
-  axisText: { fontSize: 13 },
+  axisText: { ...SYS, fontSize: 13 },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot: { width: 9, height: 9, borderRadius: 5 },
   legendDash: { width: 16, height: 0, borderTopWidth: 2, borderStyle: 'dashed', borderColor: C.green, marginLeft: 10 },
-  hint: { fontSize: 13, marginTop: 6 },
+  hint: { ...SYS, fontSize: 13, marginTop: 6 },
 
   whatIf: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 18 },
-  whatIfLabel: { fontSize: 16 },
+  whatIfLabel: { ...SYS, fontSize: 15 },
   chips: { flexDirection: 'row', gap: 8 },
-  chip: { height: 38, paddingHorizontal: 16, borderRadius: 19, borderWidth: 1, borderColor: C.line, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  chip: { height: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(140,165,190,0.22)', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
   chipOn: { backgroundColor: '#fff', borderColor: '#fff' },
-  chipText: { fontFamily: F.bodySemi, fontSize: 15, color: C.text },
+  chipText: { ...SYS, fontWeight: '600', fontSize: 15, color: C.text },
   chipTextOn: { color: '#111' },
 });

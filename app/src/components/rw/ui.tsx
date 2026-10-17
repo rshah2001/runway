@@ -130,7 +130,11 @@ export function Btn({ label, ghost, disabled, onPress, style }: { label: string;
  * Scrollable page: charcoal gradient, safe-area top padding on phones, centred max-width column on
  * desktop. `header` sits above the scroll on the website's wide layout only if provided.
  */
-export function Page({ children, onRefresh, refreshing = false, scroll = true }: PropsWithChildren<{ onRefresh?: () => void; refreshing?: boolean; scroll?: boolean }>) {
+export function Page({ children, onRefresh, refreshing = false, scroll = true, backdrop }: PropsWithChildren<{
+  onRefresh?: () => void; refreshing?: boolean; scroll?: boolean;
+  /** drawn over the gradient, behind the content, full width (e.g. Today's glows) */
+  backdrop?: ReactNode;
+}>) {
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const top = Platform.OS === 'web' ? (wide ? 24 : 12) : insets.top + 8;
@@ -147,6 +151,7 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true }:
         </Defs>
         <Rect width="100" height="100" fill="url(#pg)" />
       </Svg>
+      {backdrop}
       {scroll ? (
         <ScrollView
           contentContainerStyle={{ paddingBottom: 124 }} // room for the floating bottom bar / chat button
@@ -182,7 +187,7 @@ const s = StyleSheet.create({
   section: { fontFamily: F.cond, fontSize: 26, color: C.text, paddingTop: 24, paddingBottom: 10, paddingHorizontal: 4 },
   btn: { height: 40, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.line },
-  page: { flex: 1, backgroundColor: C.bg },
+  page: { flex: 1, backgroundColor: C.bg, overflow: 'hidden' },
   inner: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 },
   state: { padding: 32, alignItems: 'center', justifyContent: 'center' },
 });

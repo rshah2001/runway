@@ -17,7 +17,7 @@ import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, Rect, Stop,
 import { ApprovalCard } from '@/components/rw/approval-card';
 import { RunwayStrip } from '@/components/rw/runway-strip';
 import { PressableScale, T } from '@/components/rw/ui';
-import { C, F, RADIUS } from '@/constants/runway';
+import { C, F, RADIUS, SYSTEM_FONT } from '@/constants/runway';
 import { api } from '@/lib/api';
 import { fromIso, money, monthDay, weekdayDate } from '@/lib/format';
 import { isClear, nextPaycheck, runwayDays, safeToSpend, upcoming } from '@/lib/runway';
@@ -221,12 +221,16 @@ export function Fix({ f, onProposal }: { f: Forecast; onProposal?: (amount: numb
  * With `onFocusDate`, rows are interactive: hover or press a row to point at that day on the chart;
  * the row for `selectedDate` (from scrubbing the chart) lights up, so the two stay in step.
  */
-export function ComingUp({ f, selectedDate, onFocusDate }: { f: Forecast; selectedDate?: string | null; onFocusDate?: (date: string | null) => void }) {
+export function ComingUp({ f, selectedDate, onFocusDate, bare }: {
+  f: Forecast; selectedDate?: string | null; onFocusDate?: (date: string | null) => void;
+  /** no card of its own (the caller wraps it) */
+  bare?: boolean;
+}) {
   const items = upcoming(f);
   const pay = nextPaycheck(f);
   const spare = safeToSpend(f);
   return (
-    <View style={s.card}>
+    <View style={!bare && s.card}>
       <Text style={s.cardTitle}>Coming up</Text>
       <View style={{ marginTop: 6 }}>
         {items.length === 0 && <T tone="dim" style={s.row}>Nothing due in the next two weeks.</T>}
@@ -245,7 +249,8 @@ export function ComingUp({ f, selectedDate, onFocusDate }: { f: Forecast; select
           </Pressable>
         ))}
       </View>
-      <View style={s.facts}>
+      {/* framed by the caller, payday and spare money already show as tiles */}
+      {!bare && <View style={s.facts}>
         <View style={s.fact}>
           <T tone="dim" style={s.factLabel}>Next payday</T>
           <T style={s.factValue}>{pay ? `${money(pay.amount, 0)} on ${weekdayDate(pay.date)}` : 'None in the next month'}</T>
@@ -254,7 +259,7 @@ export function ComingUp({ f, selectedDate, onFocusDate }: { f: Forecast; select
           <T tone="dim" style={s.factLabel}>Spare money today</T>
           <T style={s.factValue}>{spare > 0 ? `${money(spare, 0)} you can spend` : pay ? `None. Wait for ${fromIso(pay.date).toLocaleDateString('en-US', { weekday: 'long' })}’s pay.` : 'None right now.'}</T>
         </View>
-      </View>
+      </View>}
     </View>
   );
 }
@@ -280,16 +285,16 @@ const s = StyleSheet.create({
   fixNote: { fontSize: 15, lineHeight: 21 },
 
   card: { backgroundColor: C.card, borderRadius: RADIUS + 4, padding: 22 },
-  cardTitle: { fontFamily: F.bodySemi, fontSize: 20, color: C.text },
+  cardTitle: { fontFamily: SYSTEM_FONT, fontWeight: '600', fontSize: 19, color: C.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   rowLine: { borderTopWidth: 1, borderTopColor: C.line },
   // lit when the row's day is selected on the chart (or pressed); the bleed keeps text aligned
   rowOn: { backgroundColor: C.card2, marginHorizontal: -10, paddingHorizontal: 10, borderRadius: 10, borderTopColor: 'transparent' },
-  rowDate: { width: 104, fontSize: 16 },
-  rowName: { flex: 1, fontSize: 17 },
-  rowAmount: { fontFamily: F.bodySemi, fontSize: 17 },
+  rowDate: { width: 104, fontSize: 15, fontFamily: SYSTEM_FONT },
+  rowName: { flex: 1, fontSize: 16, fontFamily: SYSTEM_FONT },
+  rowAmount: { fontFamily: SYSTEM_FONT, fontWeight: '600', fontSize: 16, fontVariant: ['tabular-nums'] },
   facts: { marginTop: 10, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line, gap: 12 },
   fact: { gap: 2 },
-  factLabel: { fontSize: 15 },
-  factValue: { fontSize: 17 },
+  factLabel: { fontSize: 14, fontFamily: SYSTEM_FONT },
+  factValue: { fontSize: 16, fontFamily: SYSTEM_FONT },
 });

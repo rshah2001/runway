@@ -13,7 +13,7 @@ import { Swoosh } from '@/components/rw/icons';
 import { Ring } from '@/components/rw/ring';
 import { ActRow } from '@/components/rw/rows';
 import { RunwayStrip } from '@/components/rw/runway-strip';
-import { TodayInteractive } from '@/components/today/today-interactive';
+import { Glows, TodayInteractive } from '@/components/today/today-interactive';
 import { OptionA, OptionB } from '@/components/today/today-options';
 import { Btn, Card, CardHeader, Caps, LoadState, Page, SectionTitle, T, useWide } from '@/components/rw/ui';
 import { C, MAX_WIDTH } from '@/constants/runway';
@@ -156,7 +156,7 @@ function InteractiveToday({ f, name, refreshing, onRefresh }: { f: Forecast; nam
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => { scrollY.set(e.contentOffset.y); });
   return (
-    <Page scroll={false}>
+    <Page scroll={false} backdrop={<Glows />}>
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.text2} />}>
         {!wide && (
@@ -165,8 +165,7 @@ function InteractiveToday({ f, name, refreshing, onRefresh }: { f: Forecast; nam
             <AccountButton />
           </View>
         )}
-        <T style={s.hello}>{`Hi ${name ?? 'there'}`}</T>
-        <TodayInteractive f={f} wide={wide} scrollY={scrollY} viewport={height} />
+        <TodayInteractive f={f} name={name} wide={wide} scrollY={scrollY} viewport={height} />
         <View style={s.credit}><View style={s.dot} /><T tone="faint" style={{ fontSize: 13 }}>Balances from Capital One Nessie</T></View>
       </Animated.ScrollView>
     </Page>
