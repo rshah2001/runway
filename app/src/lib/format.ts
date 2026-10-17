@@ -41,3 +41,6 @@ export function recentMonths(n: number): string[] {
   }
   return out;
 }
+
+/** The backend's feed messages and memos can start or end with an emoji; the screens use plain words only. */
+export const plain = (message: string) => message.replace(/^\p{Extended_Pictographic}\uFE0F?\s*|\s*\p{Extended_Pictographic}\uFE0F?$/gu, '');

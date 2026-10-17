@@ -138,14 +138,14 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true, b
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const top = Platform.OS === 'web' ? (wide ? 24 : 12) : insets.top + 8;
-  const inner = <View style={[s.inner, { paddingTop: top, paddingHorizontal: wide ? 32 : 12 }]}>{children}</View>;
+  const inner = <View style={[s.inner, { paddingTop: top, paddingHorizontal: wide ? 32 : 18 }]}>{children}</View>;
   return (
     <View style={s.page}>
       <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100" pointerEvents="none">
         <Defs>
           <LinearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={C.bgTop} />
-            <Stop offset="0.35" stopColor="#1a2026" />
+            <Stop offset="0.35" stopColor="#12161a" />
             <Stop offset="0.7" stopColor={C.bg} />
           </LinearGradient>
         </Defs>
