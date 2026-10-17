@@ -1,6 +1,6 @@
 /**
- * Who you are, and the way back out: "Maya · Switch" when looking around, "Maya · Sign out" when
- * signed in. Sits in the website's tab bar and at the top of Today on phones.
+ * Who you are, and the way out: "Maya · Sign out". Sits in the website's tab bar and at the top
+ * of Today on phones.
  */
 import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
@@ -13,12 +13,11 @@ import { useSession } from '@/lib/session';
 export function AccountButton() {
   const session = useSession();
   const [leaving, setLeaving] = useState(false);
-  if (session.mode !== 'guest' && session.mode !== 'signed-in') return null;
-  const action = session.mode === 'signed-in' ? 'Sign out' : 'Switch';
+  if (session.mode !== 'signed-in') return null;
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={session.mode === 'signed-in' ? `Signed in as ${session.name}. Sign out` : `Looking around as ${session.name}. Switch person`}
+      accessibilityLabel={`Signed in as ${session.name}. Sign out`}
       disabled={leaving}
       onPress={async () => {
         setLeaving(true);
@@ -30,7 +29,7 @@ export function AccountButton() {
       }}
       style={s.chip}>
       <Text style={s.name}>{session.name}</Text>
-      <Text style={s.action}>{leaving ? '…' : action}</Text>
+      <Text style={s.action}>{leaving ? '…' : 'Sign out'}</Text>
     </PressableScale>
   );
 }
