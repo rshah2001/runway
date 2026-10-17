@@ -14,7 +14,7 @@ from statistics import median
 from typing import Literal
 
 from app.forecast import readiness
-from app.forecast.recurring import detect_recurring
+from app.forecast.recurring import detect_recurring, provisional
 from app.forecast.sources import PersonaData, Txn
 from app.forecast.spend_model import Outflows, SpendProfile, daily_totals, fit_flat
 from app.schemas import Readiness
@@ -47,6 +47,7 @@ class RegularFlow:
     interval_days: int
     next_date: date
     kind: EventKind
+    provisional: bool = False  # seen twice, not yet three times: expected, not confirmed
 
 
 @dataclass(frozen=True)
@@ -66,16 +67,27 @@ def _checking_flow(t: Txn) -> bool:
 
 
 def regular_flows(history: list[Txn], today: date) -> list[RegularFlow]:
-    """Paychecks and fixed transfers that repeat on a steady cadence for a steady amount."""
-    incoming = detect_recurring(history, today, lambda t: _checking_flow(t) and t.amount > 0)
+    """Paychecks and fixed transfers that repeat on a steady cadence for a steady amount.
+
+    Income seen only twice is included as provisional: a new user's paycheck shows up in the forecast
+    after their second payday instead of their third. Confirmed series always win; a provisional one is
+    only the paycheck if it's larger than every confirmed income (a $50 allowance mustn't outrank it)."""
+    incoming_rule = lambda t: _checking_flow(t) and t.amount > 0  # noqa: E731
+    incoming = detect_recurring(history, today, incoming_rule)
     outgoing = detect_recurring(history, today, lambda t: _checking_flow(t) and t.amount < 0)
-    biggest_in = max((r.amount for r in incoming), default=0)
+    maybe = provisional(history, today, incoming_rule)
+    biggest_in = max((r.amount for r in [*incoming, *maybe]), default=0)
     flows = [
         # the largest steady income is the paycheck; smaller ones are splits and allowances
         RegularFlow(
             r.merchant, r.amount, r.interval_days, r.next_date, "paycheck" if r.amount == biggest_in else "transfer"
         )
         for r in incoming
+    ]
+    flows += [
+        RegularFlow(r.merchant, r.amount, r.interval_days, r.next_date, "paycheck", provisional=True)
+        for r in maybe
+        if r.amount == biggest_in and not any(f.kind == "paycheck" for f in flows)
     ]
     flows += [RegularFlow(r.merchant, -r.amount, r.interval_days, r.next_date, "transfer") for r in outgoing]
     return flows
@@ -143,8 +155,16 @@ def build(data: PersonaData, today: date, fit=fit_flat) -> Schedule:
         MonthlyCharge(b.day, b.amount, b.label, "card_payment" if "credit card" in b.label.lower() else "bill")
         for b in data.bills
     ]
-    paycheck = next(((f.label, f.amount, f.interval_days) for f in regular if f.kind == "paycheck"), None)
-    ready = readiness.assess(data, today, spend_days=(end - start).days, paycheck=paycheck, left_out=unusual)
+    pay_flow = next((f for f in regular if f.kind == "paycheck"), None)
+    paycheck = (pay_flow.label, pay_flow.amount, pay_flow.interval_days) if pay_flow else None
+    ready = readiness.assess(
+        data,
+        today,
+        spend_days=(end - start).days,
+        paycheck=paycheck,
+        left_out=unusual,
+        paycheck_provisional=bool(pay_flow and pay_flow.provisional),
+    )
     return Schedule(
         start_balance=data.checking,
         monthly=monthly,

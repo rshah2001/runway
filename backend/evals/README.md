@@ -93,10 +93,10 @@ seed days (each seed day generates a different history).
 How does it learn? The same backtest, but the live model may only learn from the last N days before
 the cutoff, as if Runway had just met the person. Same 18 folds.
 
-| Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday found |
+| Days of history | MAE, daily balance | p5–p90 band coverage | Days below the low end | Payday in forecast |
 |---|---|---|---|---|
 | 14 | $2,700.01 | 13% | 4% | 0% |
-| 30 | $2,737.30 | 19% | 0% | 0% |
+| 30 | **$205.81** (was $2,737.30) | 90% | 4% | 100% (provisional) |
 | 60 | $198.69 | 88% | 0% | 100% |
 | 90 | $137.65 | 91% | 1% | 100% |
 
@@ -109,12 +109,19 @@ the cutoff, as if Runway had just met the person. Same 18 folds.
   spending brought that to 8% of days and 3 of 18 months. Going to p97 only saved one more month
   while widening the band for everyone, so the leftover misses come from what the band doesn't model
   (paycheck amounts, irregular P2P), not from the quantile.
-- **The cliff between 30 and 60 days is the payday.** The detector needs three paychecks on a steady
-  rhythm before it puts income in the forecast (biweekly: ~5 weeks; monthly: ~2 months). Without
-  income, the forecast misses every paycheck in month 4, which is where a $2,700 error comes from.
-  That is exactly what readiness reports: with no payday found, the status is "calibrating" or
-  "learning", never "confident", and the safety net won't act on it automatically.
-- Coverage at 14–30 days is low for the same reason: the band models everyday spending, not a
+- **Provisional payday: the 30-day cliff is gone.** The detector needs three paychecks on a steady
+  rhythm to *confirm* a payday. Before, the forecast had no income at all until then, so with 30 days
+  of history it missed every month-4 paycheck ($2,737 error). Now two matching paychecks (same payer,
+  amounts within 5%, a gap that fits weekly / every-2-weeks / monthly pay, the latest one recent) put
+  a **provisional** payday in the forecast: error at 30 days drops **92%, to $206**, almost the 60-day
+  level. Readiness says so ("I've seen 2 paychecks… I'll be sure after the 3rd") and never calls it
+  "confident".
+- **What it costs:** a payday seen twice is less certain than one seen three times. With the old,
+  uncalibrated range, 11% of real days at 30 days fell below the cautious end; the calibrated range
+  (above) brings that to 4%. Even so, anything that moves money automatically should wait for "confident": the safety net should only bridge automatically when the
+  borrower's readiness is "confident" (a suggested change for `app/safety_net.py`, owned by the backend).
+- **14 days is unchanged on purpose:** two weeks usually holds one paycheck, and one deposit doesn't fit
+  any pattern. Coverage there stays low for the same reason: the band models everyday spending, not a
   missing paycheck.
 
 **How the band is built (`app/forecast/band.py`):** a moving-block bootstrap over the daily spending

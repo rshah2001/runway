@@ -60,6 +60,7 @@ def test_learning_curve_gets_better_with_history_and_the_band_is_honest() -> Non
     assert 0.70 <= curve[90].coverage <= 0.95  # a p5–p90 band should hold ~85% of real days
     assert curve[90].below_low <= 0.10  # the safety net plans on the low end: it must rarely be beaten
     assert curve[90].coverage > curve[30].coverage
+    assert curve[30].payday_found == 1.0 and curve[30].mae < 400  # two paychecks are enough: no 30-day cliff
 
 
 # ---------- tone eval rules (the Gemini run is manual; the rules themselves are tested here) ----------
