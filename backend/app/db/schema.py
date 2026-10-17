@@ -274,6 +274,21 @@ ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS support_exposure_limit nu
 -- 'approval': the supporter wants to be asked every time, whatever the amount
 ALTER TABLE support_agreements ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'auto'
     CHECK (mode IN ('auto', 'approval'));
+-- every decision the safety net acts on (and each day's "nobody could help safely"), for the audit trail.
+-- Never shown to users: `held` names supporters kept out for their own safety, which is THEIR business.
+CREATE TABLE IF NOT EXISTS support_decisions (
+    id                 text PRIMARY KEY,
+    borrower           text NOT NULL,
+    action             text NOT NULL,
+    need               numeric(12, 2) NOT NULL,
+    covered            numeric(12, 2) NOT NULL,
+    allocations        jsonb NOT NULL DEFAULT '[]',
+    held               jsonb NOT NULL DEFAULT '[]',
+    reason             text NOT NULL,
+    algorithm_version  text NOT NULL,
+    created_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS support_decisions_borrower ON support_decisions (borrower, created_at DESC);
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS agreement_version integer;
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS decision_id text;
 

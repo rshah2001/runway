@@ -1,5 +1,6 @@
 """Queries for the family safety net (limits, bridges, the shared activity feed)."""
 
+from decimal import Decimal
 from typing import Any
 
 import psycopg
@@ -48,6 +49,28 @@ def seed_limit(conn: psycopg.Connection, lender: str, borrower: str, amount: flo
         """INSERT INTO safety_limits (lender_slug, borrower_slug, limit_amount, enabled) VALUES (%s, %s, %s, %s)
            ON CONFLICT DO NOTHING""",
         (lender, borrower, amount, enabled),
+    )
+
+
+def record_decision(conn: psycopg.Connection, decision_id: str, d: Any, covered: Decimal, version: str) -> None:
+    """Write one decision to the audit trail (idempotent on its id)."""
+    import json
+
+    conn.execute(
+        """INSERT INTO support_decisions
+             (id, borrower, action, need, covered, allocations, held, reason, algorithm_version)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING""",
+        (
+            decision_id,
+            d.borrower,
+            d.action,
+            d.amount,
+            covered,
+            json.dumps([[s, str(a)] for s, a in d.allocations]),
+            json.dumps([[s, why] for s, _, why in d.held]),
+            d.reason,
+            version,
+        ),
     )
 
 
