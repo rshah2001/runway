@@ -117,6 +117,15 @@ def decide(
 
     safe.sort(key=lambda x: x[1], reverse=True)  # most runway first
     under = [h for h, _ in safe if h.remaining >= need]
+    if under and b.readiness != "confident":
+        # the limit pre-authorises bridges on a forecast Runway trusts; until it's confident (e.g. its payday
+        # has only been seen twice), the lender approves each one instead
+        h = under[0]
+        reason = (
+            f"{gap}. Runway is still learning {name}'s money, so {h.projection.first_name} needs to approve "
+            f"this {_money(need)} bridge instead of it happening automatically."
+        )
+        return Decision(b.slug, "needs_approval", reason, need, h.projection.slug, **base)
     if under:
         h = under[0]
         reason = (

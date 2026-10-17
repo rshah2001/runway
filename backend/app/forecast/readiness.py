@@ -50,6 +50,7 @@ def assess(
     spend_days: int,
     paycheck: tuple[str, float, int] | None,
     left_out: Sequence[Txn] = (),
+    paycheck_provisional: bool = False,
 ) -> Readiness:
     """Readiness for one persona as of `today`.
 
@@ -63,13 +64,19 @@ def assess(
 
     if days < CALIBRATING_DAYS or seen == 0:
         status = "calibrating"
-    elif paycheck is not None and spend_days >= CONFIDENT_SPEND_DAYS:
+    elif paycheck is not None and not paycheck_provisional and spend_days >= CONFIDENT_SPEND_DAYS:
         status = "confident"
     else:
         status = "learning"
 
     reasons = [f"I've watched {days} day{'s' if days != 1 else ''} of your money."]
-    if paycheck is not None:
+    if paycheck is not None and paycheck_provisional:
+        _, amount, interval = paycheck
+        reasons.append(
+            f"I've seen {seen} paychecks of ${amount:,.2f} {interval} days apart, so I'm counting on the next one; "
+            f"I'll be sure after the {MIN_CHARGES}rd."
+        )
+    elif paycheck is not None:
         label, amount, interval = paycheck
         reasons.append(f"Found your payday: ${amount:,.2f} every {interval} days ({label}).")
     elif seen == 0:
@@ -95,7 +102,8 @@ def assess(
         status=status,
         days_of_history=days,
         paychecks_seen=seen,
-        paycheck_found=paycheck is not None,
+        paycheck_found=paycheck is not None and not paycheck_provisional,
+        paycheck_provisional=paycheck_provisional,
         spend_days=spend_days,
         progress=progress,
         reasons=reasons,

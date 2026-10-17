@@ -84,7 +84,9 @@ def score_fold(persona: str, seed_day: date, fit: Fit = fit_flat, history_days: 
         mae=mean(errors),
         mape=abs(predicted_spend - actual_spend) / actual_spend,
         coverage=inside / len(predicted),
-        payday_found=float(bool(sched.readiness and sched.readiness.paycheck_found)),
+        payday_found=float(
+            bool(sched.readiness and (sched.readiness.paycheck_found or sched.readiness.paycheck_provisional))
+        ),
         below_low=below / len(predicted),
     )
 

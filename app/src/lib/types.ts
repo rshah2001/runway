@@ -35,6 +35,7 @@ export type Readiness = {
   days_of_history: number;
   paychecks_seen: number;
   paycheck_found: boolean; // the forecast has a learned payday in it
+  paycheck_provisional?: boolean; // it's counting on a payday seen only twice so far
   spend_days: number; // days the everyday spending rate was learned from
   progress: number; // 0–1 toward "confident"
   reasons: string[]; // plain English, safe to show as-is
