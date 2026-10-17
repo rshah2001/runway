@@ -21,7 +21,7 @@ from app.forecast import engine, readiness, sources
 from app.forecast.recurring import detect_recurring
 from app.forecast.schedule import Schedule
 from app.forecast.sources import PersonaData
-from app.schemas import Contact, Forecast, ForecastEvent, ForecastPoint, P2PSummary, PendingAction
+from app.schemas import Bridge, Contact, Forecast, ForecastEvent, ForecastPoint, P2PSummary, PendingAction
 
 PENDING: dict[str, PendingAction] = {}  # in-memory for now; moves to the DB with Tiger Data
 ACTION_PERSONA: dict[str, str] = {}  # whose money a pending action touches, until Auth0 supplies the user
@@ -415,6 +415,66 @@ def request_money(
     return result
 
 
+# ---------- family safety net (read-only) ----------
+
+# plain-words status for each bridge, so the model never has to interpret status codes
+BRIDGE_STATUS = {
+    "pending_approval": "waiting for {lender}'s OK",
+    "declined": "{lender} said no",
+    "funding": "on its way",
+    "active": "covered; goes back automatically on {due}",
+    "repaying": "going back today",
+    "repaid": "paid back on {repaid}",
+    "repay_failed": "late: couldn't go back on {due}",
+    "failed": "didn't go through; nothing moved",
+}
+
+
+def _bridge(b: Bridge) -> dict[str, Any]:
+    words = BRIDGE_STATUS.get(b.status, b.status).format(
+        lender=b.lender_name, due=day(b.due_date), repaid=day(b.repaid_on) if b.repaid_on else "payday"
+    )
+    return {"from": b.lender_name, "to": b.borrower_name, "amount": money(b.amount), "status": words, "why": b.reason}
+
+
+def explain_safety_net(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """The family safety net from this user's side: who covered them, what they lent and when it comes
+    back, the limits they set, and requests waiting for their OK.
+
+    Read-only by design. It can't approve, decline, start or change anything: those happen only in the
+    app's Family screen, from the person whose money it is.
+    """
+    from app import safety_views  # the backend's read-only view of the safety net
+
+    today = today or sources.local_today()
+    s = safety_views.summary(persona)
+    _, sched = _inputs(persona, today)
+    now = engine.forecast(start=today, schedule=sched)
+    return {
+        # tone follows the chat's own forecast, the same engine the safety net plans on
+        **_mood(now.low.balance, now.safe_floor),
+        "covered_me": [_bridge(b) for b in s.borrowed],
+        "i_lent": [_bridge(b) for b in s.lent],
+        "waiting_for_my_ok": [_bridge(b) for b in s.approvals_waiting],
+        "limits_i_set": [
+            {
+                "for": lim.borrower_name,
+                "limit": money(lim.limit),
+                "out_now": money(lim.outstanding),
+                "left": money(lim.remaining),
+                "on": lim.enabled,
+            }
+            for lim in s.limits_i_set
+        ],
+        "family_covering_me": [
+            {"who": lim.lender_name, "up_to": money(lim.limit), "on": lim.enabled} for lim in s.limits_for_me
+        ],
+        "recent": [e.message for e in s.events[:5]],
+        "can_change_here": False,
+        "where_to_act": "The Family screen in the app: approve or decline requests, and change limits there.",
+    }
+
+
 def discard(action_id: str) -> None:
     """Forget a proposal that was never shown to the user, so it can never be approved."""
     PENDING.pop(action_id, None)
@@ -521,6 +581,15 @@ DECLARATIONS: list[dict[str, Any]] = [
             "required": ["contact"],
         },
     },
+    {
+        "type": "function",
+        "name": "explain_safety_net",
+        "description": "The family safety net: who covered the user's dips and when it goes back, money the user "
+        "lent and whether it came back, limits they set for family, and requests waiting for their OK. Use for "
+        "'did anyone cover me', 'did I get my money back', 'what's waiting for me'. Read-only: it cannot approve, "
+        "decline or start anything.",
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 READ_TOOLS = {
@@ -528,6 +597,7 @@ READ_TOOLS = {
     "simulate_purchase": simulate_purchase,
     "find_recurring": find_recurring,
     "who_owes_me": who_owes_me,
+    "explain_safety_net": explain_safety_net,
 }
 WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
 

@@ -64,9 +64,16 @@ Tone follows the tool's "status" field (or the current status below if you haven
 - overdraft_risk: no jokes or emoji in any reply, whatever the question, but keep your voice's way of
   talking. Calm, clear and reassuring: say when and by how much, then offer the fix. If a tool says
   already_below_floor_without_it, mention that dip too.
-- No jokes at all, ever, around money movement or security: transfer proposals, approvals, failed transfers,
-  login, or anything that looks like fraud. When you propose a transfer or a request, say plainly what
-  moves or who gets asked, and that it is waiting for the user's approval; never say it has happened.
+- No jokes at all, ever, around money movement or security: transfer proposals, approvals, family
+  safety-net bridges, failed transfers, login, or anything that looks like fraud. When you propose a
+  transfer or a request, say plainly what moves or who gets asked, and that it is waiting for the user's
+  approval; never say it has happened.
+
+Family safety net:
+- For questions about family covering a dip, money lent, or requests waiting, call explain_safety_net and
+  explain it in plain words: who, how much, why, and when it goes back.
+- You can't approve, decline, start or change anything in the safety net. If asked, say so and point to the
+  Family screen, where the person whose money it is decides.
 
 How sure you are:
 - Tool results carry "readiness" and a "confidence_note". If readiness is "confident", you may say so
@@ -295,10 +302,30 @@ def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
 
 
+SAFETY_NET = re.compile(r"safety net|anyone cover|cover(ed)? me\b|covered|family|bridge|\blen[dt]\b|money back|my ok")
+
+
+def _explain_safety_net(persona: str, today: date) -> ChatResponse:
+    r = tools.explain_safety_net(persona=persona, today=today)
+    lines = [f"{b['amount']} from {b['from']}: {b['status']}." for b in r["covered_me"]]
+    lines += [f"You lent {b['to']} {b['amount']}: {b['status']}." for b in r["i_lent"]]
+    lines += [f"{b['to']} is asking you for {b['amount']}: {b['why']}" for b in r["waiting_for_my_ok"]]
+    if r["waiting_for_my_ok"]:
+        lines.append("You can approve or decline it in the Family screen.")
+    reply = " ".join(lines) or "Nothing's happening in your family safety net right now."
+    return ChatResponse(reply=reply, tool_calls=["explain_safety_net"])
+
+
 def _route(text: str, today: date, persona: str) -> ChatResponse:
     amount = _amount_in(text)
     when_match = WHEN.search(text)
     when = when_match.group(1) if when_match else None
+
+    if re.search(r"\b(approve|decline)\b", text):  # never from chat: the money's owner decides in the app
+        return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
+    # before "fix": "did anyone cover me?" is about the safety net, "cover the shortfall" is a fix
+    if SAFETY_NET.search(text):
+        return _explain_safety_net(persona, today)
 
     # P2P before the money checks: "ask alex for $45" names an amount but isn't a purchase or a fix
     if P2P_ASK.search(text):
