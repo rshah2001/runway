@@ -14,7 +14,12 @@ export type Me = {
   accounts: Account[];
 };
 
-export type ForecastPoint = { date: string; balance: number }; // date = 'YYYY-MM-DD'
+export type ForecastPoint = {
+  date: string; // 'YYYY-MM-DD'
+  balance: number; // expected end-of-day balance
+  balance_low?: number | null; // p10: the cautious end, if everyday spending runs high
+  balance_high?: number | null; // p90
+};
 
 export type ForecastEvent = {
   date: string;
@@ -23,11 +28,23 @@ export type ForecastEvent = {
   kind: 'paycheck' | 'bill' | 'subscription' | 'card_payment' | 'spending' | 'transfer' | 'other';
 };
 
+export type Readiness = {
+  status: 'calibrating' | 'learning' | 'confident';
+  days_of_history: number;
+  paychecks_seen: number;
+  paycheck_found: boolean; // the forecast has a learned payday in it
+  spend_days: number; // days the everyday spending rate was learned from
+  progress: number; // 0–1 toward "confident"
+  reasons: string[]; // plain English, safe to show as-is
+};
+
 export type Forecast = {
   points: ForecastPoint[];
   low: ForecastPoint;
   safe_floor: number;
   events: ForecastEvent[];
+  readiness?: Readiness | null;
+  cautious_low?: ForecastPoint | null; // the day with the lowest p10 balance: what to plan around
 };
 
 export type Recurring = {
