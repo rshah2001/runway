@@ -7,6 +7,7 @@
 import { Fragment, type ReactNode, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { CircleLegend, CircleMap, type CirclePerson } from '@/components/rw/circle-map';
 import { Icon } from '@/components/rw/icons';
 import { Amount, Avatar, Fine, List, Row, SectionLabel } from '@/components/rw/list';
 import { PageTitle, TopBar } from '@/components/rw/top-bar';
@@ -45,15 +46,22 @@ export default function CirclesScreen() {
   const fc = useLoad(() => api.forecast(30), version);
   const me = useLoad(() => api.me(), version);
   const [consent, setConsent] = useState<SupportAgreement | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const session = useSession();
   const reload = moneyMoved; // after any action here, every screen (Today, Spending, this one) re-fetches
 
   const d = sn.data;
   return (
+    <View style={{ flex: 1 }}>
     <Page onRefresh={reload} refreshing={sn.loading && !!d}>
       <TopBar />
       <PageTitle title="Circles" sub="People who’ve agreed to help you, and people you’ve agreed to help. Nobody ever sees anyone’s balance." />
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sn.error} onRetry={reload} /></View> : (
         <>
+          {sup.data && (sup.data.supporters.length > 0 || sup.data.supporting.length > 0) && (
+            <MyCircle me={session.name ?? 'You'} d={d} sup={sup.data} picked={picked} onPick={setPicked}
+              onReview={setConsent} onDone={reload} />
+          )}
           {me.data?.family_cover !== false && <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />}
 
           {d.approvals_waiting.length > 0 && (
@@ -74,8 +82,69 @@ export default function CirclesScreen() {
         </>
       )}
       <DemoReset onDone={reload} />
-      <ConsentSheet a={consent} onClose={() => setConsent(null)} onDone={() => { setConsent(null); reload(); }} />
     </Page>
+    {/* over the whole screen, not inside the scrolling page */}
+    <ConsentSheet a={consent} onClose={() => setConsent(null)} onDone={() => { setConsent(null); reload(); }} />
+    </View>
+  );
+}
+
+/** The people on my map: my supporters and the people I support, with what's out on each line. */
+function circlePeople(d: SafetyNetSummary, sup: SupportSummary): CirclePerson[] {
+  const status = (a: SupportAgreement): CirclePerson['status'] =>
+    a.state === 'active' ? 'active' : a.state === 'revoked' || a.state === 'paused' ? 'off' : 'waiting';
+  const outFrom = (slug: string) => d.borrowed.filter((b) => b.lender === slug && OPEN.includes(b.status)).reduce((t, b) => t + b.amount, 0);
+  const outTo = (slug: string) => d.lent.filter((b) => b.borrower === slug && OPEN.includes(b.status)).reduce((t, b) => t + b.amount, 0);
+  return [
+    ...sup.supporters.map((a) => ({ key: `s-${a.supporter}`, name: a.supporter_name, role: 'supporter' as const, status: status(a), out: outFrom(a.supporter) || undefined })),
+    ...sup.supporting.map((a) => ({ key: `r-${a.recipient}`, name: a.recipient_name, role: 'supported' as const, status: status(a), out: outTo(a.recipient) || undefined })),
+  ];
+}
+
+/**
+ * My support circle as an interactive map (components/rw/circle-map). Tapping someone shows what we've
+ * agreed and what's out between us — and the action that fits (review the agreement, pay back early).
+ */
+function MyCircle({ me, d, sup, picked, onPick, onReview, onDone }: {
+  me: string; d: SafetyNetSummary; sup: SupportSummary; picked: string | null;
+  onPick: (k: string | null) => void; onReview: (a: SupportAgreement) => void; onDone: () => void;
+}) {
+  const people = circlePeople(d, sup);
+  const borrowed = d.borrowed.some((b) => OPEN.includes(b.status));
+  const protectedBy = sup.supporters.filter((a) => a.state === 'active').length;
+  const helping = sup.supporting.filter((a) => a.state === 'active').length;
+  const [status, tone] = borrowed ? ['Covered', C.green]
+    : protectedBy ? ['Protected', C.green]
+    : helping ? [`Supporting ${helping}`, '#7cb8ff']
+    : ['Not set up', C.text3];
+  const sel = people.find((p) => p.key === picked);
+  const agreement = sel && (sel.role === 'supporter'
+    ? sup.supporters.find((a) => `s-${a.supporter}` === sel.key)
+    : sup.supporting.find((a) => `r-${a.recipient}` === sel.key));
+  const owed = sel?.role === 'supporter' ? d.borrowed.find((b) => `s-${b.lender}` === sel.key && (b.status === 'active' || b.status === 'repay_failed')) : undefined;
+  return (
+    <View style={s.mapCard}>
+      <View style={s.mapHead}>
+        <Text style={s.askTitle}>{me === 'You' ? 'Your support circle' : `${me}’s support circle`}</Text>
+        <Text style={s.fineText}>Only you see this</Text>
+      </View>
+      <CircleMap me={me} status={status} tone={tone} people={people} selected={picked} onSelect={onPick} />
+      <CircleLegend />
+      {sel && agreement ? (
+        <View style={s.picked}>
+          <Avatar name={sel.name} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.switchTitle}>{sel.name} · {sel.role === 'supporter' ? 'can cover you' : 'you can cover them'}</Text>
+            <Text style={s.seeText}>
+              {sel.out ? `${money(sel.out, 0)} out now · ` : ''}{agreementLine(agreement)}
+            </Text>
+          </View>
+          {owed ? <PayBack b={owed} onDone={onDone} /> : <Pill label={agreement.i_agreed ? 'Manage' : 'Review'} onPress={() => onReview(agreement)} />}
+        </View>
+      ) : (
+        <Text style={[s.fineText, { textAlign: 'center' }]}>Each line is a separately agreed support relationship — never access to anyone’s money. Tap a person.</Text>
+      )}
+    </View>
   );
 }
 
@@ -208,7 +277,8 @@ function ConsentSheet({ a, onClose, onDone }: { a: SupportAgreement | null; onCl
       <View style={s.sheet}>
         <Text style={s.sheetKicker}>Quiet Support Agreement</Text>
         <Text style={s.sheetTitle}>{recipient ? `Let ${them} help you quietly?` : `Support ${them} quietly?`}</Text>
-        {x && x.they_agreed && <Text style={s.askBody}>{them} already said yes. It starts when you do.</Text>}
+        {x && x.they_agreed && !x.i_agreed && <Text style={s.askBody}>{them} already said yes. It starts when you do.</Text>}
+        {x?.state === 'active' && <Text style={s.askBody}>You’ve both agreed — this is active.</Text>}
         <View style={{ gap: 10, marginTop: 14 }}>
           {lines.map(([ok, text]) => (
             <View key={text} style={s.seeRow}>
@@ -684,6 +754,9 @@ const s = StyleSheet.create({
   fineText: { fontFamily: F.body, fontSize: 13, lineHeight: 18, color: C.text2, marginTop: 8 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   sheet: { padding: 22, paddingBottom: 26 },
+  mapCard: { marginTop: 18, borderRadius: 24, backgroundColor: C.card, padding: 16, paddingBottom: 14 },
+  mapHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  picked: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line },
   sheetKicker: { fontFamily: F.condBold, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: C.green },
   sheetTitle: { fontFamily: F.bodySemi, fontSize: 22, lineHeight: 27, letterSpacing: -0.3, color: C.text, marginTop: 6 },
 });
