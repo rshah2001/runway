@@ -22,10 +22,10 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from app import auth0_ciba, prefs
+from app import auth0_ciba, prefs, reconcile
 from app.cashflow import LOCAL_TZ, Projection, project
 from app.config import get_settings
-from app.db import pool, repo, safety_repo
+from app.db import journal_repo, pool, repo, safety_repo
 from app.ingest import sync_customer
 from app.nessie.client import NessieClient
 from app.nessie.moves import TransferNotMade, move_money
@@ -142,6 +142,11 @@ def decide(
 # Live side: gather inputs, act on decisions, repay, approvals. Real money only with LIVE_TRANSFERS.
 # ---------------------------------------------------------------------------------------------
 _lock = threading.Lock()  # one safety-net pass at a time within this process
+_IN_FLIGHT: set[str] = set()  # journal keys whose Nessie call is running in this process right now
+_in_flight_lock = threading.Lock()
+# an open journal row untouched this long is past any in-flight Nessie write (30 s timeout, plus
+# connect retries ≈ 2 min), so the reconciler may look at it
+STUCK_AFTER = timedelta(minutes=10)
 
 
 def writes_enabled() -> bool:
@@ -182,9 +187,17 @@ def _both(conn, b: dict, kind: str, to_borrower: str, to_lender: str) -> None:
     safety_repo.add_event(conn, b["lender_slug"], kind, to_lender, b["id"])
 
 
-def _move(lender: dict, borrower: dict, amount: float, memo: str, deposit_memo: str) -> tuple[str, str]:
+def _move(lender: dict, borrower: dict, amount: float, memo: str, deposit_memo: str, *, key: str) -> tuple[str, str]:
     nessie = NessieClient.from_settings()
-    ids = move_money(nessie, lender["checking_id"], borrower["checking_id"], amount, _today(), memo, deposit_memo)
+    with _in_flight_lock:
+        _IN_FLIGHT.add(key)
+    try:
+        ids = move_money(
+            nessie, lender["checking_id"], borrower["checking_id"], amount, _today(), memo, deposit_memo, key=key
+        )
+    finally:
+        with _in_flight_lock:
+            _IN_FLIGHT.discard(key)
     try:  # balances refresh now; if this fails the background sync catches up
         with pool.connection() as conn:
             for p in (lender, borrower):
@@ -196,20 +209,19 @@ def _move(lender: dict, borrower: dict, amount: float, memo: str, deposit_memo: 
 
 
 def _fund(bridge_id: str) -> dict | None:
-    """Move the bridge's money lender → borrower. Only one caller can claim a bridge."""
+    """Move the bridge's money lender → borrower. Only one caller can claim a bridge, and the journal
+    row is written in the same transaction as the claim, before any money moves."""
     with pool.connection() as conn:
         b = safety_repo.transition(conn, bridge_id, ("pending_approval",), "funding")
-        conn.commit()
         if b is None:
+            conn.rollback()
             return None
         # the borrower may have turned family cover off while this waited for the lender's answer:
-        # their switch wins. A failed read puts the bridge back to waiting — never a guessed "on".
+        # their switch wins. A failed read leaves the bridge waiting (rollback) — never a guessed "on".
         try:
             covered = prefs.setting(b["borrower_slug"], "family_cover", conn, strict=True)
         except Exception:
-            conn.rollback()  # the failed read aborted the transaction
-            safety_repo.transition(conn, bridge_id, ("funding",), "pending_approval")
-            conn.commit()
+            conn.rollback()
             raise
         if not covered:
             safety_repo.transition(conn, bridge_id, ("funding",), "declined")
@@ -223,56 +235,80 @@ def _fund(bridge_id: str) -> dict | None:
             conn.commit()
             return None
         lender, borrower = repo.persona(conn, b["lender_slug"]), repo.persona(conn, b["borrower_slug"])
-    amount = float(b["amount"])
+        key = f"fund:{bridge_id}"
+        amount = float(b["amount"])
+        if not journal_repo.claim(conn, key, "fund", bridge_id, lender["checking_id"], borrower["checking_id"], amount):
+            conn.rollback()  # this bridge was sent before: never send it again
+            log.error("bridge %s already has a funding journal entry; not sending again", bridge_id)
+            return None
+        conn.commit()
     try:
         t_id, d_id = _move(
-            lender, borrower, amount, f"Safety net for {b['borrower_name']}", f"From {b['lender_name']} (safety net)"
+            lender,
+            borrower,
+            amount,
+            f"Safety net for {b['borrower_name']}",
+            f"From {b['lender_name']} (safety net)",
+            key=key,
         )
-    except Exception as e:
-        nothing_moved = isinstance(e, TransferNotMade)
+    except TransferNotMade as e:
         with pool.connection() as conn:
+            journal_repo.finish(conn, key, "not_made", error=str(e))
             safety_repo.transition(conn, bridge_id, ("funding",), "failed")
-            note = "nothing moved" if nothing_moved else "we're checking with the bank"
             _both(
                 conn,
                 b,
                 "bridge_failed",
-                f"The bridge from {b['lender_name']} didn't go through — {note}.",
-                f"Your bridge to {b['borrower_name']} didn't go through — {note}.",
+                f"The support from {b['lender_name']} didn't go through — nothing moved.",
+                f"Your support for {b['borrower_name']} didn't go through — nothing moved.",
             )
             conn.commit()
-        log.exception("bridge %s funding failed", bridge_id)
+        log.warning("bridge %s funding not made: %s", bridge_id, e)
+        return None
+    except Exception as e:  # unclear outcome: reconcile against Nessie, never retry
+        with pool.connection() as conn:
+            journal_repo.finish(conn, key, "unknown", error=str(e))
+            safety_repo.transition(conn, bridge_id, ("funding",), "reconcile")
+            _both(conn, b, "bridge_checking", CHECKING_WITH_BANK, CHECKING_WITH_BANK)
+            conn.commit()
+        log.exception("bridge %s funding outcome unknown — reconciling", bridge_id)
         return None
     with pool.connection() as conn:
-        b = safety_repo.transition(
-            conn,
-            bridge_id,
-            ("funding",),
-            "active",
-            funded_at=datetime.now(LOCAL_TZ),
-            out_transfer_id=t_id,
-            out_deposit_id=d_id,
-        )
-        due = f"{_wmd(b['due_date'])}"
-        if b["mode"] == "auto":
-            _both(
-                conn,
-                b,
-                "bridge_auto",
-                f"🛟 {b['lender_name']} covered you with ${amount:,.0f} before {_md(b['shortfall_date'])} — "
-                f"it goes back automatically on payday, {due}.",
-                f"🛟 Runway sent ${amount:,.0f} of yours to {b['borrower_name']} (within your limit). "
-                f"You get it back on {due}.",
-            )
-        else:
-            _both(
-                conn,
-                b,
-                "bridge_approved",
-                f"✅ {b['lender_name']} approved ${amount:,.0f} — it goes back automatically on {due}.",
-                f"✅ You sent ${amount:,.0f} to {b['borrower_name']}. You get it back on {due}.",
-            )
+        journal_repo.finish(conn, key, "succeeded", transfer_id=t_id, deposit_id=d_id)
+        b = _funded(conn, bridge_id, ("funding",), t_id, d_id)
         conn.commit()
+    return b
+
+
+CHECKING_WITH_BANK = "We're confirming a transfer with the bank. Nothing will be sent twice."
+
+
+def _funded(conn, bridge_id: str, frm: tuple[str, ...], t_id: str, d_id: str) -> dict | None:
+    """Mark a bridge funded (after a confirmed move) and tell both people."""
+    b = safety_repo.transition(
+        conn, bridge_id, frm, "active", funded_at=datetime.now(LOCAL_TZ), out_transfer_id=t_id, out_deposit_id=d_id
+    )
+    if b is None:
+        return None
+    amount, due = float(b["amount"]), _wmd(b["due_date"])
+    if b["mode"] == "auto":
+        _both(
+            conn,
+            b,
+            "bridge_auto",
+            f"🛟 {b['lender_name']} covered you with ${amount:,.0f} before {_md(b['shortfall_date'])} — "
+            f"it goes back automatically after your next verified payday ({due}).",
+            f"🛟 Your approved safety net sent ${amount:,.0f} to {b['borrower_name']} (within your limit). "
+            f"Expected back {due}.",
+        )
+    else:
+        _both(
+            conn,
+            b,
+            "bridge_approved",
+            f"✅ {b['lender_name']} approved ${amount:,.0f} — it goes back after your next payday ({due}).",
+            f"✅ You sent ${amount:,.0f} to {b['borrower_name']}. Expected back {due}.",
+        )
     return b
 
 
@@ -404,15 +440,23 @@ def _repay_floor(conn, b: dict) -> Decimal:
 
 def _pay_back(b: dict, *, early: bool) -> dict | None:
     """Move a bridge's money borrower → lender. Claims the bridge first (active / repay_failed →
-    repaying), so on-time and early repayments can never both happen. None if it was already claimed
-    or the transfer failed (the bridge then goes to repay_failed, to be retried on payday)."""
+    repaying) and journals the attempt in the same transaction, so on-time and early repayments can
+    never both happen. A retry is only ever made after an attempt that certainly moved nothing."""
     with pool.connection() as conn:
         claimed = safety_repo.transition(conn, b["id"], ("active", "repay_failed"), "repaying")
-        conn.commit()
         if claimed is None:
+            conn.rollback()
+            return None
+        attempts = journal_repo.for_ref(conn, b["id"], "repay")
+        if any(a["state"] != "not_made" for a in attempts):
+            conn.rollback()  # an earlier attempt may have landed: reconcile it, never pay again
+            log.error("repayment of %s has an unsettled earlier attempt; not sending", b["id"])
             return None
         borrower, lender = repo.persona(conn, b["borrower_slug"]), repo.persona(conn, b["lender_slug"])
-    amount = float(b["amount"])
+        key = f"repay:{b['id']}:{len(attempts) + 1}"
+        amount = float(b["amount"])
+        journal_repo.claim(conn, key, "repay", b["id"], borrower["checking_id"], lender["checking_id"], amount)
+        conn.commit()
     try:
         t_id, d_id = _move(
             borrower,
@@ -420,48 +464,100 @@ def _pay_back(b: dict, *, early: bool) -> dict | None:
             amount,
             f"Safety net repayment to {b['lender_name']}",
             f"Repaid by {b['borrower_name']} (safety net)",
+            key=key,
         )
-    except Exception:
-        log.exception("repayment of %s failed", b["id"])
+    except TransferNotMade as e:
         with pool.connection() as conn:
-            safety_repo.transition(conn, b["id"], ("repaying",), "repay_failed")
+            journal_repo.finish(conn, key, "not_made", error=str(e))
+            safety_repo.transition(conn, b["id"], ("repaying",), "repay_failed")  # safe to try again later
             conn.commit()
+        log.warning("repayment of %s not made: %s", b["id"], e)
+        return None
+    except Exception as e:  # unclear outcome: reconcile against Nessie, never retry
+        with pool.connection() as conn:
+            journal_repo.finish(conn, key, "unknown", error=str(e))
+            safety_repo.transition(conn, b["id"], ("repaying",), "reconcile")
+            _both(conn, b, "bridge_checking", CHECKING_WITH_BANK, CHECKING_WITH_BANK)
+            conn.commit()
+        log.exception("repayment of %s outcome unknown — reconciling", b["id"])
         return None
     with pool.connection() as conn:
-        row = safety_repo.transition(
-            conn,
-            b["id"],
-            ("repaying",),
-            "repaid",
-            repaid_at=datetime.now(LOCAL_TZ),
-            back_transfer_id=t_id,
-            back_deposit_id=d_id,
-        )
-        if early:
-            _both(
-                conn,
-                b,
-                "repaid",
-                f"✅ You paid {b['lender_name']} back ${amount:,.0f} early.",
-                f"💸 {b['borrower_name']} paid you back ${amount:,.0f} early.",
-            )
-        else:
-            _both(
-                conn,
-                b,
-                "repaid",
-                f"✅ Repaid {b['lender_name']} ${amount:,.0f} from your paycheck.",
-                f"💸 You got your ${amount:,.0f} back from {b['borrower_name']}.",
-            )
+        journal_repo.finish(conn, key, "succeeded", transfer_id=t_id, deposit_id=d_id)
+        row = _repaid(conn, b["id"], ("repaying",), t_id, d_id, early=early)
         conn.commit()
     return row
+
+
+def _repaid(conn, bridge_id: str, frm: tuple[str, ...], t_id: str, d_id: str, *, early: bool) -> dict | None:
+    row = safety_repo.transition(
+        conn, bridge_id, frm, "repaid", repaid_at=datetime.now(LOCAL_TZ), back_transfer_id=t_id, back_deposit_id=d_id
+    )
+    if row is None:
+        return None
+    amount = float(row["amount"])
+    if early:
+        _both(
+            conn,
+            row,
+            "repaid",
+            f"✅ You paid {row['lender_name']} back ${amount:,.0f} early.",
+            f"💸 {row['borrower_name']} paid you back ${amount:,.0f} early.",
+        )
+    else:
+        _both(
+            conn,
+            row,
+            "repaid",
+            f"✅ Repaid {row['lender_name']} ${amount:,.0f} from your paycheck.",
+            f"💸 You got your ${amount:,.0f} back from {row['borrower_name']}.",
+        )
+    return row
+
+
+def reconcile_pending() -> int:
+    """Settle money moves whose outcome was unclear, by looking for their tag in Nessie. Only "it
+    happened" is concluded automatically; anything else stays `reconcile` (see app/reconcile.py).
+    Returns how many were settled."""
+    settled = 0
+    with pool.connection() as conn:
+        rows = [r for r in journal_repo.unresolved(conn, STUCK_AFTER) if r["kind"] in ("fund", "repay")]
+    for r in rows:
+        with _in_flight_lock:
+            if r["key"] in _IN_FLIGHT:
+                continue
+        try:
+            verdict, t_id, d_id = reconcile.resolve(NessieClient.from_settings(), r)
+        except Exception:
+            log.exception("could not reconcile %s", r["key"])
+            continue
+        with pool.connection() as conn:
+            if verdict == "succeeded" and journal_repo.finish(
+                conn, r["key"], "succeeded", transfer_id=t_id, deposit_id=d_id
+            ):
+                if r["kind"] == "fund":
+                    _funded(conn, r["ref"], ("funding", "reconcile"), t_id, d_id)
+                else:
+                    _repaid(conn, r["ref"], ("repaying", "reconcile"), t_id, d_id, early=False)
+                settled += 1
+            elif verdict == "reconcile":
+                if r["state"] == "started":  # the process stopped mid-call: no answer was ever recorded
+                    journal_repo.finish(conn, r["key"], "unknown", error="no answer recorded; checking Nessie")
+                b = safety_repo.transition(conn, r["ref"], ("funding", "repaying"), "reconcile")
+                if b:
+                    _both(conn, b, "bridge_checking", CHECKING_WITH_BANK, CHECKING_WITH_BANK)
+            conn.commit()
+    return settled
 
 
 def repay_due(today: date | None = None) -> list[dict]:
     """On (or after) the due date, pay each lender back — but never push the borrower under the floor."""
     today, done = today or _today(), []
     with pool.connection() as conn:
-        due = [b for b in safety_repo.outstanding_bridges(conn) if b["due_date"] <= today and b["status"] != "repaying"]
+        due = [
+            b
+            for b in safety_repo.outstanding_bridges(conn)
+            if b["due_date"] <= today and b["status"] in ("active", "repay_failed")  # never repaying/reconcile
+        ]
     for b in due:
         with pool.connection() as conn:
             borrower = repo.persona(conn, b["borrower_slug"])
@@ -546,6 +642,7 @@ def tick() -> None:
     if not writes_enabled():
         return
     poll_push_approvals()
+    reconcile_pending()
     repay_due()
     run()
 

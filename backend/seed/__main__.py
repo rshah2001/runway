@@ -129,6 +129,11 @@ def seed_persona(nessie: NessieClient, spec: PersonaSpec, merchant_ids: dict[str
                 spec.slug,
             )
             return
+        if existing and safety_repo.unsettled(conn, spec.slug):
+            # a transfer involving this persona is mid-flight or being reconciled: deleting its accounts
+            # would make Nessie answer "no such transfer" and hide what really happened
+            log.warning("%s has an unsettled transfer — not resetting it this time", spec.slug)
+            return
         if existing:
             for key in ("checking_id", "savings_id", "credit_id"):
                 nessie.delete_account(existing[key])
