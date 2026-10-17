@@ -28,6 +28,7 @@ async def run_periodically(
             STATUS["last_ok"], STATUS["last_error"] = datetime.now(UTC).isoformat(timespec="seconds"), None
         except Exception as e:
             log.exception("background sync failed")
-            STATUS["last_error"] = f"{type(e).__name__}: {e}"[:200]
+            # type only: messages can carry the Nessie URL, whose ?key= is the API key. Details → server log.
+            STATUS["last_error"] = type(e).__name__
         STATUS["runs"] += 1
         await asyncio.sleep(max(min_sleep, interval - (time.monotonic() - started)))  # never a busy loop
