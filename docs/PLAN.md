@@ -2,7 +2,7 @@
 
 ## The pitch (30 seconds)
 
-Banking apps tell you what already happened. Six Seven Bucks Left tells you what's about to happen: a day-by-day
+Banking apps tell you what already happened. Runway tells you what's about to happen: a day-by-day
 balance forecast, the exact day you'd go under, and an AI banker that fixes it with real money
 movement — after you approve it. Overdraft fees cost Americans billions a year; this is the app
 that sees them coming.
