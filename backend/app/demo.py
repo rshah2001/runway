@@ -105,3 +105,6 @@ def rebuild() -> None:
                 safety_repo.set_limit(conn, lender, borrower, amount, True)
         conn.commit()
         db_schema.refresh_daily_spend(conn)  # after the commit, as the seed does
+    from app import alerts
+
+    alerts.reset(list(DEMO_PERSONAS))  # the dip is fresh again, so its heads-up can go out again

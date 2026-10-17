@@ -37,11 +37,14 @@ from app.schemas import (
     P2PSummary,
     PendingAction,
     Persona,
+    PushStatus,
+    PushSubscription,
     Recurring,
     SafetyDecision,
     SafetyLimit,
     SafetyNetSummary,
     SetLimit,
+    SetPreferences,
     SetSafeFloor,
     SimulateRequest,
     Spending,
@@ -77,8 +80,9 @@ def background_pass() -> None:
         forecast_history.run()
     except Exception:  # the track record is informational: it must never hold up the safety net
         log.exception("forecast history pass failed")
-    from app import demo, safety_net
+    from app import alerts, demo, safety_net
 
+    alerts.run()  # heads-ups don't move money, so they go out even while a demo reset holds bridges
     if demo.held():  # a demo reset paused automatic bridges so the dip is still there on stage
         return
 
@@ -139,33 +143,101 @@ def me(user: OptionalUser, persona: str = PERSONA) -> Me:
 
     persona = persona_for(user, persona)
     try:
-        return data.me(persona).model_copy(update={"safe_floor": prefs.floor(persona)})
+        base = data.me(persona)
     except data.PersonaNotFound:
         raise HTTPException(404, f"Unknown persona '{persona}'") from None
+    return base.model_copy(
+        update={
+            "safe_floor": prefs.floor(persona),
+            "alerts_only": prefs.setting(persona, "alerts_only"),
+            "family_cover": prefs.setting(persona, "family_cover"),
+        }
+    )
+
+
+def _own_settings(user: User | None, requested: str) -> str:
+    """Whose settings a change applies to: always your own. Signed in, the request's persona is
+    ignored; with sign-in configured, an anonymous caller gets 401. These settings decide when family
+    money moves, so they follow the money rule: with real transfers on, an anonymous caller never
+    changes them."""
+    if user is not None:
+        return persona_for(user, "")
+    if auth_config() is not None:
+        raise HTTPException(401, "Sign in to change this.", headers={"WWW-Authenticate": "Bearer"})
+    # sign-in off (CI, offline demo): only the listed demo people
+    if requested not in {p.slug for p in data.personas()}:  # nothing is saved for someone who doesn't exist
+        raise HTTPException(404, f"Unknown persona '{requested}'")
+    authorize_money(None, requested)
+    return requested
 
 
 @app.put("/me/safe-floor", response_model=Me)
 def set_safe_floor(req: SetSafeFloor, user: OptionalUser) -> Me:
-    """Set how much you keep in checking. Only for yourself: signed in, the request's persona is
-    ignored; with sign-in configured, an anonymous caller gets 401 (it changes when money moves)."""
+    """Set how much you keep in checking (only for yourself)."""
     from app import prefs
 
-    if user is not None:
-        persona = persona_for(user, "")
-    elif auth_config() is not None:
-        raise HTTPException(401, "Sign in to change this.", headers={"WWW-Authenticate": "Bearer"})
-    else:  # sign-in off (CI, offline demo): only the listed demo people
-        persona = req.persona
-        if persona not in {p.slug for p in data.personas()}:  # nothing is saved for someone who doesn't exist
-            raise HTTPException(404, f"Unknown persona '{persona}'")
-        # the floor decides when family money moves, so it follows the money rule: with real
-        # transfers on, an anonymous caller never changes it
-        authorize_money(None, persona)
+    persona = _own_settings(user, req.persona)
     try:
         prefs.set_floor(persona, req.amount)
     except prefs.FloorOutOfRange as e:
         raise HTTPException(422, str(e)) from None
     return me(user, persona)
+
+
+@app.put("/me/preferences", response_model=Me)
+def set_preferences(req: SetPreferences, user: OptionalUser) -> Me:
+    """Turn alerts-only or family cover on or off (only for yourself)."""
+    from app import prefs
+
+    persona = _own_settings(user, req.persona)
+    for name in ("alerts_only", "family_cover"):
+        value = getattr(req, name)
+        if value is not None:
+            prefs.set_setting(persona, name, value)
+    if req.family_cover is False and get_settings().live:
+        from app import safety_net
+
+        safety_net.withdraw_requests(persona)  # nobody stays asked on your behalf
+    return me(user, persona)
+
+
+# ---------- heads-up alerts (app/alerts.py) ----------
+@app.get("/alerts/key", response_model=PushStatus)
+def alerts_key() -> PushStatus:
+    """The public key a browser subscribes with (public by design); None when alerts are off."""
+    from app import alerts
+
+    keys = alerts.vapid()
+    return PushStatus(key=keys.public_key if keys else None)
+
+
+@app.put("/me/push", response_model=PushStatus)
+def push_subscribe(req: PushSubscription, user: OptionalUser) -> PushStatus:
+    """This browser wants your heads-ups (only for yourself)."""
+    from app import alerts
+
+    keys = alerts.vapid()
+    if keys is None:
+        raise HTTPException(503, "Alerts to your phone aren't set up on this server yet.")
+    persona = _own_settings(user, req.persona)
+    try:
+        alerts.subscribe(persona, req.endpoint, req.p256dh, req.auth)
+    except ValueError:
+        raise HTTPException(422, "That isn't a browser push address.") from None
+    return PushStatus(key=keys.public_key)
+
+
+@app.post("/me/push/test", response_model=PushStatus)
+def push_test(user: OptionalUser, persona: str = PERSONA) -> PushStatus:
+    """Send yourself your current status now, to check alerts reach this phone."""
+    from app import alerts
+    from app.cashflow import LOCAL_TZ
+
+    keys = alerts.vapid()
+    if keys is None:
+        raise HTTPException(503, "Alerts to your phone aren't set up on this server yet.")
+    persona = _own_settings(user, persona)
+    return PushStatus(key=keys.public_key, sent=alerts.test(persona, datetime.now(LOCAL_TZ).date()))
 
 
 @app.get("/spending", response_model=Spending)
@@ -342,7 +414,9 @@ def _bridge_action(bridge_id: str, approve: bool, user: User | None) -> Bridge:
             row = safety_repo.bridge(conn, bridge_id)
         if row is None or row["status"] != "pending_approval":
             raise HTTPException(409, "That bridge isn't waiting for approval")
-        return safety_views.bridge(row).model_copy(update={"status": "active" if approve else "declined"})
+        return safety_views.for_lender(safety_views.bridge(row)).model_copy(
+            update={"status": "active" if approve else "declined"}
+        )
     with pool.connection() as conn:
         current = safety_repo.bridge(conn, bridge_id)
     if approve and current and current["approval_channel"] == "auth0_push":
@@ -352,7 +426,7 @@ def _bridge_action(bridge_id: str, approve: bool, user: User | None) -> Bridge:
     row = safety_net.approve(bridge_id) if approve else safety_net.decline(bridge_id)
     if row is None:
         raise HTTPException(409, "That bridge isn't waiting for approval, or the transfer didn't go through")
-    return safety_views.bridge(row)
+    return safety_views.for_lender(safety_views.bridge(row))  # only the lender answers a bridge
 
 
 @app.post("/safety-net/bridges/{bridge_id}/approve", response_model=Bridge)

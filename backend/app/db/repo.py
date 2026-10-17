@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Any
 
 import psycopg
+from psycopg import sql
 
 Row = dict[str, Any]
 
@@ -227,7 +228,8 @@ def finish_request(conn: psycopg.Connection, request_id: str, status: str, payme
 def safe_floor(conn: psycopg.Connection, slug: str) -> float | None:
     """The amount this person keeps in checking, or None if they never set one."""
     row = conn.execute("SELECT safe_floor FROM money_preferences WHERE slug = %s", (slug,)).fetchone()
-    return float(row["safe_floor"]) if row else None
+    # a row can exist with only on/off settings saved: a NULL floor means "never set it" too
+    return float(row["safe_floor"]) if row and row["safe_floor"] is not None else None
 
 
 def set_safe_floor(conn: psycopg.Connection, slug: str, amount: float) -> None:
@@ -239,4 +241,31 @@ def set_safe_floor(conn: psycopg.Connection, slug: str, amount: float) -> None:
 
 
 def clear_safe_floors(conn: psycopg.Connection, slugs: list[str]) -> None:
+    """Back to every default (floor and on/off settings) for these people."""
     conn.execute("DELETE FROM money_preferences WHERE slug = ANY(%s)", (slugs,))
+
+
+SETTINGS = ("alerts_only", "family_cover")  # on/off columns of money_preferences
+
+
+def setting(conn: psycopg.Connection, slug: str, name: str) -> bool | None:
+    """One on/off setting, or None if this person never changed it."""
+    col = _setting_column(name)
+    q = sql.SQL("SELECT {} AS v FROM money_preferences WHERE slug = %s").format(col)
+    row = conn.execute(q, (slug,)).fetchone()
+    return row["v"] if row else None
+
+
+def set_setting(conn: psycopg.Connection, slug: str, name: str, on: bool) -> None:
+    col = _setting_column(name)
+    q = sql.SQL(
+        "INSERT INTO money_preferences (slug, {c}) VALUES (%s, %s) "
+        "ON CONFLICT (slug) DO UPDATE SET {c} = EXCLUDED.{c}, updated_at = now()"
+    ).format(c=col)
+    conn.execute(q, (slug, on))
+
+
+def _setting_column(name: str) -> sql.Identifier:
+    if name not in SETTINGS:  # column names can't be query parameters: only known ones get through
+        raise ValueError(f"unknown setting {name!r}")
+    return sql.Identifier(name)

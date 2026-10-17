@@ -4,6 +4,8 @@
  * "Money I keep" is the cushion every "am I okay?" is measured against — the forecast line, dips,
  * spare money, and when family steps in. People differ (one is anxious under $100, another under
  * $1,000), so each person sets their own; nobody can set it for someone else.
+ * "Alerts only" swaps Today's numbers for one calm sentence that speaks up only before a dip (for
+ * people who avoid looking at their balance — see components/today/quiet-today.tsx).
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
  */
 import { type ComponentRef, type ElementRef, useRef, useState } from 'react';
@@ -17,7 +19,7 @@ import { C, F } from '@/constants/runway';
 import { leave } from '@/lib/account';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
-import { moneyMoved } from '@/lib/store';
+import { moneyMoved, setStore } from '@/lib/store';
 import { useSession } from '@/lib/session';
 
 // grows from the button's top-right corner: scale 0.92 → 1 with a quick fade (Apple: anchor to the source)
@@ -33,6 +35,8 @@ export function AccountMenu() {
   const [leaving, setLeaving] = useState(false);
   const [keep, setKeep] = useState<number | null>(null); // what you keep, read when the menu opens
   const [editing, setEditing] = useState(false); // the "Money I keep" sheet
+  const [quiet, setQuiet] = useState<boolean | null>(null); // alerts only, read when the menu opens
+  const [savingQuiet, setSavingQuiet] = useState(false);
   if (session.mode !== 'signed-in') return null;
   const name = session.name ?? 'there';
 
@@ -43,7 +47,25 @@ export function AccountMenu() {
       setAt({ top: y + h + 8, right: Math.max(8, vw - (x + w)) });
     });
     // only a real number counts: an older server (or a failed read) shows "…", never a guess
-    api.me().then((m) => setKeep(typeof m.safe_floor === 'number' ? m.safe_floor : null)).catch(() => setKeep(null));
+    api.me().then((m) => {
+      setKeep(typeof m.safe_floor === 'number' ? m.safe_floor : null);
+      setQuiet(typeof m.alerts_only === 'boolean' ? m.alerts_only : null); // older server: no switch
+    }).catch(() => { setKeep(null); setQuiet(null); });
+  }
+
+  async function toggleQuiet() {
+    if (quiet === null) return;
+    setSavingQuiet(true);
+    try {
+      const m = await api.setPreferences({ alerts_only: !quiet });
+      setQuiet(!!m.alerts_only);
+      setStore({ peek: false }); // a fresh choice: show exactly what was chosen
+      moneyMoved(); // Today re-reads /me and switches view
+    } catch {
+      // the switch stays where it was; nothing changed on the server
+    } finally {
+      setSavingQuiet(false);
+    }
   }
 
   function close() {
@@ -89,6 +111,19 @@ export function AccountMenu() {
                   <Text style={s.whoSub}>Runway warns you before you go under it</Text>
                 </View>
                 <Text style={[s.itemText, { color: C.text2 }]}>{keep === null ? '…' : money(keep, 0)}</Text>
+              </Pressable>
+            )}
+            {quiet !== null && (
+              <Pressable onPress={toggleQuiet} disabled={savingQuiet} accessibilityRole="switch" accessibilityState={{ checked: quiet }}
+                accessibilityLabel="Alerts only: hide my numbers and only tell me before a dip"
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.itemText, { color: C.text }]}>Alerts only</Text>
+                  <Text style={s.whoSub}>Hide the numbers, tell me before a dip</Text>
+                </View>
+                <View style={[s.track, quiet && s.trackOn, savingQuiet && { opacity: 0.6 }]}>
+                  <View style={[s.knob, quiet && s.knobOn]} />
+                </View>
               </Pressable>
             )}
             <Pressable onPress={signOut} disabled={leaving} accessibilityRole="menuitem"
@@ -198,6 +233,10 @@ const s = StyleSheet.create({
   whoName: { fontFamily: F.bodySemi, fontSize: 15, color: C.text },
   whoSub: { fontFamily: F.body, fontSize: 13, color: C.text2 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, borderTopWidth: 1, borderTopColor: C.line },
+  track: { width: 44, height: 26, borderRadius: 13, backgroundColor: C.line, padding: 3 },
+  trackOn: { backgroundColor: C.green },
+  knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  knobOn: { transform: [{ translateX: 18 }] },
   itemText: { fontFamily: F.bodySemi, fontSize: 15, color: C.red },
   editor: { gap: 4 },
   sheetTitle: { fontFamily: F.bodySemi, fontSize: 20, color: C.text },
