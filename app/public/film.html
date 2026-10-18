@@ -82,11 +82,46 @@
   .built .row { display: inline-flex; gap: 14px; }
   .pm { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; opacity: 0; pointer-events: none; }
   .pmchip { transform-origin: 50% 50%; }
+  .lc.co img { height: 30px; display: block; } .pmchip .lc.co img { height: 56px; }
+  .lc.co .sep { width: 1px; align-self: stretch; margin: 12px 4px; background: #d6d9de; }
   .pmchip .lc { height: 92px; padding: 0 34px; border-radius: 26px; font-size: 40px; gap: 18px; }
   .pmchip .lc svg { width: 50px; height: 50px; }
   .pmchip .lc em { font-size: 19px; }
   .pmword { font-weight: 700; font-size: 200px; line-height: .9; letter-spacing: -0.045em; }
   .pmline { font-size: 34px; font-weight: 500; color: rgba(255,255,255,.75); }
+  #bento { position: absolute; left: 48px; top: 26px; width: 1824px; height: 1028px; display: grid; grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: 170px 170px 360px 120px 120px; gap: 22px; opacity: 0; transform-origin: 50% 55%; pointer-events: none; }
+  .bx { border-radius: 30px; padding: 22px 26px; display: flex; gap: 16px; overflow: hidden; color: #fff;
+    background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.05)); border: 1px solid rgba(255,255,255,.14);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.1); will-change: transform, opacity; }
+  .bx.row { flex-direction: row; align-items: center; } .bx.col { flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .bx.left { align-items: flex-start; text-align: left; } .bx.sb { justify-content: space-between; }
+  .bt { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; } .bt.c, .bs.c { text-align: center; }
+  .bs { font-size: 18px; color: rgba(255,255,255,.68); line-height: 1.35; } .bs.up { letter-spacing: .12em; font-weight: 600; font-size: 14px; }
+  .bh { font-family: 'Barlow'; font-weight: 700; font-size: 30px; line-height: 1.1; letter-spacing: -0.01em; }
+  .bg { font-size: 48px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; } .bg.green { color: #46d483; }
+  .tog.big { width: 104px; height: 58px; border-radius: 99px; background: #46d483; position: relative; flex: none; }
+  .tog.big::after { content: ''; position: absolute; right: 6px; top: 6px; width: 46px; height: 46px; border-radius: 50%; background: #fff; }
+  .inset { width: 100%; background: #0d1013; border-radius: 22px; padding: 16px 20px; text-align: left; }
+  .flow { display: flex; align-items: center; gap: 10px; }
+  .av2 { width: 70px; height: 70px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: #fff; }
+  .amt { font-weight: 700; font-size: 22px; background: rgba(255,255,255,.12); border-radius: 99px; padding: 6px 12px; }
+  .owe { background: linear-gradient(140deg, #6d2a8f, #a3286f); border-radius: 16px; padding: 10px 14px; text-align: left; width: 100%; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 46px; } .bars i { width: 20px; border-radius: 5px; background: rgba(255,255,255,.3); }
+  .bars i:nth-child(1){height:12px}.bars i:nth-child(2){height:20px}.bars i:nth-child(3){height:28px}.bars i:nth-child(4){height:36px}.bars i.g{height:46px;background:#46d483}
+  .pillc { padding: 6px 18px; border-radius: 99px; background: rgba(255,255,255,.14); font-weight: 600; font-size: 18px; }
+  .bx.lock { justify-content: space-between; padding: 30px; } .lockico { position: relative; }
+  .see { width: 100%; background: #0d1013; border-radius: 18px; padding: 14px 16px; text-align: left; font-size: 17px; line-height: 1.4; color: rgba(255,255,255,.85); display: grid; gap: 8px; }
+  .see b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; margin-right: 8px; font-size: 13px; } .see .ok { background: #46d483; color: #0b2a17; } .see .no { background: #ff6b5e; }
+  .bx.fc { align-items: flex-start; text-align: left; justify-content: space-between; } .axis { display: flex; justify-content: space-between; width: 100%; font-size: 14px; letter-spacing: .1em; color: rgba(255,255,255,.55); }
+  .bx.hero { background: linear-gradient(120deg, #2c7a8f 0%, #3557d6 40%, #7a3fd6 72%, #c2418f 100%); border: 0; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+  .heroLogo { width: 220px; border-radius: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.35); } .heroWord { font-size: 150px; font-weight: 500; letter-spacing: -0.02em; line-height: .9; }
+  .mini2 { font-size: 17px; background: rgba(255,255,255,.1); border-radius: 12px; padding: 8px 10px; }
+  .bubble2 { width: 64px; height: 64px; border-radius: 50%; background: #4b7bec; display: grid; place-items: center; flex: none; }
+  .check { width: 64px; height: 64px; border-radius: 50%; background: #46d483; color: #0b2a17; font-size: 34px; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .cal { width: 92px; border-radius: 16px; overflow: hidden; background: #fff; color: #111; text-align: center; } .calh { background: #46d483; font-weight: 700; font-size: 16px; padding: 4px 0; } .cald { font-size: 44px; font-weight: 700; line-height: 1.2; }
+  .meter { width: 100%; align-self: stretch; flex: none; height: 10px; border-radius: 99px; background: rgba(255,255,255,.12); } .meter i { display: block; width: 100%; height: 100%; border-radius: 99px; background: #46d483; }
+  .bx.nes { background: linear-gradient(160deg, rgba(163,40,111,.35), rgba(255,255,255,.04)); gap: 6px; }
   .hud { position: fixed; right: 16px; bottom: 12px; font-size: 13px; color: #555; z-index: 9; font-family: 'Barlow'; }
   .start { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; background: #000; cursor: pointer; }
   .start div { text-align: center; color: #8a939b; font-size: 18px; line-height: 1.8; }
@@ -155,13 +190,13 @@
   <div class="rig"><div class="win" id="wToday"><img src="film/today.png" alt="" /><img class="alt" id="wTodayAlt" src="film/today-whatif.png" alt="" />
     <div class="hl coral" id="hDip"></div><div class="hl" id="hChips"></div><div class="hl" id="hBal"></div></div></div>
   <div class="cap" id="c3a" style="top:380px">Know what’s coming.</div>
-  <div class="cap" id="c3b" style="top:340px">Before it happens.<small>Your balance, day by day, 30 days out — from your Capital One accounts.</small><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M5.537.763c-1.167.7-2.21 1.582-3.08 2.61L3.79 4.836a10.422 10.422 0 013.627-2.881zm13.028.085l-1.991 1.12a10.381 10.381 0 013.762 3.07l1.18-1.654a12.371 12.371 0 00-2.95-2.536zm-6.564.752a9.788 9.788 0 00-4.131.91l.59 1.011a8.542 8.542 0 013.541-.762c1.261 0 2.457.274 3.534.76l.59-1.012a9.81 9.81 0 00-4.124-.907zM11.4 3.535l-.55 6.626h.003l-.002.04c.003.111.013.216.033.318.01.112.043.227.097.342.114.289.298.505.516.607.05.04.105.075.158.111a.98.98 0 01.033.02v.004l6.68 3.596.348-.476-6.058-4.6c-.007 0-.01-.005-.014-.008L12 3.535zm1.423.052c.19.234.361.523.502.855 3.155.604 5.54 3.325 5.54 6.596 0 .877-.176 1.712-.484 2.48a3.7 3.7 0 01.52.76 7.314 7.314 0 00.754-3.24c0-3.868-2.99-7.05-6.832-7.45zm-2.284.095c-3.527.667-6.19 3.708-6.19 7.356 0 2.584 1.335 4.863 3.367 6.21a9.84 9.84 0 01.295-.743c-1.74-1.219-2.874-3.214-2.874-5.467 0-3.054 2.082-5.632 4.932-6.45.128-.351.289-.656.47-.906zm9.15 1.675l-.801.893a8.101 8.101 0 011.551 4.777c0 2.916-1.542 5.481-3.872 6.952.104.388.188.792.251 1.209 2.87-1.632 4.802-4.677 4.802-8.16a9.224 9.224 0 00-1.93-5.67zm-15.38.007a9.25 9.25 0 00-1.93 5.665c0 3.507 1.954 6.567 4.858 8.19.063-.418.144-.822.248-1.206-2.36-1.468-3.923-4.045-3.923-6.984 0-1.777.573-3.422 1.549-4.772zm9.314.043c.044.203.08.416.107.64a5.332 5.332 0 013.213 2.912l.577-.148a5.942 5.942 0 00-3.897-3.404zm-3.816.187a5.939 5.939 0 00-3.319 3.198l.58.148A5.324 5.324 0 019.73 6.257c.017-.227.04-.45.077-.663zM6.733 9.672l-.62.63.315.614 1.727.618.942-.618-.312-.923zm10.615 0l-2.048.321-.315.923.942.618 1.73-.618.315-.614zM6.1 11.869A5.824 5.824 0 008.42 15.7c.1-.17.204-.335.315-.493a5.252 5.252 0 01-2.038-3.34zm11.206 0c-.03.18-.071.355-.118.529.174.138.338.272.493.41.097-.302.174-.617.22-.94zm-15.679.217L0 14.158c.966 3.661 3.638 6.65 7.132 8.111a9.399 9.399 0 01-.05-1.031c0-.375.017-.747.05-1.111-3.024-1.563-5.166-4.544-5.505-8.041zm20.707.055c-.352 3.45-2.464 6.394-5.441 7.957.033.374.05.755.053 1.136 0 .377-.017.71-.05 1.005 3.506-1.488 6.175-4.522 7.104-8.223zm-6.544 2.617a5.31 5.31 0 01-.486.42c.11.158.218.322.318.493.265-.2.513-.42.74-.66a10.61 10.61 0 01-.572-.253zm1.502.559a6.9 6.9 0 01-1.25 1.156c.106.236.207.485.294.741a7.667 7.667 0 001.857-1.772 3.554 3.554 0 01-.9-.125zm-2.988.63l-2.303.913-2.307-.91-.587 1.435 2.448.946c-.134.46-.568.798-1.08.798-.034 0-.07-.004-.104-.007l-.5.686c.188.063.39.096.6.096.621 0 1.17-.289 1.52-.738a1.924 1.924 0 002.183.62l-.49-.67a1.122 1.122 0 01-1.26-.805l2.47-.926zm1.156 4.775c-1.09.377-2.256.58-3.476.58-1.17 0-2.29-.186-3.34-.534.231.88.59 1.654 1.05 2.262.743.134 1.509.207 2.294.207.835 0 1.65-.082 2.437-.236.453-.61.807-1.39 1.035-2.28z"/></svg><span>Tiger Data</span></span></div></div>
+  <div class="cap" id="c3b" style="top:340px">Before it happens.<small>Your balance, day by day, 30 days out — from your Capital One accounts.</small></div>
   <div class="cap" id="c3c" style="top:380px">What if I spend $100 today?<small>The forecast answers instantly.</small></div>
 
   <!-- scene 4 · Ask Runway (real footage) -->
   <div class="rig"><div class="win" id="wAsk"><img src="film/ask.png" alt="" /><div class="hl" id="hUsed"></div></div></div>
   <div class="cap" id="c4a" style="top:380px">Ask anything.</div>
-  <div class="cap" id="c4b" style="top:360px">Every number grounded.<small>Gemini picks the tool. The forecast engine does the maths.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></span></div></div>
+  <div class="cap" id="c4b" style="top:360px">Every number grounded.<small>Gemini picks the tool. The forecast engine does the maths.</small></div>
 
   <!-- scene 5 · support without the spotlight -->
   <div class="line big" id="c5a" style="top:400px;font-size:104px">Sometimes asking is<br/>the hardest part.</div>
@@ -180,7 +215,7 @@
   <div class="sum" id="gSum"><b>$90 + $45</b>covers Maya’s $135 — and protects the protectors.</div>
   <div class="fine" id="gFine">Network Guardian checks each supporter’s own forecast first · the pinned demo scenario, verified in our tests</div>
   <div class="rig"><div class="win" id="wAct"><img src="film/activity.png" alt="" /><div class="hl" id="hAct"></div></div></div>
-  <div class="cap" id="c6d" style="top:310px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span></div></div>
+  <div class="cap" id="c6d" style="top:310px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small></div>
 
   <!-- scene 7 · privacy and trust — opens on the Auth0 lock: the shield grows a shackle and clicks shut -->
   <div id="lock" style="position:absolute;inset:0;opacity:0;pointer-events:none">
@@ -199,11 +234,11 @@
       <g id="lkShield" opacity="0" transform="translate(1150 520) scale(5)"><path fill="#fff" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></g>
     </svg>
   </div>
-  <div class="cap" id="c7lock" style="top:360px">Private by design.<small>Every sign-in and every approval goes through Auth0. Nothing moves without you.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
+  <div class="cap" id="c7lock" style="top:360px">Private by design.<small>Every sign-in and every approval goes through Auth0. Nothing moves without you.</small></div>
 
   <div class="rig"><div class="win" id="wPriv"><img src="film/ask-privacy.png" alt="" /><div class="hl" id="hGuard"></div></div></div>
   <div class="rig"><div class="win" id="wSee"><img src="film/cover.png" alt="" /></div></div>
-  <div class="cap" id="c7a" style="top:330px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say.</small><div class="row" style="display:none"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
+  <div class="cap" id="c7a" style="top:330px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say.</small></div>
   <div class="cap" id="c7b" style="top:360px">Trust without exposure.<small>Supporters see what they covered and when it’s back. Never your balance, spending or reasons.</small></div>
 
   <!-- scene 8 · repayment -->
@@ -220,13 +255,34 @@
   <div class="line" id="c9b" style="top:768px;font-size:30px;font-weight:500;color:rgba(255,255,255,.55);letter-spacing:.04em">sixsevenbucksleft.vip</div>
   <!-- the partners, one bar each on the peak (1:44): like Forecast / Protect / Move -->
   <div id="pmglow" style="position:absolute;inset:0;opacity:0;pointer-events:none"></div>
-  <div class="pm" id="pm0" data-tint="#1d5d9b"><div class="pmchip"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span></div><div class="pmword">Real money.</div><div class="pmline">Accounts, bills and transfers — all through Nessie.</div></div>
+  <div class="pm" id="pm0" data-tint="#1d5d9b"><div class="pmchip"><span class="lc co"><img src="film/capitalone.svg" alt="Capital One" /><span class="sep"></span><span>Nessie API</span></span></div><div class="pmword">Real money.</div><div class="pmline">Accounts, bills and transfers — all through Nessie.</div></div>
   <div class="pm" id="pm1" data-tint="#c9771e"><div class="pmchip"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M5.537.763c-1.167.7-2.21 1.582-3.08 2.61L3.79 4.836a10.422 10.422 0 013.627-2.881zm13.028.085l-1.991 1.12a10.381 10.381 0 013.762 3.07l1.18-1.654a12.371 12.371 0 00-2.95-2.536zm-6.564.752a9.788 9.788 0 00-4.131.91l.59 1.011a8.542 8.542 0 013.541-.762c1.261 0 2.457.274 3.534.76l.59-1.012a9.81 9.81 0 00-4.124-.907zM11.4 3.535l-.55 6.626h.003l-.002.04c.003.111.013.216.033.318.01.112.043.227.097.342.114.289.298.505.516.607.05.04.105.075.158.111a.98.98 0 01.033.02v.004l6.68 3.596.348-.476-6.058-4.6c-.007 0-.01-.005-.014-.008L12 3.535zm1.423.052c.19.234.361.523.502.855 3.155.604 5.54 3.325 5.54 6.596 0 .877-.176 1.712-.484 2.48a3.7 3.7 0 01.52.76 7.314 7.314 0 00.754-3.24c0-3.868-2.99-7.05-6.832-7.45zm-2.284.095c-3.527.667-6.19 3.708-6.19 7.356 0 2.584 1.335 4.863 3.367 6.21a9.84 9.84 0 01.295-.743c-1.74-1.219-2.874-3.214-2.874-5.467 0-3.054 2.082-5.632 4.932-6.45.128-.351.289-.656.47-.906zm9.15 1.675l-.801.893a8.101 8.101 0 011.551 4.777c0 2.916-1.542 5.481-3.872 6.952.104.388.188.792.251 1.209 2.87-1.632 4.802-4.677 4.802-8.16a9.224 9.224 0 00-1.93-5.67zm-15.38.007a9.25 9.25 0 00-1.93 5.665c0 3.507 1.954 6.567 4.858 8.19.063-.418.144-.822.248-1.206-2.36-1.468-3.923-4.045-3.923-6.984 0-1.777.573-3.422 1.549-4.772zm9.314.043c.044.203.08.416.107.64a5.332 5.332 0 013.213 2.912l.577-.148a5.942 5.942 0 00-3.897-3.404zm-3.816.187a5.939 5.939 0 00-3.319 3.198l.58.148A5.324 5.324 0 019.73 6.257c.017-.227.04-.45.077-.663zM6.733 9.672l-.62.63.315.614 1.727.618.942-.618-.312-.923zm10.615 0l-2.048.321-.315.923.942.618 1.73-.618.315-.614zM6.1 11.869A5.824 5.824 0 008.42 15.7c.1-.17.204-.335.315-.493a5.252 5.252 0 01-2.038-3.34zm11.206 0c-.03.18-.071.355-.118.529.174.138.338.272.493.41.097-.302.174-.617.22-.94zm-15.679.217L0 14.158c.966 3.661 3.638 6.65 7.132 8.111a9.399 9.399 0 01-.05-1.031c0-.375.017-.747.05-1.111-3.024-1.563-5.166-4.544-5.505-8.041zm20.707.055c-.352 3.45-2.464 6.394-5.441 7.957.033.374.05.755.053 1.136 0 .377-.017.71-.05 1.005 3.506-1.488 6.175-4.522 7.104-8.223zm-6.544 2.617a5.31 5.31 0 01-.486.42c.11.158.218.322.318.493.265-.2.513-.42.74-.66a10.61 10.61 0 01-.572-.253zm1.502.559a6.9 6.9 0 01-1.25 1.156c.106.236.207.485.294.741a7.667 7.667 0 001.857-1.772 3.554 3.554 0 01-.9-.125zm-2.988.63l-2.303.913-2.307-.91-.587 1.435 2.448.946c-.134.46-.568.798-1.08.798-.034 0-.07-.004-.104-.007l-.5.686c.188.063.39.096.6.096.621 0 1.17-.289 1.52-.738a1.924 1.924 0 002.183.62l-.49-.67a1.122 1.122 0 01-1.26-.805l2.47-.926zm1.156 4.775c-1.09.377-2.256.58-3.476.58-1.17 0-2.29-.186-3.34-.534.231.88.59 1.654 1.05 2.262.743.134 1.509.207 2.294.207.835 0 1.65-.082 2.437-.236.453-.61.807-1.39 1.035-2.28z"/></svg><span>Tiger Data</span></span></div><div class="pmword">Every day.</div><div class="pmline">Transactions as hypertables. Daily spend as continuous aggregates.</div></div>
   <div class="pm" id="pm2" data-tint="#6d5bd0"><div class="pmchip"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></span></div><div class="pmword">Understood.</div><div class="pmline">Gemini picks the tool. The engine does the maths.</div></div>
   <div class="pm" id="pm3" data-tint="#d4572f"><div class="pmchip"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div><div class="pmword">Verified.</div><div class="pmline">Every sign-in and every approval.</div></div>
   <div class="pm" id="pm4" data-tint="#007BFC"><div class="pmchip"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#007BFC" d="M8.36 2.172A1.194 1.194 0 007.348 1.6H1.2A1.2 1.2 0 000 2.8a1.211 1.211 0 00.182.64l11.6 18.4a1.206 1.206 0 002.035 0l3.075-4.874a1.229 1.229 0 00.182-.64 1.211 1.211 0 00-.182-.642zm10.349 8.68a1.206 1.206 0 002.035 0L21.8 9.178l2.017-3.2a1.211 1.211 0 00.183-.64 1.229 1.229 0 00-.183-.64l-1.6-2.526a1.206 1.206 0 00-1.016-.571h-6.148a1.2 1.2 0 00-1.201 1.2 1.143 1.143 0 00.188.64z"/></svg><span>VULTR</span></span></div><div class="pmword">Always on.</div><div class="pmline">Every merge to main deploys itself.</div></div>
   <div class="pm" id="pm5" data-tint="#D97757"><div class="pmchip"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude</span></span></div><div class="pmword">Built together.</div><div class="pmline">Designed and engineered with Claude.</div></div>
-  <div class="built" id="built"><div class="lab">BUILT WITH</div><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M5.537.763c-1.167.7-2.21 1.582-3.08 2.61L3.79 4.836a10.422 10.422 0 013.627-2.881zm13.028.085l-1.991 1.12a10.381 10.381 0 013.762 3.07l1.18-1.654a12.371 12.371 0 00-2.95-2.536zm-6.564.752a9.788 9.788 0 00-4.131.91l.59 1.011a8.542 8.542 0 013.541-.762c1.261 0 2.457.274 3.534.76l.59-1.012a9.81 9.81 0 00-4.124-.907zM11.4 3.535l-.55 6.626h.003l-.002.04c.003.111.013.216.033.318.01.112.043.227.097.342.114.289.298.505.516.607.05.04.105.075.158.111a.98.98 0 01.033.02v.004l6.68 3.596.348-.476-6.058-4.6c-.007 0-.01-.005-.014-.008L12 3.535zm1.423.052c.19.234.361.523.502.855 3.155.604 5.54 3.325 5.54 6.596 0 .877-.176 1.712-.484 2.48a3.7 3.7 0 01.52.76 7.314 7.314 0 00.754-3.24c0-3.868-2.99-7.05-6.832-7.45zm-2.284.095c-3.527.667-6.19 3.708-6.19 7.356 0 2.584 1.335 4.863 3.367 6.21a9.84 9.84 0 01.295-.743c-1.74-1.219-2.874-3.214-2.874-5.467 0-3.054 2.082-5.632 4.932-6.45.128-.351.289-.656.47-.906zm9.15 1.675l-.801.893a8.101 8.101 0 011.551 4.777c0 2.916-1.542 5.481-3.872 6.952.104.388.188.792.251 1.209 2.87-1.632 4.802-4.677 4.802-8.16a9.224 9.224 0 00-1.93-5.67zm-15.38.007a9.25 9.25 0 00-1.93 5.665c0 3.507 1.954 6.567 4.858 8.19.063-.418.144-.822.248-1.206-2.36-1.468-3.923-4.045-3.923-6.984 0-1.777.573-3.422 1.549-4.772zm9.314.043c.044.203.08.416.107.64a5.332 5.332 0 013.213 2.912l.577-.148a5.942 5.942 0 00-3.897-3.404zm-3.816.187a5.939 5.939 0 00-3.319 3.198l.58.148A5.324 5.324 0 019.73 6.257c.017-.227.04-.45.077-.663zM6.733 9.672l-.62.63.315.614 1.727.618.942-.618-.312-.923zm10.615 0l-2.048.321-.315.923.942.618 1.73-.618.315-.614zM6.1 11.869A5.824 5.824 0 008.42 15.7c.1-.17.204-.335.315-.493a5.252 5.252 0 01-2.038-3.34zm11.206 0c-.03.18-.071.355-.118.529.174.138.338.272.493.41.097-.302.174-.617.22-.94zm-15.679.217L0 14.158c.966 3.661 3.638 6.65 7.132 8.111a9.399 9.399 0 01-.05-1.031c0-.375.017-.747.05-1.111-3.024-1.563-5.166-4.544-5.505-8.041zm20.707.055c-.352 3.45-2.464 6.394-5.441 7.957.033.374.05.755.053 1.136 0 .377-.017.71-.05 1.005 3.506-1.488 6.175-4.522 7.104-8.223zm-6.544 2.617a5.31 5.31 0 01-.486.42c.11.158.218.322.318.493.265-.2.513-.42.74-.66a10.61 10.61 0 01-.572-.253zm1.502.559a6.9 6.9 0 01-1.25 1.156c.106.236.207.485.294.741a7.667 7.667 0 001.857-1.772 3.554 3.554 0 01-.9-.125zm-2.988.63l-2.303.913-2.307-.91-.587 1.435 2.448.946c-.134.46-.568.798-1.08.798-.034 0-.07-.004-.104-.007l-.5.686c.188.063.39.096.6.096.621 0 1.17-.289 1.52-.738a1.924 1.924 0 002.183.62l-.49-.67a1.122 1.122 0 01-1.26-.805l2.47-.926zm1.156 4.775c-1.09.377-2.256.58-3.476.58-1.17 0-2.29-.186-3.34-.534.231.88.59 1.654 1.05 2.262.743.134 1.509.207 2.294.207.835 0 1.65-.082 2.437-.236.453-.61.807-1.39 1.035-2.28z"/></svg><span>Tiger Data</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#007BFC" d="M8.36 2.172A1.194 1.194 0 007.348 1.6H1.2A1.2 1.2 0 000 2.8a1.211 1.211 0 00.182.64l11.6 18.4a1.206 1.206 0 002.035 0l3.075-4.874a1.229 1.229 0 00.182-.64 1.211 1.211 0 00-.182-.642zm10.349 8.68a1.206 1.206 0 002.035 0L21.8 9.178l2.017-3.2a1.211 1.211 0 00.183-.64 1.229 1.229 0 00-.183-.64l-1.6-2.526a1.206 1.206 0 00-1.016-.571h-6.148a1.2 1.2 0 00-1.201 1.2 1.143 1.143 0 00.188.64z"/></svg><span>VULTR</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude</span></span></div></div>
+
+  <!-- the summary: everything Runway does, before the thank-you -->
+  <div id="bento">
+    <div class="bx row" style="grid-column:1/3;grid-row:1/2"><div class="tog big"></div><div class="bt">Alerts only</div></div>
+    <div class="bx row" style="grid-column:1/3;grid-row:2/3"><svg width="92" height="92" viewBox="0 0 92 92"><circle cx="46" cy="46" r="38" stroke="rgba(255,255,255,.15)" stroke-width="10" fill="none"/><circle cx="46" cy="46" r="38" stroke="#46d483" stroke-width="10" fill="none" stroke-dasharray="193 239" transform="rotate(-90 46 46)" stroke-linecap="round"/><text x="46" y="53" text-anchor="middle" fill="#fff" font-size="21" font-weight="600" font-family="Barlow">81%</text></svg><div><div class="bt">Report card</div><div class="bs">Checked against reality</div></div></div>
+    <div class="bx col" style="grid-column:3/5;grid-row:1/3"><div class="inset"><div class="bs up">TODAY · MAYA</div><div class="bh">You’re fine until<br/><span style="color:#ff6b5e">Thu, Oct 22</span></div><svg viewBox="0 0 360 120" width="100%" height="96" aria-hidden="true"><line x1="0" y1="86" x2="360" y2="86" stroke="#f5b83d" stroke-dasharray="4 7" opacity=".6"/><path d="M4 40 C 80 46, 140 54, 190 62" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M190 62 C 210 70, 222 100, 236 106 L 256 108" fill="none" stroke="#ff6b5e" stroke-width="4" stroke-linecap="round"/><path d="M256 108 L 266 30 C 300 32, 330 40, 356 52" fill="none" stroke="#46d483" stroke-width="4" stroke-linecap="round"/><circle cx="256" cy="108" r="6" fill="#fff"/></svg></div><div class="bt c">The one sentence</div></div>
+    <div class="bx col" style="grid-column:5/7;grid-row:1/3"><div class="flow"><div class="av2" style="background:#46d483;color:#0b2a17">S</div><div class="amt">$90 →</div><div class="av2" style="background:#ff6b5e">M</div><div class="amt">← $45</div><div class="av2" style="background:#7cb8ff;color:#0b1a2a">E</div></div><div class="bs c">Each supporter’s own forecast checked first.</div><div class="bt c">Network Guardian</div></div>
+    <div class="bx col" style="grid-column:7/8;grid-row:1/2"><div class="bt c" style="font-size:24px">Splits &amp; IOUs</div><div class="owe"><div class="bs up">ALEX OWES YOU</div><div class="bh" style="font-size:36px">$45</div></div></div>
+    <div class="bx col" style="grid-column:8/9;grid-row:1/2"><div class="bt c" style="font-size:24px">Readiness</div><div class="bars"><i></i><i></i><i></i><i></i><i class="g"></i></div><div class="pillc">Confident</div></div>
+    <div class="bx col lock" style="grid-column:7/9;grid-row:2/4"><div class="bg green">Private by design</div><div class="lockico"><svg viewBox="0 0 120 150" width="110" height="138"><path d="M30 62 V40 A30 30 0 0 1 90 40 V62" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round"/><g transform="translate(12 52) scale(4)"><path fill="#fff" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></g></svg></div><div class="see"><div><b class="ok">✓</b>How much they covered, and the day it goes back</div><div><b class="no">✕</b>Never your balance, spending, or why</div></div><div class="bs c">Sign-in and approvals through Auth0</div></div>
+    <div class="bx col fc" style="grid-column:1/3;grid-row:3/4"><div class="bg green">Forecast</div><div class="bs" style="font-size:22px">Your balance, day by day, 30 days out</div><svg viewBox="0 0 360 120" width="100%" height="120" aria-hidden="true"><line x1="0" y1="86" x2="360" y2="86" stroke="#f5b83d" stroke-dasharray="4 7" opacity=".6"/><path d="M4 40 C 80 46, 140 54, 190 62" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M190 62 C 210 70, 222 100, 236 106 L 256 108" fill="none" stroke="#ff6b5e" stroke-width="4" stroke-linecap="round"/><path d="M256 108 L 266 30 C 300 32, 330 40, 356 52" fill="none" stroke="#46d483" stroke-width="4" stroke-linecap="round"/><circle cx="256" cy="108" r="6" fill="#fff"/></svg><div class="axis"><span>TODAY</span><span>THE DIP</span><span>PAYDAY</span></div></div>
+    <div class="bx hero" style="grid-column:3/7;grid-row:3/4"><img src="runway-logo.svg" alt="" class="heroLogo" /><div class="heroWord">Runway</div></div>
+    <div class="bx col" style="grid-column:1/2;grid-row:4/6"><div class="bt c" style="font-size:22px">Circles</div><div class="mini2">Sam added you to Family</div><div class="pillc" style="background:#fff;color:#111">Join</div></div>
+    <div class="bx col" style="grid-column:2/3;grid-row:4/6"><div class="bt c" style="font-size:22px">Send &amp; request</div><div class="bh" style="font-size:52px">$40</div><div class="bs">🎉 Festival</div></div>
+    <div class="bx row" style="grid-column:3/5;grid-row:4/5"><div class="bubble2"><svg width="30" height="30" viewBox="0 0 24 24"><path fill="#fff" d="M4 4h16v11H8l-4 4z"/></svg></div><div><div class="bt">Ask Runway</div><div class="bs">“Can I afford concert tickets Friday?”</div></div></div>
+    <div class="bx row sb" style="grid-column:3/5;grid-row:5/6"><div class="bt" style="font-size:32px">Cover it with my circle</div><div class="check">✓</div></div>
+    <div class="bx col" style="grid-column:5/6;grid-row:4/6"><div class="cal"><div class="calh">FRI</div><div class="cald">23</div></div><div class="bt c" style="font-size:22px">Repaid on payday</div></div>
+    <div class="bx col left" style="grid-column:6/8;grid-row:4/5"><div class="bt"><span class="bh" style="font-size:36px">100%</span> of $ figures grounded</div><div class="meter"><i></i></div><div class="bs">An AI that isn’t allowed to do maths</div></div>
+    <div class="bx row sb" style="grid-column:6/8;grid-row:5/6"><div><div class="bt">Privacy attacks held</div><div class="bs">guard switched off</div></div><div class="bh" style="font-size:52px;color:#b48cff">15/15</div></div>
+    <div class="bx col nes" style="grid-column:8/9;grid-row:4/6"><img src="film/capitalone.svg" alt="Capital One" style="height:34px;filter:brightness(0) invert(1)" /><div class="bh" style="font-size:72px;color:#ff7ac8">8</div><div class="bt c" style="font-size:22px">Built on Nessie</div><div class="bs c">endpoints in use</div></div>
+  </div>
+  <div class="line" id="c9c" style="top:880px;font-size:64px;font-weight:600;letter-spacing:-0.02em">Thank you.</div>
   <audio id="music" src="film/music.mp3" preload="auto"></audio>
 </div>
 <div class="start" id="start"><div><b>Runway</b>Click or press Space to play with sound · Space pause · ← → jump 5 s · R restart · M mute · F full screen</div></div>
@@ -280,7 +336,7 @@
   for (var i = 0; i < 70; i++) motes.push({ x: Math.random() * 1920, y: Math.random() * 1080, r: Math.random() * 1.6 + .3, v: Math.random() * .25 + .05, a: Math.random() * .5 + .1 });
 
   var fallW = $('fallW'), fallR = $('fallR'), fallG = $('fallRglow'), riseP = $('riseP'), riseG = $('riseGlow'), tip = $('tip'), cam = $('cam');
-  var DUR = 123.5;
+  var DUR = 130;
 
   function frame(t) {
     // ---- scene 1: the problem (0–10.5 s) ----
@@ -299,7 +355,7 @@
     var rp = out(seg(t, 10.55, 12.3));
     draw(riseP, rp); draw(riseG, rp);
     var push = ease(seg(t, 10.4, 12.4)) * (1 - ease(seg(t, 12.6, 14)));
-    if (t <= 115.3) { // (the final scene drives the curve itself)
+    if (t <= 121.3) { // (the final scene drives the curve itself)
     var fallFade = 1 - ease(seg(t, 12.6, 13.6));
     $('fall').setAttribute('opacity', fallFade); riseP.setAttribute('opacity', 1 - ease(seg(t, 13.2, 14))); riseG.setAttribute('opacity', .8 * (1 - ease(seg(t, 13.2, 14))));
     // the tip of the line, and a camera that chases it
@@ -312,7 +368,7 @@
     } else tip.setAttribute('opacity', 0);
 
     // light comes up with the beat, glass panels sweep past in depth
-    $('glow').style.opacity = .15 * ease(seg(t, 6.5, 10)) + .85 * out(seg(t, 10.5, 12)) * (1 - .45 * ease(seg(t, 16, 20))) * (1 - .5 * pulse(t, 49, 53.5)) + .25 * ease(seg(t, 115.5, 118.5));
+    $('glow').style.opacity = .15 * ease(seg(t, 6.5, 10)) + .85 * out(seg(t, 10.5, 12)) * (1 - .45 * ease(seg(t, 16, 20))) * (1 - .5 * pulse(t, 49, 53.5)) + .25 * ease(seg(t, 121.5, 124.5));
     ['p1', 'p2', 'p3', 'p4'].forEach(function (id, k) {
       var a = 11 + k * .25, pv = seg(t, a, a + 3.2), el = $(id);
       el.style.opacity = Math.sin(Math.PI * pv) * .9;
@@ -320,14 +376,14 @@
     });
 
     // the logo: the badge arrives and its curve draws itself (white → coral → green), then the wordmark settles
-    var m = out(seg(t, 13.4, 15)) * (1 - ease(seg(t, 19.2, 20.2))) + out(seg(t, 117.1, 118.5)) * (t > 112 ? 1 : 0);
+    var m = out(seg(t, 13.4, 15)) * (1 - ease(seg(t, 19.2, 20.2))) + out(seg(t, 123.1, 124.5)) * (t > 118 ? 1 : 0);
     $('mark').style.opacity = m; $('mark').style.filter = 'blur(' + (1 - m) * 16 + 'px)';
     $('mark').style.transform = 'scale(' + (1.12 - .12 * m) + ')';
     $('word').style.letterSpacing = (0.32 + 0.5 * (1 - m)) + 'em';
-    var lp = t > 112 ? ease(seg(t, 117.3, 118.7)) : ease(seg(t, 13.6, 15.2));
+    var lp = t > 118 ? ease(seg(t, 123.3, 124.7)) : ease(seg(t, 13.6, 15.2));
     draw($('logoLine'), lp); draw($('logoGlow'), lp);
-    $('logoDot').setAttribute('opacity', t > 112 ? out(seg(t, 118.1, 118.5)) : out(seg(t, 14.4, 14.8)));
-    title($('tag'), t, 15.6, 16.8, 19.2, 20); if (t > 112) title($('tag'), t, 118.7, 119.7, 200, 201);
+    $('logoDot').setAttribute('opacity', t > 118 ? out(seg(t, 124.1, 124.5)) : out(seg(t, 14.4, 14.8)));
+    title($('tag'), t, 15.6, 16.8, 19.2, 20); if (t > 118) title($('tag'), t, 124.7, 125.7, 200, 201);
     later(t);
 
     // dust
@@ -444,17 +500,16 @@
     $('f8').style.opacity = f8;
 
     // 9 · the final reveal (with the curve dipping red and rising green once more)
-    if (t > 115.3) {
-      ['fallW', 'fallR', 'fallRglow'].forEach(function (id) { draw($(id), ease(seg(t, 115.5, 116.7))); });
-      $('fall').setAttribute('opacity', 1 - ease(seg(t, 117.1, 117.9)));
-      var rp9 = out(seg(t, 116.7, 117.7)); draw($('riseP'), rp9); draw($('riseGlow'), rp9);
-      $('riseP').setAttribute('opacity', 1 - ease(seg(t, 117.5, 118.3))); $('riseGlow').setAttribute('opacity', .8 * (1 - ease(seg(t, 117.5, 118.3))));
-      $('cushion').setAttribute('opacity', .6 * (1 - ease(seg(t, 117.1, 117.9))));
+    if (t > 121.3) {
+      ['fallW', 'fallR', 'fallRglow'].forEach(function (id) { draw($(id), ease(seg(t, 121.5, 122.7))); });
+      $('fall').setAttribute('opacity', 1 - ease(seg(t, 123.1, 123.9)));
+      var rp9 = out(seg(t, 122.7, 123.7)); draw($('riseP'), rp9); draw($('riseGlow'), rp9);
+      $('riseP').setAttribute('opacity', 1 - ease(seg(t, 123.5, 124.3))); $('riseGlow').setAttribute('opacity', .8 * (1 - ease(seg(t, 123.5, 124.3))));
+      $('cushion').setAttribute('opacity', .6 * (1 - ease(seg(t, 123.1, 123.9))));
       $('cam').setAttribute('transform', 'translate(0,0) scale(1)');
     }
-    title($('c9a'), t, 119.5, 120.5, 200, 201);
-    title($('c9b'), t, 120.1, 121.1, 200, 201);
-    var bw = out(seg(t, 120.5, 121.5)); $('built').style.opacity = bw; $('built').style.transform = 'translateY(' + (24 * (1 - bw)) + 'px)';
+    title($('c9a'), t, 125.5, 126.5, 200, 201);
+    title($('c9b'), t, 126.1, 127.1, 200, 201);
     // the partners — one bar (≈1.92 s at the track's ~125 bpm) each, from the 1:44 peak
     var BAR = 1.92, P0 = 104.0, glow = $('pmglow'), anyOn = 0;
     for (var k = 0; k < 6; k++) {
@@ -468,6 +523,16 @@
     }
     glow.style.opacity = anyOn;
 
+    title($('c9c'), t, 127.0, 128.0, 300, 301);
+    // the summary bento: tiles arrive from depth, centre-out; then the camera dives into the Runway tile
+    var B0 = 115.6, bento = $('bento'), bin = out(seg(t, B0, B0 + .5)), dive = ease(seg(t, 120.6, 121.6));
+    bento.style.opacity = bin * (1 - ease(seg(t, 121.2, 121.7)));
+    bento.style.transform = 'scale(' + (1 + .02 * ease(seg(t, B0, 120.6)) + 2.2 * dive) + ')';
+    [].forEach.call(bento.children, function (el, k) {
+      var r = el.getBoundingClientRect ? 0 : 0, order = el.classList.contains('hero') ? 0 : 1 + (k % 6) * .5 + Math.floor(k / 6) * .25;
+      var a = B0 + .08 * order * 2, v = out(seg(t, a, a + .55));
+      el.style.opacity = v; el.style.transform = 'perspective(1400px) translateZ(' + (-260 * (1 - v)) + 'px) rotateX(' + (14 * (1 - v)) + 'deg)';
+    });
     var capOn = 0; [].forEach.call(document.querySelectorAll('.cap'), function (c) { capOn = Math.max(capOn, +c.style.opacity || 0); });
     $('scrim').style.opacity = capOn;
   }
@@ -492,8 +557,8 @@
     });
   }
   function chime(at) { // a soft three-note notification
-    tone(at, 1318.5, .55, 'sine', .16); tone(at + .1, 1661.2, .55, 'sine', .13); tone(at + .2, 1975.5, .9, 'sine', .11);
-    tone(at, 2637, .25, 'sine', .03);
+    tone(at, 1318.5, .6, 'sine', .34); tone(at + .1, 1661.2, .6, 'sine', .28); tone(at + .2, 1975.5, 1.0, 'sine', .24);
+    tone(at, 2637, .28, 'sine', .06);
   }
   function click(at) {
     var n = ac.createBufferSource(), b = ac.createBuffer(1, ac.sampleRate * .05, ac.sampleRate), d = b.getChannelData(0);
@@ -525,7 +590,8 @@
     try { audio(); if (ac.state === 'suspended') ac.resume(); if (t0 < 5 && !muted) chime(ac.currentTime + (5.02 - t0)); if (t0 < 87.9 && !muted) click(ac.currentTime + (87.9 - t0)); } catch (e) {}
     (function loop() {
       var t = now(), m = $('music');
-      m.volume = muted ? 0 : Math.max(0, 1 - Math.max(0, t - 120.4) / 3); // fade out over the last seconds
+      var duck = 1 - .72 * (out(seg(t, 4.7, 5.0)) * (1 - ease(seg(t, 6.1, 6.9)))); // the music steps back for the alert chime
+      m.volume = muted ? 0 : duck * Math.max(0, 1 - Math.max(0, t - 127) / 3); // fade out over the last seconds
       frame(Math.min(t, DUR)); if (t < DUR + 1) raf = requestAnimationFrame(loop);
     })();
   }
