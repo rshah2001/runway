@@ -28,6 +28,15 @@ paycheck hasn't arrived, so Runway waits — it never pays back early and puts h
 arrives**: a real paycheck lands in Nessie and Runway pays Sam and Emma back — "and on Sam's phone: *You got
 your $90 back from Maya.*" (Both buttons run the real repayment check; only the calendar moves.)
 
+**Likely judge questions — where to tap:**
+
+| Question | Show |
+|---|---|
+| *"How do you add or remove people from the family?"* | Maya → Circles → **My circles** → Family: **Share invite link** (copies `…/join/<code>`, works 7 days), **Add someone**, **Leave**. As Sam (who made Family): **Remove** next to a name, **Turn off links**. Open the link in another signed-in browser → *"Join Family? Sam's circle"* → Join. "Joining a circle shares names only — money still needs an agreement both people say yes to." |
+| *"Can I just send someone money, or ask for it?"* | Circles → **Send or request** → pick a person, $50, 🎉 Festival → tap twice. A real Nessie transfer. **Request** shows up on their Circles as *"Maya asked for $40 · 🍕 Food"* with Pay / Decline — only the amount and the note. |
+| *"Where's the history?"* | **Activity** tab: every cover, repayment, send and request, with *why* from your side ("Sam's safe amount was $90 because…" never appears on Maya's side). |
+| *"Does the other person see it update?"* | Leave Sam's phone open: within ~30 s (or the moment you switch back to the app) the payment appears — no pull to refresh. |
+
 **If the cover doesn't happen live** (network, Nessie): Circles → Support & repayments shows the verified
 transfers from the last run; say "here's the one from earlier — each line is a real Nessie transfer id".
 
@@ -47,6 +56,10 @@ transfers from the last run; say "here's the one from earlier — each line is a
 **Inspiration.** People in a short-term pinch often don't ask for help: it's embarrassing, it invites
 questions about their spending, and they worry about burdening someone who might be stretched too.
 Banking apps warn you about a low balance; they don't help you avoid facing it alone.
+
+**What it does (short).** Forecast → Network Guardian covers the gap safely from people who agreed → it goes back
+after a verified payday. Plus everyday money between people you trust: send, request ("$40 for the festival"),
+named circles you manage with invite links, and an activity timeline that explains every decision from your side.
 
 **What it does.** Runway forecasts your checking balance day by day from your Capital One (Nessie)
 accounts. When it sees a shortfall before payday, its **Network Guardian** checks the people who agreed
