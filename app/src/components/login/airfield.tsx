@@ -31,7 +31,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
-import { C } from '@/constants/runway';
+import { PALETTES } from '@/constants/runway';
+
+
+// the sign-in screen is a night airfield in every theme
+const NIGHT = PALETTES.dark;
 
 const EASE = Easing.bezier(0.77, 0, 0.175, 1);
 const STROKE = 'rgba(255,255,255,0.22)';
@@ -169,7 +173,7 @@ function Light({ geo, z, at, side, tilt, pulse }: {
       opacity: 0.18 + 0.82 * Math.exp(-d * d),
     };
   });
-  return <AnimatedCircle cy={y} r={r} fill={C.amber} animatedProps={props} />;
+  return <AnimatedCircle cy={y} r={r} fill={NIGHT.amber} animatedProps={props} />;
 }
 
 /** The plane that rolls up the centre line on sign-in and shrinks into the horizon. */
@@ -193,7 +197,7 @@ function Plane({ geo, tilt, takeoff }: { geo: Geo; tilt: SharedValue<number>; ta
 
 const s = StyleSheet.create({
   field: { width: '100%', overflow: 'hidden' },
-  horizon: { position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: C.text3, opacity: 0.6 },
+  horizon: { position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: NIGHT.text3, opacity: 0.6 },
   // anchored to the bottom, so growing its height uncovers the runway from the near end
   reveal: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
   svg: { position: 'absolute', left: 0, bottom: 0 },
