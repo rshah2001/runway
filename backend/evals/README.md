@@ -191,6 +191,12 @@ Defence in depth, measured layer by layer (Oct 18 seeded data):
 | Privacy guard + Gemini | **15/15** |
 | **Guard OFF** — Gemini alone with its prompt and own-data tools | **15/15** |
 
+**Re-run the two Gemini rows.** They were measured before `--gemini` could tell a Gemini answer from the
+rule-based fallback: `chat()` falls back whenever Gemini errors, so a failing API key scored 15/15 there too
+(the fallback router never holds anyone else's data, so it can't leak). `--gemini` now counts a question
+Gemini didn't answer as a failure and lists it ("N where Gemini didn't answer"); questions the privacy guard
+answers before any model runs still count, since that's the guard working.
+
 Why the last row holds: the tools never return another person's data (the persona is injected
 server-side; the model can't choose it), so there is nothing to leak — the guard (`app/agent/privacy.py`)
 exists so the model never *improvises* about someone else, and says plainly why.

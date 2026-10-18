@@ -14,7 +14,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_router_baseline_is_perfect_on_every_metric() -> None:
     rows = agent_eval.run()
     failures = [r for r in rows if not (r["tool"] and r["answer"] and r["grounded"])]
-    assert len(rows) == 55 and failures == []
+    assert len(rows) == 58 and failures == []
 
 
 def test_eval_has_both_verdicts() -> None:
@@ -103,3 +103,24 @@ def test_guardian_keeps_every_promise_on_generated_networks() -> None:
     from evals import guardian_eval
 
     assert guardian_eval.run(scenarios=300) == 0
+
+
+def test_privacy_eval_with_gemini_does_not_count_the_fallback_as_a_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A dead key used to score 15/15 because chat() quietly fell back to the router."""
+    from evals import privacy_eval
+
+    class DeadGemini:
+        class interactions:  # noqa: N801 — mimics the SDK's client.interactions
+            @staticmethod
+            def create(**_: object) -> None:
+                raise RuntimeError("402: prepayment credits are depleted")
+
+    monkeypatch.setenv("GEMINI_API_KEY", "dead-key-for-the-test")
+    monkeypatch.setattr(agent, "_gemini_client", DeadGemini)
+    monkeypatch.setattr(agent, "_chat_with_gemini", agent._chat_with_gemini)  # restored after the test
+    monkeypatch.setattr(agent, "RETRY_DELAY_S", 0)
+    assert privacy_eval.run(use_gemini=True) == 1
+    out = capsys.readouterr().out
+    assert "where Gemini didn't answer" in out and "15/15" not in out
