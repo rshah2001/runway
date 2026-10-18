@@ -8,7 +8,7 @@
  * people who avoid looking at their balance — see components/today/quiet-today.tsx).
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
  */
-import { type ComponentRef, type ElementRef, useRef, useState } from 'react';
+import { type ComponentRef, type ElementRef, useEffect, useRef, useState } from 'react';
 import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { Easing, FadeOut, Keyframe } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -17,6 +17,7 @@ import { Sheet } from '@/components/rw/sheet';
 import { PressableScale } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { leave } from '@/lib/account';
+import { signedInWithMfa } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
 import { moneyMoved, setStore } from '@/lib/store';
@@ -30,6 +31,11 @@ const GROW = new Keyframe({
 
 export function AccountMenu() {
   const session = useSession();
+  // the badge only appears when this sign-in really used a second factor (Auth0's amr claim)
+  const [mfa, setMfa] = useState(false);
+  useEffect(() => {
+    if (session.mode === 'signed-in') signedInWithMfa().then(setMfa).catch(() => setMfa(false));
+  }, [session.mode]);
   const button = useRef<ComponentRef<typeof View>>(null);
   const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -101,6 +107,15 @@ export function AccountMenu() {
             <View style={s.who}>
               <Text style={s.whoName}>{name}</Text>
               <Text style={s.whoSub}>Signed in with Auth0</Text>
+              {mfa && (
+                <View style={s.guard} accessibilityLabel="Protected by Auth0 Guardian: this sign-in used a second factor">
+                  <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
+                    <Path d="m8.8 12.2 2.2 2.2 4.2-4.4" />
+                  </Svg>
+                  <Text style={s.guardText}>Protected by Auth0 Guardian</Text>
+                </View>
+              )}
             </View>
             {(
               <Pressable onPress={() => { close(); setEditing(true); }} disabled={keep === null} accessibilityRole="menuitem"
@@ -232,6 +247,8 @@ const s = StyleSheet.create({
   who: { paddingHorizontal: 12, paddingVertical: 10 },
   whoName: { fontFamily: F.bodySemi, fontSize: 15, color: C.text },
   whoSub: { fontFamily: F.body, fontSize: 13, color: C.text2 },
+  guard: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 8, height: 22, borderRadius: 11, backgroundColor: 'rgba(74,222,128,0.12)' },
+  guardText: { fontFamily: F.bodySemi, fontSize: 12, color: C.green },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, borderTopWidth: 1, borderTopColor: C.line },
   track: { width: 44, height: 26, borderRadius: 13, backgroundColor: C.line, padding: 3 },
   trackOn: { backgroundColor: C.green },

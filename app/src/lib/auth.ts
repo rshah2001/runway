@@ -195,6 +195,23 @@ export async function forgetSession(): Promise<void> {
   await clear();
 }
 
+/**
+ * Whether this sign-in used a second factor (Auth0 Guardian push): Auth0 puts "mfa" in the ID token's
+ * `amr` claim when it did. Display only — it shows a badge, it never decides access (the API verifies
+ * its own access token on every request), so reading the claim without re-checking the signature is fine.
+ */
+export async function signedInWithMfa(): Promise<boolean> {
+  const idToken = (await restore())?.idToken;
+  if (!idToken) return false;
+  try {
+    const part = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '=')));
+    return Array.isArray(claims.amr) && claims.amr.includes('mfa');
+  } catch {
+    return false;
+  }
+}
+
 /** Whether a session is stored (it may still need a refresh). */
 export async function isSignedIn(): Promise<boolean> {
   return (await restore()) !== null;
