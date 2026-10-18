@@ -29,6 +29,7 @@ import Svg, { Circle, ClipPath, Defs, G, Line, LinearGradient, Path, Rect, Stop,
 import { T } from '@/components/rw/ui';
 import { C, F, RADIUS, SYSTEM_FONT } from '@/constants/runway';
 import { money, monthDay, weekdayDate } from '@/lib/format';
+import { zoom } from '@/lib/zoom';
 import type { Forecast } from '@/lib/types';
 
 // Apple's default: critically damped, no overshoot. `duration` stands in for "response".
@@ -191,15 +192,15 @@ export function BalanceChart({ f, spend, ghost, focusIndex, onScrub, takeoff = 0
     onStartShouldSetResponder: () => true,
     onMoveShouldSetResponder: () => true,
     onResponderTerminationRequest: () => false, // keep the finger until it lifts
-    onResponderGrant: (e: GestureResponderEvent) => { scrubbing.current = true; at(e.nativeEvent.locationX); },
-    onResponderMove: (e: GestureResponderEvent) => at(e.nativeEvent.locationX),
+    onResponderGrant: (e: GestureResponderEvent) => { scrubbing.current = true; at(e.nativeEvent.locationX / zoom()); },
+    onResponderMove: (e: GestureResponderEvent) => at(e.nativeEvent.locationX / zoom()),
     onResponderRelease: end,
     onResponderTerminate: end,
   };
   const hover = Platform.OS === 'web'
     ? {
       onPointerMove: (e: { nativeEvent: { offsetX?: number; pointerType?: string } }) => {
-        if (e.nativeEvent.pointerType === 'mouse' && e.nativeEvent.offsetX !== undefined) at(e.nativeEvent.offsetX);
+        if (e.nativeEvent.pointerType === 'mouse' && e.nativeEvent.offsetX !== undefined) at(e.nativeEvent.offsetX / zoom()); // on-screen px → layout px
       },
       onPointerLeave: () => { if (!scrubbing.current) end(); },
     }

@@ -12,7 +12,7 @@ import { Icon } from '@/components/rw/icons';
 import { Amount, Avatar, Fine, List, Row, SectionLabel } from '@/components/rw/list';
 import { PageTitle, TopBar } from '@/components/rw/top-bar';
 import { Sheet } from '@/components/rw/sheet';
-import { LoadState, Page, PressableScale } from '@/components/rw/ui';
+import { LoadState, Page, PressableScale, useWide } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
@@ -52,6 +52,7 @@ export default function CirclesScreen() {
   const [picked, setPicked] = useState<string | null>(null);
   const session = useSession();
   const reload = moneyMoved; // after any action here, every screen (Today, Spending, this one) re-fetches
+  const wide = useWide();
 
   const d = sn.data;
   return (
@@ -60,13 +61,14 @@ export default function CirclesScreen() {
       <TopBar />
       <PageTitle title="Circles" sub="People who’ve agreed to help you, and people you’ve agreed to help. Nobody ever sees anyone’s balance." />
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sn.error} onRetry={reload} /></View> : (
-        <>
+        <Columns wide={wide} left={<>
           {sup.data && (sup.data.supporters.length > 0 || sup.data.supporting.length > 0) && (
             <MyCircle me={session.name ?? 'You'} d={d} sup={sup.data} picked={picked} onPick={setPicked}
               onReview={setConsent} onDone={reload} />
           )}
           {me.data?.family_cover !== false && <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />}
-
+          {wide && !!sup.data?.supporters.length && <WhatTheySee on={me.data?.family_cover} onChanged={reload} />}
+        </>} right={<>
           {d.approvals_waiting.length > 0 && (
             <>
               <SectionLabel>Needs your answer</SectionLabel>
@@ -75,7 +77,7 @@ export default function CirclesScreen() {
           )}
 
           <MySupporters d={d} sup={sup.data} onAgree={setConsent} onDone={reload} />
-          {!!sup.data?.supporters.length && <WhatTheySee on={me.data?.family_cover} onChanged={reload} />}
+          {!wide && !!sup.data?.supporters.length && <WhatTheySee on={me.data?.family_cover} onChanged={reload} />}
           <PeopleISupport d={d} sup={sup.data} onAgree={setConsent} onSaved={reload} />
 
           <OwesYou p2p={p2p.data} onAsked={reload} />
@@ -85,13 +87,24 @@ export default function CirclesScreen() {
           <YouAsked ppl={ppl.data} />
 
           <Recent events={d.events} payments={[...(p2p.data?.payments ?? []), ...peoplePayments(ppl.data)]} />
-        </>
+        </>} />
       )}
       {d && d.borrowed.some((b) => b.status === 'active' || b.status === 'repay_failed') && <DemoPayday onDone={reload} />}
       <DemoReset onDone={reload} />
     </Page>
     {/* over the whole screen, not inside the scrolling page */}
     <ConsentSheet a={consent} onClose={() => setConsent(null)} onDone={() => { setConsent(null); reload(); }} />
+    </View>
+  );
+}
+
+/** Desktop: the map and its cards on the left, the lists beside them. Phones: one column. */
+function Columns({ wide, left, right }: { wide: boolean; left: ReactNode; right: ReactNode }) {
+  if (!wide) return <>{left}{right}</>;
+  return (
+    <View style={s.cols}>
+      <View style={{ flex: 1.1, minWidth: 0, paddingTop: 18 }}>{left}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>{right}</View>
     </View>
   );
 }
@@ -1049,6 +1062,7 @@ function EventRow({ e, first }: { e: SafetyEvent; first: boolean }) {
 }
 
 const s = StyleSheet.create({
+  cols: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   step: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontFamily: F.bodySemi, fontSize: 19, color: C.text, lineHeight: 22 },

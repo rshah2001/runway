@@ -22,6 +22,7 @@ import { api } from '@/lib/api';
 import { money } from '@/lib/format';
 import { moneyMoved, setStore } from '@/lib/store';
 import { useSession } from '@/lib/session';
+import { zoom } from '@/lib/zoom';
 
 // grows from the button's top-right corner: scale 0.92 → 1 with a quick fade (Apple: anchor to the source)
 const GROW = new Keyframe({
@@ -48,9 +49,10 @@ export function AccountMenu() {
 
   function open() {
     // place the menu under the button, right edges lined up
+    // measured in on-screen pixels; the menu is placed in layout pixels (they differ on the scaled desktop site)
     button.current?.measureInWindow((x, y, w, h) => {
-      const vw = Dimensions.get('window').width;
-      setAt({ top: y + h + 8, right: Math.max(8, vw - (x + w)) });
+      const k = zoom(), vw = Dimensions.get('window').width;
+      setAt({ top: (y + h) / k + 8, right: Math.max(8, (vw - (x + w)) / k) });
     });
     // only a real number counts: an older server (or a failed read) shows "…", never a guess
     api.me().then((m) => {

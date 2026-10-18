@@ -20,7 +20,7 @@ import Svg, { Path } from 'react-native-svg';
 import { openApproval } from '@/components/rw/approval-sheet';
 import { Icon } from '@/components/rw/icons';
 import { Amount, Avatar, List, Row, SectionLabel } from '@/components/rw/list';
-import { PressableScale } from '@/components/rw/ui';
+import { PressableScale, useWide } from '@/components/rw/ui';
 import { BalanceChart } from '@/components/today/today-interactive';
 import { C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
@@ -28,7 +28,7 @@ import { api } from '@/lib/api';
 import { money, monthDay, weekdayDate } from '@/lib/format';
 import { isClear, nextPaycheck, runwayDays, safeToSpend, upcoming } from '@/lib/runway';
 import { useStore } from '@/lib/store';
-import type { Forecast, ForecastEvent, Me, SafetyNetSummary, SupportSummary } from '@/lib/types';
+import type { Forecast, ForecastEvent, Me, Recurring, SafetyNetSummary, SupportSummary } from '@/lib/types';
 
 const WHAT_IFS = [20, 50, 100];
 const CUSTOM_MAX = 5000;
@@ -51,6 +51,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
   const me = useLoad(() => api.me(), String(store.dataVersion));
   const family = useLoad(() => api.safetyNet(), String(store.dataVersion));
   const support = useLoad(() => api.support(), String(store.dataVersion));
+  const subs = useLoad(() => api.recurring(), String(store.dataVersion));
   const [spend, setSpend] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
   const [rowDate, setRowDate] = useState<string | null>(null);
@@ -76,7 +77,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
     </View>
   );
   const notes = net ? (
-    <Animated.View entering={FadeIn.duration(200)} layout={EASE} style={{ marginTop: 14 }}>
+    <Animated.View entering={FadeIn.duration(200)} layout={EASE} style={{ marginTop: wide ? 0 : 14 }}>
       <SectionLabel>Your safety net</SectionLabel>
       <PressableScale onPress={() => router.navigate('/circles')} accessibilityRole="button"
         accessibilityLabel={`${net.title}. Manage protection`} style={s.note}>
@@ -89,14 +90,20 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
       </PressableScale>
     </Animated.View>
   ) : null;
-  const coming = <ComingUp f={f} selected={point?.date ?? null} onFocus={setRowDate} />;
+  const coming = <ComingUp f={f} subs={subs.data} selected={point?.date ?? null} onFocus={setRowDate} />;
 
   return (
     <View>
-      {hero}
-      {details}
+      {wide ? (
+        <View style={s.topRow}>
+          <View style={{ flex: 1 }}>{hero}</View>
+          <View style={{ flex: 1.5 }}><Tiles view={view} f={f} /></View>
+        </View>
+      ) : hero}
+      {/* desktop: the details stay under the balance they explain, not across the whole page */}
+      {details && wide ? <View style={{ maxWidth: 560 }}>{details}</View> : details}
       <Animated.View layout={EASE}>
-        <Tiles view={view} f={f} />
+        {!wide && <Tiles view={view} f={f} />}
         {wide ? (
           <View style={s.wideRow}>
             <View style={{ flex: 1.45 }}>{chart}</View>
@@ -123,14 +130,15 @@ function Hero({ view, spend, point, open, onToggle }: {
     : `${you} fine until ${weekdayDate(view.points[first].date)}`;
   const events = point ? eventsOn(view, point.date) : [];
   const tone = covered ? C.green : C.red;
+  const wide = useWide();
 
   return (
-    <View style={s.hero}>
+    <View style={[s.hero, wide && s.heroWide]}>
       <Text style={[s.bal, point && point.balance < view.safe_floor && { color: C.red }]} accessibilityLiveRegion="polite">
         {money(point ? point.balance : view.points[0].balance, 0)}
       </Text>
       <Text style={s.balLabel}>{point ? weekdayDate(point.date) : spend ? `If you spend ${money(spend, 0)} today` : 'In checking'}</Text>
-      <Text style={s.evLine}>{point ? (events.length ? describe(events) : 'Everyday spending only') : ' '}</Text>
+      <Text style={[s.evLine, wide && { textAlign: 'left' }]}>{point ? (events.length ? describe(events) : 'Everyday spending only') : ' '}</Text>
       <PressableScale onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: open }}
         accessibilityHint="Shows what's behind this" style={[s.pill, { backgroundColor: `${tone}22` }]}>
         <View style={[s.pillDot, { backgroundColor: tone }]} />
@@ -186,7 +194,7 @@ function Tiles({ view, f }: { view: Forecast; f: Forecast }) {
   const spare = safeToSpend(view);
   const low = view.low.balance < view.safe_floor;
   return (
-    <View style={s.tiles}>
+    <View style={[s.tiles, useWide() && { marginTop: 0 }]}>
       <Tile label="Next payday" value={pay ? money(pay.amount, 0) : 'None'} sub={pay ? weekdayDate(pay.date) : 'in the next month'} />
       <Tile label="Spare today" value={money(spare, 0)} sub={spare > 0 ? 'after bills' : 'wait for payday'} />
       <Tile label="Lowest point" value={money(view.low.balance, 0)} sub={monthDay(view.low.date)} red={low} />
@@ -256,6 +264,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
  * After an approval: a quiet "Done" line instead.
  */
 export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; approved: number; compact?: boolean }) {
+  const wide = useWide();
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -303,13 +312,15 @@ export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; 
     }
   }
 
+  const side = wide && !compact; // desktop: the button keeps its own width, the note sits beside it
   return (
-    <View style={{ marginTop: compact ? 12 : 16 }}>
-      <PressableScale onPress={getFix} disabled={asking} accessibilityRole="button" style={[s.cta, compact && { height: 46 }, asking && { opacity: 0.6 }]}>
+    <View style={[{ marginTop: compact ? 12 : 16 }, side && s.fixRow]}>
+      <PressableScale onPress={getFix} disabled={asking} accessibilityRole="button"
+        style={[s.cta, compact && { height: 46 }, side && s.ctaSide, asking && { opacity: 0.6 }]}>
         <Text style={s.ctaText}>{asking ? 'Finding a fix…' : 'Cover this dip'}</Text>
       </PressableScale>
       {!compact && (
-        <Text style={s.fixNote}>
+        <Text style={[s.fixNote, side && { flex: 1, marginTop: 0, textAlign: 'left' }]}>
           {failed ? 'Couldn’t find a fix. Try again, or ask in the chat.' : 'We’ll suggest moving money from savings. Nothing moves until you say yes.'}
         </Text>
       )}
@@ -320,9 +331,26 @@ export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; 
 
 /* ---------------- coming up ---------------- */
 
-/** Bills and pay in the next two weeks. Hover or press a row to point at its day on the chart. */
-function ComingUp({ f, selected, onFocus }: { f: Forecast; selected: string | null; onFocus: (date: string | null) => void }) {
-  const items = upcoming(f);
+/**
+ * Bills and pay in the next two weeks, plus subscriptions renewing in that time. Hover or press a row to
+ * point at its day on the chart.
+ * Subscriptions come from GET /recurring and are charged to the credit card, not to checking: they reach
+ * checking later inside the card payment, which the forecast already counts. So they're listed "on your
+ * card" with the amount in grey, and they never change a number on the chart.
+ */
+type ComingItem = { date: string; label: string; amount: number; card: boolean };
+
+function ComingUp({ f, subs, selected, onFocus }: {
+  f: Forecast; subs: Recurring[] | null; selected: string | null; onFocus: (date: string | null) => void;
+}) {
+  const today = f.points[0]?.date ?? '';
+  const end = f.points[Math.min(14, f.points.length - 1)]?.date ?? today;
+  const items: ComingItem[] = [
+    ...upcoming(f).map((e) => ({ date: e.date, label: e.label, amount: e.amount, card: false })),
+    ...(subs ?? []).filter((r) => r.next_date >= today && r.next_date <= end)
+      .map((r) => ({ date: r.next_date, label: r.merchant, amount: -r.amount, card: true })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const when = (d: string) => (d === today ? 'Today' : weekdayDate(d));
   return (
     <View>
       <SectionLabel>Coming up</SectionLabel>
@@ -332,9 +360,11 @@ function ComingUp({ f, selected, onFocus }: { f: Forecast; selected: string | nu
           <Pressable key={`${e.date}-${e.label}-${i}`} onHoverIn={() => onFocus(e.date)} onHoverOut={() => onFocus(null)}
             onPressIn={() => onFocus(e.date)} onPressOut={() => Platform.OS !== 'web' && onFocus(null)}
             accessibilityRole="button"
-            accessibilityLabel={`${weekdayDate(e.date)}, ${e.label}, ${e.amount > 0 ? 'plus' : 'minus'} ${money(Math.abs(e.amount), 0)}. Show on the chart.`}>
-            <Row first={i === 0} highlight={selected === e.date} title={e.label} sub={weekdayDate(e.date)}
-              right={<Amount tone={e.amount > 0 ? 'green' : undefined}>{`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`}</Amount>} />
+            accessibilityLabel={`${when(e.date)}, ${e.label}, ${e.amount > 0 ? 'plus' : 'minus'} ${money(Math.abs(e.amount), e.card ? 2 : 0)}${e.card ? ', on your credit card' : ''}. Show on the chart.`}>
+            <Row first={i === 0} highlight={selected === e.date} title={e.label} sub={e.card ? `${when(e.date)} · on your card` : when(e.date)}
+              right={<Amount tone={e.card ? 'dim' : e.amount > 0 ? 'green' : undefined}>
+                {`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), e.card ? 2 : 0)}`}
+              </Amount>} />
           </Pressable>
         ))}
       </List>
@@ -382,6 +412,10 @@ const s = StyleSheet.create({
   wideRow: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
 
   hero: { alignItems: 'center', marginTop: 34 },
+  heroWide: { alignItems: 'flex-start', marginTop: 0 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 32, marginTop: 28 },
+  fixRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  ctaSide: { paddingHorizontal: 32, height: 48 },
   bal: { fontFamily: F.condBold, fontSize: 64, lineHeight: 68, color: C.text, fontVariant: ['tabular-nums'] },
   balLabel: { fontFamily: F.cond, fontSize: 13, letterSpacing: 1.8, textTransform: 'uppercase', color: C.text2, marginTop: 4 },
   evLine: { fontFamily: F.body, fontSize: 14, color: C.text2, minHeight: 20, marginTop: 4, textAlign: 'center' },
@@ -397,7 +431,7 @@ const s = StyleSheet.create({
   dWhy: { fontFamily: F.body, fontSize: 13, color: C.text2 },
   dFoot: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, marginTop: 2 },
 
-  tiles: { flexDirection: 'row', gap: 8, marginTop: 22 },
+  tiles: { flexDirection: 'row', gap: 8, marginTop: 22 }, // on desktop the row beside the balance adds no gap
   tile: { flex: 1, backgroundColor: C.card, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center' },
   tileLabel: { fontFamily: F.cond, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: C.text2 },
   tileValue: { fontFamily: F.condBold, fontSize: 24, lineHeight: 28, color: C.text, marginTop: 6, fontVariant: ['tabular-nums'] },

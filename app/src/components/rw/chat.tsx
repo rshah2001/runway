@@ -29,6 +29,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { C, F } from '@/constants/runway';
 import { api } from '@/lib/api';
+import { zoom } from '@/lib/zoom';
 import { useSession } from '@/lib/session';
 import { setStore, useStore } from '@/lib/store';
 import type { PendingAction } from '@/lib/types';
@@ -59,7 +60,7 @@ const closeChat = () => setStore({ chatOpen: false });
 export function ChatLauncher() {
   const wide = useWide();
   const reduced = useReducedMotion();
-  const { height } = useWindowDimensions();
+  const height = useWindowDimensions().height / zoom(); // layout px on the scaled desktop site
   const { chatOpen } = useStore();
   const p = useSharedValue(0); // 0 closed … 1 open
   const [mounted, setMounted] = useState(false); // panel stays mounted after first open, so the chat survives
@@ -104,7 +105,7 @@ export function ChatLauncher() {
       )}
       {mounted && (
         <Animated.View pointerEvents={chatOpen ? 'auto' : 'none'} accessibilityViewIsModal={chatOpen}
-          style={[wide ? [s.window, { bottom: fabBottom + 68, maxHeight: Math.min(680, height - 140) }] : [s.sheet, { height: Math.min(height * 0.78, 720) }], panelStyle]}>
+          style={[wide ? [s.window, { bottom: fabBottom + 68, maxHeight: Math.min(660, height - 170) }] : [s.sheet, { height: Math.min(height * 0.78, 720) }], panelStyle]}>
           <ChatPanel wide={wide} />
         </Animated.View>
       )}
