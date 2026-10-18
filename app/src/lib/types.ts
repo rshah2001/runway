@@ -289,3 +289,12 @@ export type Scenarios = { floor: number; payday: string | null; need: number; sc
 // ---------- Named circles (backend/app/circles.py) — membership only, never money ----------
 export type CircleMember = { slug: string; name: string; state: 'invited' | 'active' };
 export type CircleView = { id: string; name: string; made_by_me: boolean; my_state: 'invited' | 'active'; members: CircleMember[] };
+
+// ---------- send / request between connected people (backend/app/people_pay.py) ----------
+export type Person = { slug: string; name: string; how: string }; // how: "Family", "Weekend crew", "Safety net"…
+export type PersonRequest = {
+  id: string; from_slug: string; from_name: string; to_slug: string; to_name: string;
+  amount: number; memo: string; status: 'open' | 'settling' | 'paid' | 'declined' | 'cancelled' | 'failed'; created: string;
+};
+export type PersonPayment = { id: string; from_slug: string; from_name: string; to_slug: string; to_name: string; amount: number; memo: string; date: string };
+export type PeopleSummary = { persona: string; people: Person[]; asked_me: PersonRequest[]; i_asked: PersonRequest[]; payments: PersonPayment[] };

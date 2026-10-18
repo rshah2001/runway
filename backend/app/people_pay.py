@@ -1,10 +1,10 @@
 """Send and request money between people connected to you — any time, for anything ("$50 for the festival").
 
-Connected means: you share a named circle (both active members) or have a support agreement (any state
-other than stopped). Sending is a real Nessie move (transfer + deposit), journaled before it's sent and
-paid once per tap. A request waits for the other person: only they can pay it, from their own account,
-and a claim (open → settling) makes double payment impossible. A request carries only the amount and the
-note the requester wrote — never a balance or a reason.
+Connected means: you share a named circle (both active members) or have a support agreement BOTH of you
+agreed to — a one-sided offer doesn't count. Sending is a real Nessie move (transfer + deposit), journaled
+before it's sent and paid once per tap. A request waits for the other person: only they can pay it, from
+their own account, and a claim (open → settling) makes double payment impossible. A request carries only
+the amount and the note the requester wrote — never a balance or a reason.
 """
 
 import secrets
@@ -69,8 +69,10 @@ def people(conn: psycopg.Connection, me: str) -> list[Row]:
              SELECT CASE WHEN a.supporter = %(me)s THEN a.recipient ELSE a.supporter END, 'Safety net'
                FROM support_agreements a
                WHERE (a.supporter = %(me)s OR a.recipient = %(me)s)
-                 AND NOT (a.revoked_at IS NOT NULL
-                          AND a.supporter_consent_at IS NULL AND a.recipient_consent_at IS NULL)
+                 -- only an agreement BOTH people said yes to: a one-sided offer must never make
+                 -- someone reachable (or let them be spammed with requests)
+                 AND a.supporter_consent_at IS NOT NULL AND a.recipient_consent_at IS NOT NULL
+                 AND a.revoked_at IS NULL
            ) x JOIN personas p ON p.slug = x.slug
            GROUP BY p.slug, p.first_name ORDER BY p.first_name""",
         {"me": me},
