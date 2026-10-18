@@ -28,7 +28,7 @@ import { api } from '@/lib/api';
 import { money, monthDay, weekdayDate } from '@/lib/format';
 import { isClear, nextPaycheck, runwayDays, safeToSpend, upcoming } from '@/lib/runway';
 import { useStore } from '@/lib/store';
-import type { Forecast, ForecastEvent, Me, SafetyNetSummary, SupportSummary } from '@/lib/types';
+import type { Forecast, ForecastEvent, Me, Recurring, SafetyNetSummary, SupportSummary } from '@/lib/types';
 
 const WHAT_IFS = [20, 50, 100];
 const CUSTOM_MAX = 5000;
@@ -51,6 +51,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
   const me = useLoad(() => api.me(), String(store.dataVersion));
   const family = useLoad(() => api.safetyNet(), String(store.dataVersion));
   const support = useLoad(() => api.support(), String(store.dataVersion));
+  const subs = useLoad(() => api.recurring(), String(store.dataVersion));
   const [spend, setSpend] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
   const [rowDate, setRowDate] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export function TodayHome({ f, wide, takeoff }: { f: Forecast; wide: boolean; ta
       </PressableScale>
     </Animated.View>
   ) : null;
-  const coming = <ComingUp f={f} selected={point?.date ?? null} onFocus={setRowDate} />;
+  const coming = <ComingUp f={f} subs={subs.data} selected={point?.date ?? null} onFocus={setRowDate} />;
 
   return (
     <View>
@@ -330,9 +331,26 @@ export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; 
 
 /* ---------------- coming up ---------------- */
 
-/** Bills and pay in the next two weeks. Hover or press a row to point at its day on the chart. */
-function ComingUp({ f, selected, onFocus }: { f: Forecast; selected: string | null; onFocus: (date: string | null) => void }) {
-  const items = upcoming(f);
+/**
+ * Bills and pay in the next two weeks, plus subscriptions renewing in that time. Hover or press a row to
+ * point at its day on the chart.
+ * Subscriptions come from GET /recurring and are charged to the credit card, not to checking: they reach
+ * checking later inside the card payment, which the forecast already counts. So they're listed "on your
+ * card" with the amount in grey, and they never change a number on the chart.
+ */
+type ComingItem = { date: string; label: string; amount: number; card: boolean };
+
+function ComingUp({ f, subs, selected, onFocus }: {
+  f: Forecast; subs: Recurring[] | null; selected: string | null; onFocus: (date: string | null) => void;
+}) {
+  const today = f.points[0]?.date ?? '';
+  const end = f.points[Math.min(14, f.points.length - 1)]?.date ?? today;
+  const items: ComingItem[] = [
+    ...upcoming(f).map((e) => ({ date: e.date, label: e.label, amount: e.amount, card: false })),
+    ...(subs ?? []).filter((r) => r.next_date >= today && r.next_date <= end)
+      .map((r) => ({ date: r.next_date, label: r.merchant, amount: -r.amount, card: true })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const when = (d: string) => (d === today ? 'Today' : weekdayDate(d));
   return (
     <View>
       <SectionLabel>Coming up</SectionLabel>
@@ -342,9 +360,11 @@ function ComingUp({ f, selected, onFocus }: { f: Forecast; selected: string | nu
           <Pressable key={`${e.date}-${e.label}-${i}`} onHoverIn={() => onFocus(e.date)} onHoverOut={() => onFocus(null)}
             onPressIn={() => onFocus(e.date)} onPressOut={() => Platform.OS !== 'web' && onFocus(null)}
             accessibilityRole="button"
-            accessibilityLabel={`${weekdayDate(e.date)}, ${e.label}, ${e.amount > 0 ? 'plus' : 'minus'} ${money(Math.abs(e.amount), 0)}. Show on the chart.`}>
-            <Row first={i === 0} highlight={selected === e.date} title={e.label} sub={weekdayDate(e.date)}
-              right={<Amount tone={e.amount > 0 ? 'green' : undefined}>{`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), 0)}`}</Amount>} />
+            accessibilityLabel={`${when(e.date)}, ${e.label}, ${e.amount > 0 ? 'plus' : 'minus'} ${money(Math.abs(e.amount), e.card ? 2 : 0)}${e.card ? ', on your credit card' : ''}. Show on the chart.`}>
+            <Row first={i === 0} highlight={selected === e.date} title={e.label} sub={e.card ? `${when(e.date)} · on your card` : when(e.date)}
+              right={<Amount tone={e.card ? 'dim' : e.amount > 0 ? 'green' : undefined}>
+                {`${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount), e.card ? 2 : 0)}`}
+              </Amount>} />
           </Pressable>
         ))}
       </List>
