@@ -105,10 +105,15 @@ def answer(conn: psycopg.Connection, actor: str, circle_id: str, accept: bool) -
     _set(conn, circle_id, actor, "active" if accept else "declined")
 
 
+def _revoke_links_by(conn: psycopg.Connection, circle_id: str, slug: str) -> None:
+    conn.execute("UPDATE circle_invites SET revoked = true WHERE circle_id = %s AND created_by = %s", (circle_id, slug))
+
+
 def leave(conn: psycopg.Connection, actor: str, circle_id: str) -> None:
     if _state(conn, circle_id, actor) not in ("invited", "active"):
         raise CircleRefused("You're not in this circle.")
     _set(conn, circle_id, actor, "left")
+    _revoke_links_by(conn, circle_id, actor)  # links they shared stop working when they go
 
 
 def remove(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> None:
@@ -119,6 +124,7 @@ def remove(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> N
     if _state(conn, circle_id, slug) not in ("invited", "active"):
         raise CircleRefused("They're not in this circle.")
     _set(conn, circle_id, slug, "removed")
+    _revoke_links_by(conn, circle_id, slug)  # and any links they shared
 
 
 def mine(conn: psycopg.Connection, viewer: str) -> list[Row]:
@@ -159,6 +165,8 @@ def link_info(conn: psycopg.Connection, token: str) -> Row | None:
     return conn.execute(
         """SELECT i.circle_id, c.name, p.first_name AS made_by, i.expires_at FROM circle_invites i
            JOIN circles c ON c.id = i.circle_id JOIN personas p ON p.slug = c.created_by
+           -- a link only works while whoever made it is still in the circle
+           JOIN circle_members m ON m.circle_id = i.circle_id AND m.slug = i.created_by AND m.state = 'active'
            WHERE i.token = %s AND NOT i.revoked AND i.expires_at > now()""",
         (token,),
     ).fetchone()
