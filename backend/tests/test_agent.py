@@ -221,6 +221,14 @@ def test_figures_from_tools_or_the_user_are_allowed() -> None:
     assert not agent.grounded("You'll have $900.", "how low?", outputs)
 
 
+def test_a_bill_can_be_quoted_without_its_minus_but_not_the_other_way() -> None:
+    """Gemini's "rent of $650.00" for the tool's "-$650.00" was discarded as an invented figure."""
+    bills = [{"label": "Rent", "amount": "-$650.00"}]
+    assert agent.grounded("Rent of $650.00 is due Sun Nov 1.", "", bills)
+    assert agent.grounded("Rent of $650 is due.", "", bills)
+    assert not agent.grounded("You'll be at -$121.71.", "", [{"lowest_balance": "$121.71"}])
+
+
 def test_gemini_failure_falls_back_to_rules() -> None:
     class Broken:
         class interactions:  # noqa: N801 — mirrors the SDK's attribute name

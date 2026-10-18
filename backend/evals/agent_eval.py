@@ -187,7 +187,8 @@ def _pause_proposed(r: ChatResponse) -> bool:
 
 
 def _names_without_acting(who: str) -> Callable[[ChatResponse], bool]:
-    return lambda r: who in r.reply and r.pending_action is None
+    # case-insensitive: "Dining" is a category label, but mid-sentence it's naturally "dining"
+    return lambda r: who.lower() in r.reply.lower() and r.pending_action is None
 
 
 def _ask(case: Case, client: Any) -> tuple[ChatResponse | None, list[dict[str, Any]]]:
