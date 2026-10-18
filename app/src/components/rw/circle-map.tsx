@@ -4,7 +4,8 @@
  * the API returns nothing else — so the map can't reveal who else someone supports, or anyone's money.
  *
  * Lines: solid = both agreed (active) · dashed = waiting for a yes · faded = stopped or paused.
- * Green = this person can cover you · blue = you can cover them. An amount on a line is money that is
+ * Green = this person can cover you · blue = you can cover them · dotted grey = in the same named circle
+ * with no support agreement (a circle alone never means money). An amount on a line is money that is
  * out right now. Tap a person to select them (the screen shows their details and actions below).
  *
  * Motion (apple-design): people grow into place on mount on the iOS sheet curve (no overshoot,
@@ -23,8 +24,8 @@ import { money } from '@/lib/format';
 export type CirclePerson = {
   key: string;
   name: string;
-  /** supporter = can cover me · supported = I can cover them */
-  role: 'supporter' | 'supported';
+  /** supporter = can cover me · supported = I can cover them · member = shares a circle, no agreement */
+  role: 'supporter' | 'supported' | 'member';
   /** active: both agreed · waiting: someone hasn't said yes · off: stopped/paused */
   status: 'active' | 'waiting' | 'off';
   /** money out right now on this relationship, if any */
@@ -45,7 +46,8 @@ const NAME_W = 110;
 const AMOUNT_W = 64;
 
 /** Green: this person can cover you · blue: you can cover them · grey: stopped. */
-const lineColor = (p: CirclePerson) => (p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff');
+const lineColor = (p: CirclePerson) =>
+  p.role === 'member' ? '#56616b' : p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff';
 
 
 export function CircleMap({ me, status, tone, people, selected, onSelect }: {
@@ -84,7 +86,8 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
               return (
                 <Line key={`l-${p.key}`} x1={cx + ux * CENTER} y1={cy + uy * CENTER} x2={x - ux * NODE} y2={y - uy * NODE} stroke={color}
                   strokeOpacity={p.status === 'off' ? 0.35 : selected && selected !== p.key ? 0.35 : 0.85}
-                  strokeWidth={p.status === 'active' ? 2 : 1.5} strokeDasharray={p.status === 'active' ? undefined : '5 6'} />
+                  strokeWidth={p.status === 'active' ? 2 : 1.5}
+                  strokeDasharray={p.role === 'member' ? '1 6' : p.status === 'active' ? undefined : '5 6'} strokeLinecap="round" />
               );
             })}
           </Svg>
@@ -134,14 +137,14 @@ function Node({ p, x, y, above, index, on, dim, onPress }: {
   // visible from the first frame: the motion only adds a slight grow-in, so a throttled tab (or
   // stalled animation frames) can never leave someone missing from the map
   const style = useAnimatedStyle(() => ({ transform: [{ scale: (0.82 + 0.18 * t.get()) * grow.get() }] }));
-  const role = p.role === 'supporter' ? 'can cover you' : 'you can cover them';
+  const role = p.role === 'supporter' ? 'can cover you' : p.role === 'supported' ? 'you can cover them' : 'in this circle';
   return (
     <View style={[s.abs, { left: x - NAME_W / 2, top: y - NODE - (above ? LABEL : 0), width: NAME_W, alignItems: 'center', opacity: dim ? 0.55 : 1 }]}>
       {above && <Text style={[s.nodeName, s.nameAbove, on && { color: C.text }]} numberOfLines={1}>{p.name}</Text>}
       <Animated.View style={style}>
         <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }}
-          accessibilityLabel={`${p.name}, ${role}, ${p.status === 'active' ? 'agreed' : p.status === 'waiting' ? 'waiting for a yes' : 'stopped'}`}
-          style={[s.node, { borderColor: lineColor(p), borderStyle: p.status === 'waiting' ? 'dashed' : 'solid' }, on && s.nodeOn,
+          accessibilityLabel={p.role === 'member' ? `${p.name}, ${role}` : `${p.name}, ${role}, ${p.status === 'active' ? 'agreed' : p.status === 'waiting' ? 'waiting for a yes' : 'stopped'}`}
+          style={[s.node, { borderColor: lineColor(p), borderStyle: p.role === 'member' ? 'dotted' : p.status === 'waiting' ? 'dashed' : 'solid' }, on && s.nodeOn,
             p.status === 'off' && { opacity: 0.6 }]}>
           {/* a solid disc first, so no line ever shows through; the person's tint sits on top of it */}
           <View style={[StyleSheet.absoluteFill, s.tint, { backgroundColor: `${TINTS[index % TINTS.length]}55` }]} />
@@ -153,20 +156,21 @@ function Node({ p, x, y, above, index, on, dim, onPress }: {
   );
 }
 
-export function CircleLegend() {
+export function CircleLegend({ members = false }: { members?: boolean }) {
   return (
     <View style={s.legend}>
       <Key color={C.green} label="Can cover you" />
       <Key color="#7cb8ff" label="You can cover them" />
       <Key color={C.text2} dashed label="Waiting for a yes" />
+      {members && <Key color="#56616b" dotted label="In this circle" />}
     </View>
   );
 }
 
-function Key({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+function Key({ color, label, dashed, dotted }: { color: string; label: string; dashed?: boolean; dotted?: boolean }) {
   return (
     <View style={s.key}>
-      <View style={[s.swatch, { borderColor: color, borderStyle: dashed ? 'dashed' : 'solid' }]} />
+      <View style={[s.swatch, { borderColor: color, borderStyle: dotted ? 'dotted' : dashed ? 'dashed' : 'solid' }]} />
       <Text style={s.keyText}>{label}</Text>
     </View>
   );
