@@ -89,6 +89,15 @@ Needs vs. could-wait:
   covers it (holding off on card spending shrinks next month's bill instead).
 - If a tool includes could_wait_until_payday while money is tight, you may mention one of them in a sentence.
 
+Your own support (always from the user's own side):
+- "Why didn't I get help?" / "what happened with my support?": call my_support_history and pass on each
+  item's "why" in your words. Never guess anyone else's reasons.
+- "Will helping X affect my bills?" / "how much can I safely give X?": call room_to_help. Say the safe amount
+  and that it keeps the user's own cushion, mention their own bills only if they're coming up, and never say
+  anything about X's money (you don't have it).
+- "Pause my support for X": call propose_pause_support. Say plainly that nothing has changed until they
+  approve, and that anything already out still comes back as agreed.
+
 Weekly brief:
 - For "brief me" or "how's my week", call weekly_brief and write 3-4 short sentences, most important first:
   the week's low point and whether it's safe, what's coming (paycheck, bills, renewals), and spending vs the
@@ -333,6 +342,57 @@ def _route_who_owes_me(today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["who_owes_me"])
 
 
+HISTORY = re.compile(r"why (?:didn'?t|did not|wasn'?t) i (?:get|receive)|what happened (?:with|to) my support")
+ROOM = re.compile(
+    r"affect my|afford to help|safely (?:give|help|lend|cover)|how much can i (?:give|help|lend|cover)|"
+    r"helping \w+ (?:affect|hurt|change)"
+)
+PAUSE = re.compile(r"\b(?:pause|stop|turn off)\b.*\b(?:support|supporting|helping|covering)\b")
+
+
+def _supported_name(text: str, persona: str) -> str:
+    """The person the user supports who is named in `text` (empty if none)."""
+    from app import safety_views  # agreements only: names, never anyone's money
+
+    names = [a.recipient_name for a in safety_views.support_for(persona).supporting]
+    return next((n for n in names if re.search(rf"\b{re.escape(n.lower())}\b", text)), "")
+
+
+def _route_history(today: date, persona: str) -> ChatResponse:
+    r = tools.my_support_history(persona=persona, today=today)
+    if r["nothing_yet"]:
+        return ChatResponse(reply="Nothing has happened with your support yet.", tool_calls=["my_support_history"])
+    reply = " ".join(f"{i['day']}: {i['what']}. {i['why']}" for i in r["activity"][:3])  # titles carry the amount
+    return ChatResponse(reply=reply, tool_calls=["my_support_history"])
+
+
+def _route_room(text: str, today: date, persona: str) -> ChatResponse:
+    r = tools.room_to_help(_supported_name(text, persona), persona=persona, today=today)
+    if not r["supports_them"]:
+        who = " and ".join(r["people_you_support"]) or "nobody yet"
+        return ChatResponse(
+            reply=f"You don't have an agreement to support them. You support {who}.", tool_calls=["room_to_help"]
+        )
+    reply = (
+        f"You could safely give {r['person']} up to {r['safe_to_help']} right now; that's set by "
+        f"{r['what_sets_it']}, and it keeps your own {r['your_cushion']} cushion."
+    )
+    return ChatResponse(reply=reply, tool_calls=["room_to_help"])
+
+
+def _route_pause(text: str, today: date, persona: str) -> ChatResponse:
+    r = tools.propose_pause_support(_supported_name(text, persona), persona=persona, today=today)
+    if not r["supports_them"]:
+        who = " and ".join(r["people_you_support"]) or "nobody yet"
+        return ChatResponse(reply=f"Who should I pause? You support {who}.", tool_calls=["propose_pause_support"])
+    if "already" in r:
+        return ChatResponse(
+            reply=f"Your support for {r['person']} is already {r['already']}.", tool_calls=["propose_pause_support"]
+        )
+    reply = f"I can pause your support for {r['person']}. {r['what_happens']} Nothing changes until you approve it."
+    return ChatResponse(reply=reply, tool_calls=["propose_pause_support"], pending_action=tools.PENDING[r["action_id"]])
+
+
 BUDGET = re.compile(
     r"\b(cut|cut back|save money|saving|skip|budget|necessit\w*|essentials?|spend less|tips|can wait)\b"
 )
@@ -409,6 +469,12 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
 
     if re.search(r"\b(approve|decline)\b", text):  # never from chat: the money's owner decides in the app
         return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
+    if PAUSE.search(text):
+        return _route_pause(text, today, persona)
+    if HISTORY.search(text):
+        return _route_history(today, persona)
+    if ROOM.search(text):
+        return _route_room(text, today, persona)
     if BRIEF.search(text):
         return _route_brief(today, persona)
     if BUDGET.search(text):

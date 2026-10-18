@@ -488,3 +488,80 @@ def test_a_tight_week_brief_names_what_could_wait_and_a_healthy_one_does_not() -
 def test_forecast_questions_with_tight_still_go_to_the_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert agent.chat("When do I get tight?", persona="sam", today=TODAY).tool_calls == ["get_forecast"]
+
+
+# ---------- round 3: the supporter's own side (history, safe room, pause) ----------
+
+
+def test_support_history_is_only_my_side_with_reasons() -> None:
+    r = tools.my_support_history(persona="maya", today=TODAY)
+    assert r["activity"] and all(item["why"] for item in r["activity"])
+    assert "Only your side" in r["privacy"]
+
+
+def test_room_to_help_uses_only_my_own_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import cashflow
+
+    real = cashflow.projection_for
+    asked_for: list[str] = []
+
+    def spy(slug: str, **kwargs: Any) -> Any:
+        asked_for.append(slug)
+        return real(slug, **kwargs)
+
+    monkeypatch.setattr(cashflow, "projection_for", spy)
+    r = tools.room_to_help("Maya", persona="sam", today=TODAY)
+    assert asked_for == ["sam"]  # never the person being helped
+    assert r["supports_them"] and r["person"] == "Maya" and r["keeps_your_cushion"] is True
+    assert r["safe_to_help"].startswith("$") and "their balance" not in str(r).lower().replace("their balance, ", "")
+
+
+def test_room_to_help_for_someone_i_do_not_support_lists_who_i_do() -> None:
+    r = tools.room_to_help("Priya", persona="sam", today=TODAY)
+    assert r["supports_them"] is False and "Maya" in r["people_you_support"]
+
+
+def test_room_is_zero_while_support_is_paused() -> None:
+    r = tools.room_to_help("Jordan", persona="sam", today=TODAY)  # Sam's support for Jordan is paused in the demo
+    assert r["safe_to_help"] == "$0.00" and "paused" in r["what_sets_it"]
+
+
+def test_pause_is_only_a_proposal(no_safety_net_writes: None) -> None:
+    before = set(tools.PENDING)
+    r = tools.propose_pause_support("Maya", persona="sam", today=TODAY)
+    action = tools.PENDING[r["action_id"]]
+    assert action.kind == "pause_support" and action.status == "awaiting_approval" and action.amount is None
+    assert tools.pause_details(r["action_id"]) == ("sam", "maya")
+    assert set(tools.PENDING) - before == {r["action_id"]}
+    tools.discard(r["action_id"])
+    assert tools.pause_details(r["action_id"]) is None
+
+
+def test_pause_an_already_paused_agreement_proposes_nothing() -> None:
+    r = tools.propose_pause_support("Jordan", persona="sam", today=TODAY)
+    assert r["already"] == "paused" and "action_id" not in r
+
+
+def test_privacy_guard_lets_my_own_money_through_but_not_theirs() -> None:
+    from app.agent import privacy
+
+    names = ["Maya", "Jordan", "Sam", "Alex"]
+    assert privacy.someone_else("Will helping Maya affect my bills?", "Sam", names) is None
+    assert privacy.someone_else("Can I afford to help Alex?", "Sam", names) is None
+    assert privacy.someone_else("Will helping Maya affect her bills?", "Sam", names) == "Maya"
+    assert privacy.someone_else("What's Maya's balance? I can afford to ask", "Sam", names) == "Maya"
+
+
+@pytest.mark.parametrize(
+    ("persona", "message", "tool"),
+    [
+        ("maya", "Why didn't I get help?", "my_support_history"),
+        ("sam", "Will helping Maya affect my bills?", "room_to_help"),
+        ("sam", "Pause my support for Maya", "propose_pause_support"),
+    ],
+)
+def test_router_sends_round3_questions_to_their_tools(
+    persona: str, message: str, tool: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert agent.chat(message, persona=persona, today=TODAY).tool_calls == [tool]

@@ -631,11 +631,148 @@ def weekly_brief(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = 
     }
 
 
+# ---------- my support, from my own side only ----------
+
+# who a pending "pause support" is for: action id -> the person being supported (the supporter is
+# ACTION_PERSONA). main.py's approve route reads it through pause_details().
+ACTION_PAUSE: dict[str, str] = {}
+
+# what set a supporter's safe amount, in plain words (guardian.Bound)
+ROOM_REASON = {
+    "cushion": "what keeps your own cushion safe",
+    "pair_limit": "the limit you set for them",
+    "exposure": "the most you let Runway have out across everyone you support",
+    "low_confidence": "nothing is automatic until Runway is confident about your own forecast",
+    "no_forecast": "Runway doesn't have a forecast for you yet",
+    "approval_only": "you asked to approve every transfer yourself",
+}
+
+
+def _my_agreement(persona: str, person: str) -> tuple[Any, Any]:
+    """The asker's support summary and their agreement to support `person` (by name or slug), if any."""
+    from app import safety_views  # the backend's read-only view: agreements, never anyone's balance
+
+    summary = safety_views.support_for(persona)
+    who = person.strip().lower()
+    agreement = next((a for a in summary.supporting if who in (a.recipient_name.lower(), a.recipient)), None)
+    return summary, agreement
+
+
+def my_support_history(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> dict[str, Any]:
+    """The asker's own support activity, newest first, each with a plain "why" written from their side
+    (app/activity.py): help received or given, repayments, anything waiting or that went wrong. It never
+    carries anyone else's balance, spending or reasons."""
+    from app import safety_views
+
+    items = safety_views.activity_for(persona)[:8]
+    return {
+        "activity": [
+            {"day": day(i.date), "what": i.title, "amount": money(i.amount), "status": i.status, "why": i.why}
+            for i in items
+        ],
+        "nothing_yet": not items,
+        "privacy": "Only your side of each transfer; other people's money and reasons stay private.",
+    }
+
+
+def room_to_help(
+    person: str = "", *, persona: str = engine.DEFAULT_PERSONA, today: date | None = None
+) -> dict[str, Any]:
+    """How much the asker could safely give `person` right now without touching their OWN cushion: the
+    Network Guardian's capacity on the asker's own cautious forecast, their limit for that person and
+    their total cap. Uses only the asker's numbers; the other person's money is never read."""
+    from app import cashflow, guardian, prefs, safety_net
+    from app import data as app_data
+
+    today = today or sources.local_today()
+    summary, a = _my_agreement(persona, person)
+    if a is None:
+        return {
+            "supports_them": False,
+            "asked_about": person,
+            "people_you_support": [x.recipient_name for x in summary.supporting],
+        }
+    me = next(p for p in app_data.personas() if p.slug == persona)
+    proj = cashflow.projection_for(persona, first_name=me.first_name, age=me.age or 0, today=today)
+    cushion = Decimal(str(prefs.floor(persona)))
+    end = today + timedelta(days=safety_net.MAX_DAYS_TO_PAYDAY)  # the longest a bridge can be out
+    days = proj.days_low or proj.days
+    cap = guardian.capacity(
+        days,
+        cushion,
+        start=today,
+        end=end,
+        pair_remaining=Decimal(str(max(0.0, (a.limit or 0) - a.outstanding))),
+        exposure_remaining=Decimal(str(max(0.0, summary.exposure_limit - summary.committed))),
+        confident=proj.confident,
+    )
+    window = [b for d, b in days if today <= d <= end]
+    bills = [
+        {"what": e.label, "amount": money(-e.amount), "day": day(e.date)}
+        for e in proj.events
+        if e.amount < 0 and e.kind in ("bill", "card_payment") and today <= e.date <= end
+    ]
+    paused = a.state != "active"
+    return {
+        "supports_them": True,
+        "person": a.recipient_name,
+        "agreement": a.state,
+        "safe_to_help": money(0.0 if paused else float(cap.amount)),
+        "what_sets_it": "your support for them is paused" if paused else ROOM_REASON[cap.bound],
+        "asks_you_every_time": a.mode == "approval",
+        "your_cushion": money(float(cushion)),
+        "your_lowest_cautious_balance": money(float(min(window))) if window else None,
+        "your_bills_coming": bills[:5],
+        "keeps_your_cushion": True,
+        "your_limit_for_them": money(a.limit or 0),
+        "already_out_to_them": money(a.outstanding),
+        "privacy": "Only your own numbers. Their balance, spending and reasons are private to them.",
+    }
+
+
+def propose_pause_support(
+    person: str = "", *, persona: str = engine.DEFAULT_PERSONA, today: date | None = None
+) -> dict[str, Any]:
+    """Propose pausing the asker's support for `person`. Nothing changes: this creates a PendingAction
+    the asker approves, and only then does the backend switch that agreement off."""
+    summary, a = _my_agreement(persona, person)
+    if a is None:
+        return {
+            "supports_them": False,
+            "asked_about": person,
+            "people_you_support": [x.recipient_name for x in summary.supporting],
+        }
+    if a.state != "active":
+        return {"supports_them": True, "person": a.recipient_name, "already": a.state}
+    action = PendingAction(
+        id=secrets.token_urlsafe(16), kind="pause_support", description=f"Pause your support for {a.recipient_name}"
+    )
+    PENDING[action.id] = action
+    ACTION_PERSONA[action.id] = persona
+    ACTION_PAUSE[action.id] = a.recipient
+    return {
+        "supports_them": True,
+        "action_id": action.id,
+        "person": a.recipient_name,
+        "what_happens": f"Runway stops covering {a.recipient_name} automatically. Anything already out still "
+        "comes back as agreed, and you can turn it back on in Circles.",
+        "status": "awaiting your approval — nothing has changed yet",
+    }
+
+
+def pause_details(action_id: str) -> tuple[str, str] | None:
+    """(supporter, recipient) for a pending pause, for the approve route; None if it isn't one."""
+    if action_id not in ACTION_PAUSE:
+        return None
+    return ACTION_PERSONA[action_id], ACTION_PAUSE[action_id]
+
+
 def discard(action_id: str) -> None:
     """Forget a proposal that was never shown to the user, so it can never be approved."""
     PENDING.pop(action_id, None)
     ACTION_PERSONA.pop(action_id, None)
     ACTION_P2P.pop(action_id, None)
+    ACTION_PAUSE.pop(action_id, None)
 
 
 def persona_of(action_id: str) -> str:
@@ -756,6 +893,37 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "my_support_history",
+        "description": "The user's own support activity with a plain 'why' for each item, from their side: help "
+        "received or given, repayments, anything waiting or that went wrong. Use for 'why didn't I get help', "
+        "'what happened with my support'.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "type": "function",
+        "name": "room_to_help",
+        "description": "How much the user could safely give someone they support right now while keeping their "
+        "own cushion, from the user's own forecast and limits only. Use for 'will helping X affect my bills', "
+        "'how much can I safely give X'.",
+        "parameters": {
+            "type": "object",
+            "properties": {"person": {"type": "string", "description": "First name of the person they support."}},
+            "required": ["person"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "propose_pause_support",
+        "description": "Propose pausing the user's support for someone. Does NOT pause anything: the user must "
+        "approve it. Use for 'pause my support for X', 'stop covering X'.",
+        "parameters": {
+            "type": "object",
+            "properties": {"person": {"type": "string", "description": "First name of the person they support."}},
+            "required": ["person"],
+        },
+    },
+    {
+        "type": "function",
         "name": "weekly_brief",
         "description": "Everything for a short brief on the user's coming week: the lowest point and whether it's "
         "safe, paychecks and bills coming, subscriptions renewing, spending this week vs last, and family "
@@ -772,8 +940,14 @@ READ_TOOLS = {
     "explain_safety_net": explain_safety_net,
     "weekly_brief": weekly_brief,
     "budget_suggestions": budget_suggestions,
+    "my_support_history": my_support_history,
+    "room_to_help": room_to_help,
 }
-WRITE_TOOLS = {"propose_transfer": propose_transfer, "request_money": request_money}
+WRITE_TOOLS = {
+    "propose_transfer": propose_transfer,
+    "request_money": request_money,
+    "propose_pause_support": propose_pause_support,
+}
 
 
 def call(
