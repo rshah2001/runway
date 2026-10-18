@@ -40,10 +40,10 @@
   svg#curve { position: absolute; inset: 0; overflow: visible; }
   .panel { position: absolute; border-radius: 36px; opacity: 0; border: 1px solid rgba(255,255,255,.14);
     background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.02)); backdrop-filter: blur(10px); }
-  .mark { position: absolute; left: 0; width: 100%; top: 190px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 40px; opacity: 0; }
+  .mark { position: absolute; left: 0; width: 100%; top: 130px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 40px; opacity: 0; }
   .badge { border-radius: 40px; overflow: hidden; box-shadow: 0 40px 120px rgba(105,32,85,.45), 0 0 0 1px rgba(255,255,255,.14); line-height: 0; }
   .mark .word { font-family: 'Barlow Condensed'; font-weight: 600; font-size: 120px; letter-spacing: .32em; margin-right: -.32em; }
-  .tag { top: 760px; font-size: 58px; font-weight: 500; color: #e9edf0; }
+  .tag { top: 600px; font-size: 58px; font-weight: 500; color: #e9edf0; }
   /* real app footage: a floating window the camera moves over */
   .rig { position: absolute; inset: 0; perspective: 2600px; pointer-events: none; }
   .win { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; border-radius: 26px; overflow: hidden; opacity: 0;
@@ -71,6 +71,15 @@
   .sum b { font-family: 'Barlow Condensed'; font-size: 80px; color: #46d483; margin-right: 18px; }
   .fine { position: absolute; left: 0; width: 100%; bottom: 48px; text-align: center; font-size: 22px; color: rgba(255,255,255,.55); opacity: 0; letter-spacing: .01em; }
   svg.overlay { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+  /* the companies it's built on: white logo chips, like their own marks on light backgrounds */
+  .lc { display: inline-flex; align-items: center; gap: 12px; height: 58px; padding: 0 20px; border-radius: 16px; background: #fff; color: #111;
+    font-size: 24px; font-weight: 600; letter-spacing: -0.01em; box-shadow: 0 14px 40px rgba(0,0,0,.35); }
+  .lc em { display: block; font-style: normal; font-size: 13px; font-weight: 600; color: #6b7280; letter-spacing: .04em; margin-top: -2px; }
+  .lc span { line-height: 1.05; }
+  .cap .row { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+  .built { position: absolute; left: 0; width: 100%; top: 880px; text-align: center; opacity: 0; }
+  .built .lab { font-size: 18px; letter-spacing: .14em; color: rgba(255,255,255,.55); font-weight: 600; margin-bottom: 18px; }
+  .built .row { display: inline-flex; gap: 14px; }
   .hud { position: fixed; right: 16px; bottom: 12px; font-size: 13px; color: #555; z-index: 9; font-family: 'Barlow'; }
   .start { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; background: #000; cursor: pointer; }
   .start div { text-align: center; color: #8a939b; font-size: 18px; line-height: 1.8; }
@@ -139,13 +148,13 @@
   <div class="rig"><div class="win" id="wToday"><img src="film/today.png" alt="" /><img class="alt" id="wTodayAlt" src="film/today-whatif.png" alt="" />
     <div class="hl coral" id="hDip"></div><div class="hl" id="hChips"></div><div class="hl" id="hBal"></div></div></div>
   <div class="cap" id="c3a" style="top:380px">Know what’s coming.</div>
-  <div class="cap" id="c3b" style="top:380px">Before it happens.<small>Your balance, day by day, 30 days out — from your Capital One accounts.</small></div>
+  <div class="cap" id="c3b" style="top:340px">Before it happens.<small>Your balance, day by day, 30 days out — from your Capital One accounts.</small><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M5.537.763c-1.167.7-2.21 1.582-3.08 2.61L3.79 4.836a10.422 10.422 0 013.627-2.881zm13.028.085l-1.991 1.12a10.381 10.381 0 013.762 3.07l1.18-1.654a12.371 12.371 0 00-2.95-2.536zm-6.564.752a9.788 9.788 0 00-4.131.91l.59 1.011a8.542 8.542 0 013.541-.762c1.261 0 2.457.274 3.534.76l.59-1.012a9.81 9.81 0 00-4.124-.907zM11.4 3.535l-.55 6.626h.003l-.002.04c.003.111.013.216.033.318.01.112.043.227.097.342.114.289.298.505.516.607.05.04.105.075.158.111a.98.98 0 01.033.02v.004l6.68 3.596.348-.476-6.058-4.6c-.007 0-.01-.005-.014-.008L12 3.535zm1.423.052c.19.234.361.523.502.855 3.155.604 5.54 3.325 5.54 6.596 0 .877-.176 1.712-.484 2.48a3.7 3.7 0 01.52.76 7.314 7.314 0 00.754-3.24c0-3.868-2.99-7.05-6.832-7.45zm-2.284.095c-3.527.667-6.19 3.708-6.19 7.356 0 2.584 1.335 4.863 3.367 6.21a9.84 9.84 0 01.295-.743c-1.74-1.219-2.874-3.214-2.874-5.467 0-3.054 2.082-5.632 4.932-6.45.128-.351.289-.656.47-.906zm9.15 1.675l-.801.893a8.101 8.101 0 011.551 4.777c0 2.916-1.542 5.481-3.872 6.952.104.388.188.792.251 1.209 2.87-1.632 4.802-4.677 4.802-8.16a9.224 9.224 0 00-1.93-5.67zm-15.38.007a9.25 9.25 0 00-1.93 5.665c0 3.507 1.954 6.567 4.858 8.19.063-.418.144-.822.248-1.206-2.36-1.468-3.923-4.045-3.923-6.984 0-1.777.573-3.422 1.549-4.772zm9.314.043c.044.203.08.416.107.64a5.332 5.332 0 013.213 2.912l.577-.148a5.942 5.942 0 00-3.897-3.404zm-3.816.187a5.939 5.939 0 00-3.319 3.198l.58.148A5.324 5.324 0 019.73 6.257c.017-.227.04-.45.077-.663zM6.733 9.672l-.62.63.315.614 1.727.618.942-.618-.312-.923zm10.615 0l-2.048.321-.315.923.942.618 1.73-.618.315-.614zM6.1 11.869A5.824 5.824 0 008.42 15.7c.1-.17.204-.335.315-.493a5.252 5.252 0 01-2.038-3.34zm11.206 0c-.03.18-.071.355-.118.529.174.138.338.272.493.41.097-.302.174-.617.22-.94zm-15.679.217L0 14.158c.966 3.661 3.638 6.65 7.132 8.111a9.399 9.399 0 01-.05-1.031c0-.375.017-.747.05-1.111-3.024-1.563-5.166-4.544-5.505-8.041zm20.707.055c-.352 3.45-2.464 6.394-5.441 7.957.033.374.05.755.053 1.136 0 .377-.017.71-.05 1.005 3.506-1.488 6.175-4.522 7.104-8.223zm-6.544 2.617a5.31 5.31 0 01-.486.42c.11.158.218.322.318.493.265-.2.513-.42.74-.66a10.61 10.61 0 01-.572-.253zm1.502.559a6.9 6.9 0 01-1.25 1.156c.106.236.207.485.294.741a7.667 7.667 0 001.857-1.772 3.554 3.554 0 01-.9-.125zm-2.988.63l-2.303.913-2.307-.91-.587 1.435 2.448.946c-.134.46-.568.798-1.08.798-.034 0-.07-.004-.104-.007l-.5.686c.188.063.39.096.6.096.621 0 1.17-.289 1.52-.738a1.924 1.924 0 002.183.62l-.49-.67a1.122 1.122 0 01-1.26-.805l2.47-.926zm1.156 4.775c-1.09.377-2.256.58-3.476.58-1.17 0-2.29-.186-3.34-.534.231.88.59 1.654 1.05 2.262.743.134 1.509.207 2.294.207.835 0 1.65-.082 2.437-.236.453-.61.807-1.39 1.035-2.28z"/></svg><span>Tiger Data</span></span></div></div>
   <div class="cap" id="c3c" style="top:380px">What if I spend $100 today?<small>The forecast answers instantly.</small></div>
 
   <!-- scene 4 · Ask Runway (real footage) -->
   <div class="rig"><div class="win" id="wAsk"><img src="film/ask.png" alt="" /><div class="hl" id="hUsed"></div></div></div>
   <div class="cap" id="c4a" style="top:380px">Ask anything.</div>
-  <div class="cap" id="c4b" style="top:380px">Every number grounded.<small>Gemini picks the tool. The forecast engine does the maths.</small></div>
+  <div class="cap" id="c4b" style="top:360px">Every number grounded.<small>Gemini picks the tool. The forecast engine does the maths.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></span></div></div>
 
   <!-- scene 5 · support without the spotlight -->
   <div class="line big" id="c5a" style="top:400px;font-size:104px">Sometimes asking is<br/>the hardest part.</div>
@@ -164,12 +173,12 @@
   <div class="sum" id="gSum"><b>$90 + $45</b>covers Maya’s $135 — and protects the protectors.</div>
   <div class="fine" id="gFine">Network Guardian checks each supporter’s own forecast first · the pinned demo scenario, verified in our tests</div>
   <div class="rig"><div class="win" id="wAct"><img src="film/activity.png" alt="" /><div class="hl" id="hAct"></div></div></div>
-  <div class="cap" id="c6d" style="top:330px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small></div>
+  <div class="cap" id="c6d" style="top:310px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span></div></div>
 
   <!-- scene 7 · privacy and trust -->
   <div class="rig"><div class="win" id="wPriv"><img src="film/ask-privacy.png" alt="" /><div class="hl" id="hGuard"></div></div></div>
   <div class="rig"><div class="win" id="wSee"><img src="film/cover.png" alt="" /></div></div>
-  <div class="cap" id="c7a" style="top:360px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say.</small></div>
+  <div class="cap" id="c7a" style="top:330px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say. Every sign-in and approval goes through Auth0.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
   <div class="cap" id="c7b" style="top:360px">Trust without exposure.<small>Supporters see what they covered and when it’s back. Never your balance, spending or reasons.</small></div>
 
   <!-- scene 8 · repayment -->
@@ -182,8 +191,9 @@
   <div class="fine" id="f8" style="bottom:150px;font-size:26px;color:rgba(255,255,255,.75)">It goes back after a verified payday — never before it’s safe for you.</div>
 
   <!-- scene 9 · final -->
-  <div class="line mid" id="c9a" style="top:880px;font-size:46px;color:rgba(255,255,255,.85)">Support without the spotlight.</div>
-  <div class="line" id="c9b" style="top:960px;font-size:30px;font-weight:500;color:rgba(255,255,255,.55);letter-spacing:.04em">sixsevenbucksleft.vip</div>
+  <div class="line mid" id="c9a" style="top:690px;font-size:46px;color:rgba(255,255,255,.85)">Support without the spotlight.</div>
+  <div class="line" id="c9b" style="top:768px;font-size:30px;font-weight:500;color:rgba(255,255,255,.55);letter-spacing:.04em">sixsevenbucksleft.vip</div>
+  <div class="built" id="built"><div class="lab">BUILT WITH</div><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M5.537.763c-1.167.7-2.21 1.582-3.08 2.61L3.79 4.836a10.422 10.422 0 013.627-2.881zm13.028.085l-1.991 1.12a10.381 10.381 0 013.762 3.07l1.18-1.654a12.371 12.371 0 00-2.95-2.536zm-6.564.752a9.788 9.788 0 00-4.131.91l.59 1.011a8.542 8.542 0 013.541-.762c1.261 0 2.457.274 3.534.76l.59-1.012a9.81 9.81 0 00-4.124-.907zM11.4 3.535l-.55 6.626h.003l-.002.04c.003.111.013.216.033.318.01.112.043.227.097.342.114.289.298.505.516.607.05.04.105.075.158.111a.98.98 0 01.033.02v.004l6.68 3.596.348-.476-6.058-4.6c-.007 0-.01-.005-.014-.008L12 3.535zm1.423.052c.19.234.361.523.502.855 3.155.604 5.54 3.325 5.54 6.596 0 .877-.176 1.712-.484 2.48a3.7 3.7 0 01.52.76 7.314 7.314 0 00.754-3.24c0-3.868-2.99-7.05-6.832-7.45zm-2.284.095c-3.527.667-6.19 3.708-6.19 7.356 0 2.584 1.335 4.863 3.367 6.21a9.84 9.84 0 01.295-.743c-1.74-1.219-2.874-3.214-2.874-5.467 0-3.054 2.082-5.632 4.932-6.45.128-.351.289-.656.47-.906zm9.15 1.675l-.801.893a8.101 8.101 0 011.551 4.777c0 2.916-1.542 5.481-3.872 6.952.104.388.188.792.251 1.209 2.87-1.632 4.802-4.677 4.802-8.16a9.224 9.224 0 00-1.93-5.67zm-15.38.007a9.25 9.25 0 00-1.93 5.665c0 3.507 1.954 6.567 4.858 8.19.063-.418.144-.822.248-1.206-2.36-1.468-3.923-4.045-3.923-6.984 0-1.777.573-3.422 1.549-4.772zm9.314.043c.044.203.08.416.107.64a5.332 5.332 0 013.213 2.912l.577-.148a5.942 5.942 0 00-3.897-3.404zm-3.816.187a5.939 5.939 0 00-3.319 3.198l.58.148A5.324 5.324 0 019.73 6.257c.017-.227.04-.45.077-.663zM6.733 9.672l-.62.63.315.614 1.727.618.942-.618-.312-.923zm10.615 0l-2.048.321-.315.923.942.618 1.73-.618.315-.614zM6.1 11.869A5.824 5.824 0 008.42 15.7c.1-.17.204-.335.315-.493a5.252 5.252 0 01-2.038-3.34zm11.206 0c-.03.18-.071.355-.118.529.174.138.338.272.493.41.097-.302.174-.617.22-.94zm-15.679.217L0 14.158c.966 3.661 3.638 6.65 7.132 8.111a9.399 9.399 0 01-.05-1.031c0-.375.017-.747.05-1.111-3.024-1.563-5.166-4.544-5.505-8.041zm20.707.055c-.352 3.45-2.464 6.394-5.441 7.957.033.374.05.755.053 1.136 0 .377-.017.71-.05 1.005 3.506-1.488 6.175-4.522 7.104-8.223zm-6.544 2.617a5.31 5.31 0 01-.486.42c.11.158.218.322.318.493.265-.2.513-.42.74-.66a10.61 10.61 0 01-.572-.253zm1.502.559a6.9 6.9 0 01-1.25 1.156c.106.236.207.485.294.741a7.667 7.667 0 001.857-1.772 3.554 3.554 0 01-.9-.125zm-2.988.63l-2.303.913-2.307-.91-.587 1.435 2.448.946c-.134.46-.568.798-1.08.798-.034 0-.07-.004-.104-.007l-.5.686c.188.063.39.096.6.096.621 0 1.17-.289 1.52-.738a1.924 1.924 0 002.183.62l-.49-.67a1.122 1.122 0 01-1.26-.805l2.47-.926zm1.156 4.775c-1.09.377-2.256.58-3.476.58-1.17 0-2.29-.186-3.34-.534.231.88.59 1.654 1.05 2.262.743.134 1.509.207 2.294.207.835 0 1.65-.082 2.437-.236.453-.61.807-1.39 1.035-2.28z"/></svg><span>Tiger Data</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg><span>Gemini</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#007BFC" d="M8.36 2.172A1.194 1.194 0 007.348 1.6H1.2A1.2 1.2 0 000 2.8a1.211 1.211 0 00.182.64l11.6 18.4a1.206 1.206 0 002.035 0l3.075-4.874a1.229 1.229 0 00.182-.64 1.211 1.211 0 00-.182-.642zm10.349 8.68a1.206 1.206 0 002.035 0L21.8 9.178l2.017-3.2a1.211 1.211 0 00.183-.64 1.229 1.229 0 00-.183-.64l-1.6-2.526a1.206 1.206 0 00-1.016-.571h-6.148a1.2 1.2 0 00-1.201 1.2 1.143 1.143 0 00.188.64z"/></svg><span>VULTR</span></span><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude</span></span></div></div>
   <audio id="music" src="film/music.mp3" preload="auto"></audio>
 </div>
 <div class="start" id="start"><div><b>Runway</b>Click or press Space to play with sound · Space pause · ← → jump 5 s · R restart · M mute · F full screen</div></div>
@@ -396,6 +406,7 @@
     }
     title($('c9a'), t, 108.0, 109.0, 200, 201);
     title($('c9b'), t, 108.6, 109.6, 200, 201);
+    var bw = out(seg(t, 109.0, 110.0)); $('built').style.opacity = bw; $('built').style.transform = 'translateY(' + (24 * (1 - bw)) + 'px)';
     var capOn = 0; [].forEach.call(document.querySelectorAll('.cap'), function (c) { capOn = Math.max(capOn, +c.style.opacity || 0); });
     $('scrim').style.opacity = capOn;
   }
@@ -419,9 +430,13 @@
       o.connect(lp); lp.connect(g); g.connect(master); o.start(at); o.stop(at + dur + .1);
     });
   }
+  function chime(at) { // a soft three-note notification
+    tone(at, 1318.5, .55, 'sine', .16); tone(at + .1, 1661.2, .55, 'sine', .13); tone(at + .2, 1975.5, .9, 'sine', .11);
+    tone(at, 2637, .25, 'sine', .03);
+  }
   function score(t0) {
     drone(t0 + .2, 10.4, 55, .05);                       // tension under the problem
-    tone(t0 + 5.0, 1318, .5, 'sine', .12); tone(t0 + 5.12, 1760, .6, 'sine', .09); // notification
+    // (the notification chime is scheduled in playFrom, so it sounds with the music too)
     tone(t0 + 9.6, 220, 1.0, 'sine', .08, 110);          // the drop
     tone(t0 + 10.55, 46, 1.6, 'sine', .9, 30);           // impact at the turn
     tone(t0 + 10.55, 2400, .6, 'triangle', .05, 600);    // glass shimmer
@@ -439,6 +454,7 @@
   }
   function playFrom(t0) {
     start = performance.now() - t0 * 1000; cancelAnimationFrame(raf);
+    try { audio(); if (ac.state === 'suspended') ac.resume(); if (t0 < 5 && !muted) chime(ac.currentTime + (5.02 - t0)); } catch (e) {}
     (function loop() {
       var t = now(), m = $('music');
       m.volume = muted ? 0 : Math.max(0, 1 - Math.max(0, t - 107.6) / 3); // fade out over the last seconds
