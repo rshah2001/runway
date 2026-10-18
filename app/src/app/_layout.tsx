@@ -4,7 +4,7 @@ import { DarkTheme, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '@/components/login/login-screen';
@@ -13,6 +13,7 @@ import { ChatLauncher } from '@/components/rw/chat';
 import { C } from '@/constants/runway';
 import { bootSession } from '@/lib/account';
 import { useSession } from '@/lib/session';
+import { moneyMoved, startAutoRefresh } from '@/lib/store';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,6 +30,17 @@ export default function RootLayout() {
   useEffect(() => {
     bootSession(); // resume an Auth0 session or this tab's demo choice; otherwise the login screen
   }, []);
+
+  // money moved by someone else (a payment, an approval, the safety net) shows up without a manual refresh
+  useEffect(() => {
+    if (session.mode !== 'signed-in') return;
+    const stop = startAutoRefresh();
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && moneyMoved()); // phones: back to the app
+    return () => {
+      stop();
+      sub.remove();
+    };
+  }, [session.mode]);
 
   // Keep the splash up until fonts are ready so text never flashes in a fallback face.
   useEffect(() => {

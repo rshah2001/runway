@@ -52,3 +52,41 @@ def test_activity_route_returns_only_my_side() -> None:
     pytest.importorskip("fastapi")
     body = client.get("/activity?persona=sam").json()
     assert body and all("165" not in x["why"] for x in body)
+
+
+def test_paid_back_help_stays_in_the_timeline_as_two_entries() -> None:
+    repaid = {**BRIDGE, "status": "repaid", "repaid_at": date(2026, 10, 23), "back_transfer_id": "t-back"}
+    items = activity.feed("maya", [repaid], {}, 300)
+    assert [i.kind for i in items] == ["repaid_by_me", "received"]  # newest first
+    assert items[1].title == "Sam covered you" and items[1].status == "Paid back"
+
+
+def test_sends_and_requests_between_people_are_in_the_timeline() -> None:
+    from datetime import datetime
+
+    pay = {
+        "id": "ppay-1",
+        "from_slug": "sam",
+        "from_name": "Sam",
+        "to_slug": "maya",
+        "to_name": "Maya",
+        "amount": D(50),
+        "memo": "🎉 Festival",
+        "ts": datetime(2026, 10, 18, 12),
+        "transfer_id": "t1",
+        "deposit_id": "d1",
+    }
+    ask = {
+        "id": "preq-1",
+        "from_slug": "maya",
+        "from_name": "Maya",
+        "to_slug": "jordan",
+        "to_name": "Jordan",
+        "amount": D(20),
+        "memo": "🍕 Food",
+        "status": "open",
+        "created_at": datetime(2026, 10, 18, 13),
+    }
+    items = {i.kind: i for i in activity.feed("maya", [], {}, 300, [pay], [ask])}
+    assert items["got"].title == "Sam sent you $50" and items["got"].reference == "d1"
+    assert items["asked"].title == "You asked Jordan for $20" and items["asked"].status.startswith("Waiting")
