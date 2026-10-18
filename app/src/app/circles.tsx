@@ -5,7 +5,7 @@
 // /p2p — nobody's balance, income or spending is ever in those responses; this screen only picks words.
 // Also here: asking your circle before a dip, paying support back early, sending money, the demo reset.
 import { Fragment, type ReactNode, useState } from 'react';
-import { Platform, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CircleLegend, CircleMap, type CirclePerson } from '@/components/rw/circle-map';
 import { Icon } from '@/components/rw/icons';
@@ -62,9 +62,9 @@ export default function CirclesScreen() {
       <PageTitle title="Circles" sub="People who’ve agreed to help you, and people you’ve agreed to help. Nobody ever sees anyone’s balance." />
       {!d ? <View style={{ marginTop: 24 }}><LoadState error={sn.error} onRetry={reload} /></View> : (
         <Columns wide={wide} left={<>
-          {sup.data && (sup.data.supporters.length > 0 || sup.data.supporting.length > 0) && (
-            <MyCircle me={session.name ?? 'You'} d={d} sup={sup.data} picked={picked} onPick={setPicked}
-              onReview={setConsent} onDone={reload} />
+          {sup.data && (sup.data.supporters.length > 0 || sup.data.supporting.length > 0 || !!cir.data?.length) && (
+            <MyCircle me={session.name ?? 'You'} mySlug={session.mode === 'signed-in' ? session.persona : ppl.data?.persona}
+              d={d} sup={sup.data} circles={cir.data} picked={picked} onPick={setPicked} onReview={setConsent} onDone={reload} />
           )}
           {me.data?.family_cover !== false && <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />}
           {wide && !!sup.data?.supporters.length && <WhatTheySee on={me.data?.family_cover} onChanged={reload} />}
@@ -122,14 +122,33 @@ function circlePeople(d: SafetyNetSummary, sup: SupportSummary): CirclePerson[] 
 }
 
 /**
+ * One named circle on the map: its active members, each drawn by what's agreed between us — a supporter
+ * line, a "you cover them" line (both, if both are agreed), or a dotted "in this circle" line when the
+ * circle is all we share.
+ */
+function circleMembers(c: CircleView, all: CirclePerson[], mySlug?: string): CirclePerson[] {
+  const out: CirclePerson[] = [];
+  for (const m of c.members) {
+    if (m.state !== 'active' || m.slug === mySlug) continue;
+    const linked = all.filter((p) => p.key === `s-${m.slug}` || p.key === `r-${m.slug}`);
+    out.push(...(linked.length ? linked : [{ key: `m-${m.slug}`, name: m.name, role: 'member' as const, status: 'active' as const }]));
+  }
+  return out;
+}
+
+/**
  * My support circle as an interactive map (components/rw/circle-map). Tapping someone shows what we've
  * agreed and what's out between us — and the action that fits (review the agreement, pay back early).
  */
-function MyCircle({ me, d, sup, picked, onPick, onReview, onDone }: {
-  me: string; d: SafetyNetSummary; sup: SupportSummary; picked: string | null;
+function MyCircle({ me, mySlug, d, sup, circles, picked, onPick, onReview, onDone }: {
+  me: string; mySlug?: string; d: SafetyNetSummary; sup: SupportSummary; circles: CircleView[] | null; picked: string | null;
   onPick: (k: string | null) => void; onReview: (a: SupportAgreement) => void; onDone: () => void;
 }) {
-  const people = circlePeople(d, sup);
+  const [view, setView] = useState<string>('all');
+  const mine = (circles ?? []).filter((c) => c.my_state === 'active');
+  const circle = mine.find((c) => c.id === view); // undefined after leaving it: the map shows everyone
+  const current = circle ? view : 'all';
+  const people = circle ? circleMembers(circle, circlePeople(d, sup), mySlug) : circlePeople(d, sup);
   const borrowed = d.borrowed.some((b) => OPEN.includes(b.status));
   const protectedBy = sup.supporters.filter((a) => a.state === 'active').length;
   const helping = sup.supporting.filter((a) => a.state === 'active').length;
@@ -145,12 +164,39 @@ function MyCircle({ me, d, sup, picked, onPick, onReview, onDone }: {
   return (
     <View style={s.mapCard}>
       <View style={s.mapHead}>
-        <Text style={s.askTitle}>{me === 'You' ? 'Your support circle' : `${me}’s support circle`}</Text>
+        <Text style={s.askTitle}>{circle ? circle.name : me === 'You' ? 'Your support circle' : `${me}’s support circle`}</Text>
         <Text style={s.fineText}>Only you see this</Text>
       </View>
-      <CircleMap me={me} status={status} tone={tone} people={people} selected={picked} onSelect={onPick} />
-      <CircleLegend />
-      {sel && agreement ? (
+      {mine.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.switcher} style={{ marginTop: 12, flexGrow: 0 }}>
+          {[{ id: 'all', name: 'Everyone' }, ...mine].map((c) => {
+            const on = current === c.id;
+            return (
+              <PressableScale key={c.id} onPress={() => { setView(c.id); onPick(null); }} accessibilityRole="tab"
+                accessibilityState={{ selected: on }} style={[s.switchChip, on && s.switchChipOn]}>
+                <Text style={[s.switchChipText, on && { color: '#111' }]} numberOfLines={1}>{c.name}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+      )}
+      {people.length ? (
+        <CircleMap me={me} status={status} tone={tone} people={people} selected={picked} onSelect={onPick} />
+      ) : (
+        <Text style={[s.fineText, { textAlign: 'center', marginVertical: 28 }]}>
+          Nobody else is in {circle?.name ?? 'your circle'} yet. Share an invite link from My circles below.
+        </Text>
+      )}
+      <CircleLegend members={people.some((p) => p.role === 'member')} />
+      {sel?.role === 'member' ? (
+        <View style={s.picked}>
+          <Avatar name={sel.name} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.switchTitle}>{sel.name} · in {circle?.name}</Text>
+            <Text style={s.seeText}>You can send to or ask each other. Covering a gap needs an agreement you both say yes to.</Text>
+          </View>
+        </View>
+      ) : sel && agreement ? (
         <View style={s.picked}>
           <Avatar name={sel.name} />
           <View style={{ flex: 1 }}>
@@ -550,6 +596,7 @@ const NOTES = ['🎉 Festival', '🍕 Food', '🏠 Rent', '🎁 Gift'];
 /**
  * Send money to, or ask money from, anyone in your circles — any time, for anything. A send is a real
  * Nessie transfer (one per tap); a request waits for them to pay it from their own account.
+ * Laid out like a payment sheet: who → how much (big) → what for → one wide button, tapped twice.
  */
 function SendOrRequest({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () => void }) {
   const [mode, setMode] = useState<'send' | 'ask'>('send');
@@ -557,53 +604,123 @@ function SendOrRequest({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () 
   const [amount, setAmount] = useState<number | null>(null);
   const [custom, setCustom] = useState('');
   const [note, setNote] = useState(NOTES[0]);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const people = ppl?.people ?? [];
   if (!people.length) return null;
   const who = people.find((p) => p.slug === to);
   const value = amount ?? (Number(custom) > 0 ? Math.round(Number(custom) * 100) / 100 : null);
-  const ready = who && value && value <= 1000 && note.trim();
+  const tooMuch = !!value && value > 1000;
+  const ready = !!who && !!value && !tooMuch;
+  const accent = mode === 'send' ? C.green : C.amber;
+  const touched = () => { setArmed(false); setDone(null); setError(null); };
+
+  async function go() {
+    if (!ready || !who || !value) return;
+    if (!armed) return setArmed(true);
+    setBusy(true);
+    try {
+      if (mode === 'send') await api.sendTo(who.slug, value, note);
+      else await api.askFrom(who.slug, value, note);
+      setDone(mode === 'send' ? `Sent ${money(value, 0)} to ${who.name} · ${note}` : `Asked ${who.name} for ${money(value, 0)} · ${note}`);
+      setAmount(null);
+      setCustom('');
+      onDone();
+    } catch (e) {
+      setError(reason(e));
+    } finally {
+      setBusy(false);
+      setArmed(false);
+    }
+  }
+
+  const label = !who ? 'Choose someone' : !value ? 'Choose an amount' : tooMuch ? 'Up to $1,000 at a time'
+    : armed ? (mode === 'send' ? `Tap again to send ${money(value, 0)}` : `Tap again to ask for ${money(value, 0)}`)
+    : mode === 'send' ? `Send ${money(value, 0)} to ${who.name}` : `Request ${money(value, 0)} from ${who.name}`;
+
   return (
     <>
       <SectionLabel>Send or request</SectionLabel>
-      <View style={[s.ask, { borderColor: '#2f363c' }]}>
-        <View style={s.chips}>
+      <View style={s.pay}>
+        <View style={s.seg}>
           {(['send', 'ask'] as const).map((m) => (
-            <Pick key={m} on={mode === m} label={m === 'send' ? 'Send' : 'Request'} onPress={() => { setMode(m); setMsg(null); }} />
+            <PressableScale key={m} onPress={() => { setMode(m); touched(); }} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}
+              style={[s.segBtn, mode === m && s.segBtnOn]}>
+              <Text style={[s.segText, mode === m && { color: '#111' }]}>{m === 'send' ? 'Send' : 'Request'}</Text>
+            </PressableScale>
           ))}
         </View>
-        <View style={[s.chips, { marginTop: 12 }]}>
-          {people.map((p) => <Pick key={p.slug} on={to === p.slug} label={p.name} onPress={() => { setTo(p.slug); setMsg(null); }} />)}
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.people} style={{ flexGrow: 0 }}>
+          {people.map((p) => {
+            const on = to === p.slug;
+            return (
+              <PressableScale key={p.slug} onPress={() => { setTo(p.slug); touched(); }} accessibilityRole="button"
+                accessibilityState={{ selected: on }} accessibilityLabel={`${p.name}, ${p.how}`} style={s.person}>
+                <View style={[s.personRing, { borderColor: on ? accent : 'transparent' }]}>
+                  <View style={s.personDisc}><Text style={s.personInitial}>{p.name[0]}</Text></View>
+                </View>
+                <Text style={[s.personName, on && { color: C.text }]} numberOfLines={1}>{p.name}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+        <Text style={[s.fineText, s.center, { marginTop: 2 }]} numberOfLines={1}>{who ? who.how : 'People in your circles'}</Text>
+
+        <Text style={[s.bigAmount, !value && { color: C.text3 }, tooMuch && { color: C.red }]} accessibilityLiveRegion="polite">
+          {value ? money(value, value % 1 ? 2 : 0) : '$0'}
+        </Text>
+
+        <View style={s.amountRow}>
+          {QUICK_AMOUNTS.map((n) => {
+            const on = amount === n;
+            return (
+              <PressableScale key={n} onPress={() => { setAmount(n); setCustom(''); touched(); }} accessibilityRole="button"
+                accessibilityState={{ selected: on }} style={[s.amountChip, on && s.amountChipOn]}>
+                <Text style={[s.amountChipText, on && { color: '#111' }]}>{money(n, 0)}</Text>
+              </PressableScale>
+            );
+          })}
+          <TextInput value={custom} onChangeText={(t) => { setCustom(t.replace(/[^0-9.]/g, '')); setAmount(null); touched(); }}
+            placeholder="Other" placeholderTextColor={C.text3} keyboardType="decimal-pad" accessibilityLabel="Other amount"
+            style={[s.amountChip, s.amountInput, !!custom && { borderColor: C.text2 }]} />
         </View>
-        {who && <Text style={s.fineText}>{who.how}</Text>}
-        <View style={[s.chips, { marginTop: 10 }]}>
-          {QUICK_AMOUNTS.map((n) => <Pick key={n} on={amount === n} label={money(n, 0)} onPress={() => { setAmount(n); setCustom(''); }} />)}
-          <TextInput value={custom} onChangeText={(t) => { setCustom(t.replace(/[^0-9.]/g, '')); setAmount(null); }}
-            placeholder="Other $" placeholderTextColor={C.text3} keyboardType="decimal-pad" style={s.custom} accessibilityLabel="Other amount" />
-        </View>
-        <View style={[s.chips, { marginTop: 10 }]}>
-          {NOTES.map((n) => <Pick key={n} on={note === n} label={n} onPress={() => setNote(n)} />)}
-        </View>
-        {msg && <Text style={s.askBody}>{msg}</Text>}
-        {ready ? (
-          <View style={[s.askBtns, { justifyContent: 'flex-start' }]}>
-            <TwoTap label={mode === 'send' ? `Send ${who.name} ${money(value, 0)}` : `Ask ${who.name} for ${money(value, 0)}`}
-              confirm="Tap again to confirm" onPress={async () => {
-                try {
-                  if (mode === 'send') await api.sendTo(who.slug, value, note);
-                  else await api.askFrom(who.slug, value, note);
-                  setMsg(mode === 'send' ? `Sent ${money(value, 0)} to ${who.name}.` : `Asked ${who.name} for ${money(value, 0)}. They'll see only the amount and your note.`);
-                  setAmount(null);
-                  setCustom('');
-                  onDone();
-                } catch (e) {
-                  setMsg(reason(e));
-                }
-              }} />
-          </View>
-        ) : (
-          <Text style={s.fineText}>Pick a person, an amount and a note.</Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.notes} style={{ flexGrow: 0 }}>
+          {NOTES.map((n) => {
+            const on = note === n;
+            return (
+              <PressableScale key={n} onPress={() => { setNote(n); touched(); }} accessibilityRole="button" accessibilityState={{ selected: on }}
+                style={[s.note, on && { borderColor: accent, backgroundColor: `${accent}1f` }]}>
+                <Text style={[s.noteText, on && { color: C.text }]}>{n}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+
+        <PressableScale onPress={go} disabled={!ready || busy} accessibilityRole="button"
+          style={[s.payBtn, armed && { backgroundColor: accent }, (!ready || busy) && s.payBtnOff]}>
+          <Text style={[s.payBtnText, (!ready || busy) && { color: C.text3 }]}>{busy ? (mode === 'send' ? 'Sending…' : 'Asking…') : label}</Text>
+        </PressableScale>
+        {armed && !busy && (
+          <PressableScale onPress={() => setArmed(false)} accessibilityRole="button" style={{ alignSelf: 'center', padding: 8 }}>
+            <Text style={s.cancelText}>Cancel</Text>
+          </PressableScale>
         )}
+
+        {done && (
+          <View style={s.doneRow}>
+            <Icon name="check" size={16} color={C.green} />
+            <Text style={s.doneText}>{done}</Text>
+          </View>
+        )}
+        {error && <Text style={[s.fineText, s.center, { color: C.red }]}>{error}</Text>}
+        <Text style={[s.fineText, s.center]}>
+          {mode === 'send' ? 'A real transfer from your checking. They see only the amount and the note.'
+            : 'Nothing moves until they pay from their own account. They see only the amount and the note.'}
+        </Text>
       </View>
     </>
   );
@@ -1063,6 +1180,37 @@ function EventRow({ e, first }: { e: SafetyEvent; first: boolean }) {
 
 const s = StyleSheet.create({
   cols: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
+  switcher: { gap: 6, padding: 3, borderRadius: 999, backgroundColor: C.bg },
+  pay: { borderRadius: 24, backgroundColor: C.card, padding: 16, paddingBottom: 14 },
+  seg: { flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: C.bg },
+  segBtn: { flex: 1, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: '#fff' },
+  segText: { fontFamily: F.bodySemi, fontSize: 14, color: C.text2 },
+  people: { gap: 14, paddingTop: 16, paddingHorizontal: 2, minWidth: '100%', justifyContent: 'center' },
+  person: { width: 60, alignItems: 'center' },
+  personRing: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, padding: 2 },
+  personDisc: { flex: 1, borderRadius: 999, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  personInitial: { fontFamily: F.bodySemi, fontSize: 19, color: C.text },
+  personName: { fontFamily: F.bodyMedium, fontSize: 12, color: C.text2, marginTop: 6 },
+  center: { textAlign: 'center' },
+  bigAmount: { fontFamily: F.condBold, fontSize: 56, lineHeight: 62, letterSpacing: -1, color: C.text, textAlign: 'center', marginTop: 10 },
+  amountRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  amountChip: { flex: 1, minWidth: 0, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#2f363c', alignItems: 'center', justifyContent: 'center' },
+  amountChipOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  amountChipText: { fontFamily: F.bodySemi, fontSize: 14, color: C.text },
+  amountInput: { textAlign: 'center', color: C.text, fontFamily: F.bodySemi, fontSize: 14, paddingHorizontal: 4 },
+  notes: { gap: 6, marginTop: 12 },
+  note: { height: 32, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
+  noteText: { fontFamily: F.bodyMedium, fontSize: 13, color: C.text2 },
+  payBtn: { marginTop: 16, height: 50, borderRadius: 999, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  payBtnOff: { backgroundColor: C.card2 },
+  payBtnText: { fontFamily: F.bodySemi, fontSize: 16, color: '#111' },
+  cancelText: { fontFamily: F.bodyMedium, fontSize: 13, color: C.text2 },
+  doneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
+  doneText: { fontFamily: F.bodyMedium, fontSize: 14, color: C.text },
+  switchChip: { height: 32, paddingHorizontal: 14, borderRadius: 999, justifyContent: 'center' },
+  switchChipOn: { backgroundColor: '#fff' },
+  switchChipText: { fontFamily: F.bodySemi, fontSize: 13, color: C.text2 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   step: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontFamily: F.bodySemi, fontSize: 19, color: C.text, lineHeight: 22 },
