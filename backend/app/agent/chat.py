@@ -18,7 +18,12 @@ from datetime import date
 from typing import Any
 
 from app.agent import privacy, tools, voice
-from app.agent.tools import PENDING, p2p_details, persona_of  # noqa: F401 — main.py reads pending actions from here
+from app.agent.tools import (  # noqa: F401 — main.py reads pending actions from here
+    PENDING,
+    p2p_details,
+    pause_details,
+    persona_of,
+)
 from app.forecast import engine, sources
 from app.schemas import ChatResponse, PendingAction
 
