@@ -1,5 +1,5 @@
 // Monochrome line icons (20×20 grid, stroked) — quieter than emoji and identical on every platform.
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { C } from '@/constants/runway';
 
@@ -36,11 +36,28 @@ export function Icon({ name, size = 18, color = C.text }: P & { name: string }) 
   return <Draw size={size} color={color} />;
 }
 
-/** Runway's own red swoosh — the takeoff path. (Not Capital One's logo.) */
-export function Swoosh({ size = 22, color = '#ff5a4e' }: P) {
+/**
+ * The Runway logo: the forecast curve (white → coral → green) on the indigo-to-magenta badge — the same
+ * mark as public/runway-logo.svg. `size` is kept from the old swoosh API (it was ~22): the badge is drawn
+ * `size × 1.1` tall and 2.125× as wide, so every existing call site gets the new logo at a matching scale.
+ */
+export function Swoosh({ size = 22 }: P) {
+  const h = size * 1.1;
   return (
-    <Svg width={size} height={size * 0.73} viewBox="0 0 22 16">
-      <Path d="M1 14 C9 14 15 12 21 2" fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" />
+    <Svg width={h * 2.125} height={h} viewBox="0 0 340 160" accessibilityLabel="Runway">
+      <Defs>
+        <LinearGradient id="rwBg" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0" stopColor="#12366d" /><Stop offset=".5" stopColor="#20112e" /><Stop offset="1" stopColor="#692055" />
+        </LinearGradient>
+        <LinearGradient id="rwLine" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#fff" /><Stop offset=".54" stopColor="#fb625b" /><Stop offset=".75" stopColor="#fb625b" /><Stop offset=".76" stopColor="#42e1a1" />
+        </LinearGradient>
+      </Defs>
+      <Rect width={340} height={160} rx={34} fill="url(#rwBg)" />
+      <Path d="M15 50 C75 48 67 86 135 82 S180 142 223 130 S238 53 276 56 S320 66 338 40" fill="none" stroke="#bd91ed" strokeOpacity={0.35} strokeWidth={11} />
+      <Path d="M15 50 C75 48 67 86 135 82 S180 142 223 130 S238 53 276 56 S320 66 338 40" fill="none" stroke="url(#rwLine)" strokeWidth={5} strokeLinecap="round" />
+      <Path d="M0 118 H340" stroke="#d3badf" strokeWidth={1.5} strokeDasharray="3 5" strokeOpacity={0.3} />
+      <Circle cx={217} cy={131} r={6} fill="#fc615c" />
     </Svg>
   );
 }
