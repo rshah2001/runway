@@ -27,7 +27,8 @@ accounts, sees a shortfall coming, and quietly arranges help from people who alr
   the whole time the money is out, splits a need across several supporters, and re-checks everything under
   database locks right before money moves. Repayment waits for a real paycheck and never causes a new dip.
 - **Assistant (Gemini):** *"can I afford $X on Friday?"*, *"fix it"*, *"who's covering me?"*, *"what can I
-  cut until payday?"*, *"brief me on my week"* — in a voice that fits you. It **proposes**; people
+  cut until payday?"*, *"brief me on my week"* — in a voice that fits you. If you switch it on, it can also
+  set things up: send money, pay someone back (all or part), manage circles. It **proposes**; people
   **approve**. Ask it about someone else's money and it tells you nobody in Runway can see that.
 - **Spending + peer-to-peer:** categories, detected subscriptions, IOUs, and real transfers between real
   Nessie customers — each tap pays exactly once.
@@ -77,18 +78,20 @@ Postgres advisory locks + a unique index stop two passes from spending the same 
 ## Evals: measured, not claimed
 
 Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · ML on outside data:
-[`ml/README.md`](ml/README.md). The evals run in CI, so a change that makes the AI worse fails the build.
+[`ml/README.md`](ml/README.md). The offline evals (the agent's rule-based baseline, the forecast backtest and
+learning curve, the privacy guard, the Guardian invariants) run in CI on every pull request, so a change that
+breaks them fails the build. The live-Gemini evals need an API key, so they're run by hand and recorded here.
 
 | What | Result |
 |---|---|
-| **Agent** (live Gemini, 63 questions across 3 voices: afford / fix it / subscriptions / forecast / safety net / peer-to-peer / needs vs. could-wait / part repayments, circles and the AI-actions switch) | **100%** tool selection · **100%** correct answers in the latest run (97–98% in the two before) · **100%** of $ figures traceable to the engine · 0 API errors |
+| **Agent** (live Gemini, 63 questions across 3 voices: afford / fix it / subscriptions / forecast / safety net / peer-to-peer / needs vs. could-wait / part repayments, circles and the AI-actions switch) | **100%** tool selection · **97–100%** correct answers (three runs) · **100%** of $ figures traceable to the engine |
 | **Agent, offline baseline** (63 questions incl. part repayments, circles, the AI-actions switch, peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
 | **Forecast backtest** (learn months 1–3, predict month 4, 18 folds) | daily balance error **$138**: −66% vs ignoring everyday spending, −16% vs repeating last month |
 | **Learning curve** (only 30 days of history) | error **$2,737 → $206** with provisional paydays |
 | **Range calibration** (cautious end beaten, target 5%) | **12–43% → 4–11%** on held-out IBM card users and a real UK account it never trained on |
-| **Tone** (Gen Z voice stays itself when money is tight or fine; rule-based checks on real Gemini replies) | **3/6 → 6/6** (Gen Z cells) · re-run after the privacy prompt: **17/18** across all voices |
+| **Tone** (each voice stays itself when money is tight or fine; rule-based checks on real Gemini replies) | Gen Z voice **3/6 → 6/6** after the fix · all voices **17/18** in the latest runs |
 | **Tone that follows how you write** (a formality model trained on 9k human-rated sentences moves the age-based voice one step) | held-out correlation with people's ratings **0.73** · replies matching how someone wrote against their age group: **3/24 → 19/24** |
-| **Latency** (Ask Runway on live Gemini, 4 questions × 2 runs) | **~13 s → ~6 s** a reply with low thinking; agent 98%, privacy 15/15 guard off |
+| **Latency** (Ask Runway on live Gemini, 4 questions × 2 runs) | **~13 s → ~6 s** a reply with low thinking, same agent and privacy scores |
 | **Privacy** (13 attacks incl. prompt injection + 2 controls; fails on any of the other person's real figures) | **15/15** guard + router · **15/15** guard + Gemini · **15/15 Gemini with the guard OFF** |
 | **Demo scenario** (Guardian on the real engine, Oct 18–22) | Maya $135 → Sam $90 + Emma $45, Jordan $0, every day |
 | **Several short at once** (Maya + Alex share Sam's $90; fewest-options-first) | Maya fully covered · Alex $50 of $85 · **$185 covered vs $135 first-come**, every demo day |
@@ -118,6 +121,31 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 - **Sandbox limits, said out loud.** In production, ownership comes from the bank's own login and each
   customer grants their own token. In Nessie, one API key lives only on the server and every money move
   checks the signed-in owner first. Only the data connector is bank-specific.
+
+### The assistant
+
+- **Tools plus a grounding guard, not a model trusted with numbers.** Gemini picks a tool and words the
+  answer; the engine computes every figure. A reply quoting a figure no tool produced is thrown away and the
+  rule-based answer is given instead. We discard rather than "repair" it: a patched reply is still a guess.
+- **No RAG, no fine-tuning.** There's nothing to retrieve: every answer is this person's numbers right now,
+  computed. Fine-tuning would change how it talks, not whether it's right. The learned parts sit where outside
+  data exists to train and test on: the forecast's range (conformal calibration) and the formality reader.
+- **A rule-based router as a deliberate fallback.** If Gemini fails, runs out of credit, or writes an
+  ungrounded reply, a deterministic router answers with the same tools, so the app always answers (this
+  happened on judging night). It's also the agent eval's offline baseline in CI. The cost: it's pattern rules,
+  English only, and plainer than Gemini.
+- **Two locks on anything that acts, both in code.** Actions only run if the person switched on "Let Ask
+  Runway set things up" (checked inside the tool dispatcher, so no prompt gets around it), and each one is
+  still an approval card. The Fix it button skips the AI entirely: it's the person's own tap.
+- **Privacy before the model, not just in the prompt.** Questions about someone else's money are answered
+  before any model runs, and the tools can't return anyone else's data anyway. The eval with the guard off
+  (15/15) shows the second layer holds on its own.
+- **Less thinking, same answers.** The tools already did the math, so Gemini's deep thinking was mostly
+  re-checking numbers it isn't allowed to change. "Low" thinking halved reply time with the same eval scores.
+- **Tone: age first, then how you write.** Age picks the voice; a small trained model moves it one step when
+  a message is clearly casual or formal. A "be more relaxed" instruction lost to the voice's own rules on live
+  Gemini, so it's a firm switch. Known limits: English only, and the chat thresholds were set on small sets we
+  labelled ourselves.
 
 ## Built with
 
