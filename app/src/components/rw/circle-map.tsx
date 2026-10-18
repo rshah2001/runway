@@ -47,7 +47,7 @@ const AMOUNT_W = 64;
 
 /** Green: this person can cover you · blue: you can cover them · grey: stopped. */
 const lineColor = (p: CirclePerson) =>
-  p.role === 'member' ? '#56616b' : p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff';
+  p.role === 'member' ? C.text3 : p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : C.cover;
 
 
 export function CircleMap({ me, status, tone, people, selected, onSelect }: {
@@ -160,9 +160,9 @@ export function CircleLegend({ members = false }: { members?: boolean }) {
   return (
     <View style={s.legend}>
       <Key color={C.green} label="Can cover you" />
-      <Key color="#7cb8ff" label="You can cover them" />
+      <Key color={C.cover} label="You can cover them" />
       <Key color={C.text2} dashed label="Waiting for a yes" />
-      {members && <Key color="#56616b" dotted label="In this circle" />}
+      {members && <Key color={C.text3} dotted label="In this circle" />}
     </View>
   );
 }

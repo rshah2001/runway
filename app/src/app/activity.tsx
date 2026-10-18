@@ -26,13 +26,13 @@ const IN_FILTER: Record<Filter, ActivityItem['kind'][]> = {
 };
 const LOOK: Record<ActivityItem['kind'], [string, string]> = {
   received: ['shield', C.green],
-  provided: ['shield', '#7cb8ff'],
+  provided: ['shield', C.cover],
   repaid_by_me: ['check', C.green],
   repaid_to_me: ['check', C.green],
   waiting: ['transfer', C.amber],
   pending_my_ok: ['transfer', C.amber],
   problem: ['close', C.text2],
-  sent: ['send', '#7cb8ff'],
+  sent: ['send', C.cover],
   got: ['send', C.green],
   asked: ['transfer', C.amber],
   asked_you: ['transfer', C.amber],
@@ -46,14 +46,14 @@ export default function ActivityScreen() {
   const items = (feed.data ?? []).filter((x) => IN_FILTER[filter].includes(x.kind));
 
   return (
-    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data} maxWidth={820}>
+    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data} maxWidth={680}>
       <TopBar />
       <PageTitle title="Activity" sub="Support you received, gave and paid back — and why each one happened." />
       <View style={s.chips}>
         {FILTERS.map(([key, label]) => (
           <PressableScale key={key} onPress={() => setFilter(key)} accessibilityRole="button"
             accessibilityState={{ selected: filter === key }} style={[s.chip, filter === key && s.chipOn]}>
-            <Text style={[s.chipText, filter === key && { color: '#111' }]}>{label}</Text>
+            <Text style={[s.chipText, filter === key && { color: C.onPrimary }]}>{label}</Text>
           </PressableScale>
         ))}
       </View>
@@ -87,9 +87,10 @@ export default function ActivityScreen() {
 }
 
 const s = StyleSheet.create({
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
-  chipOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  // filled, borderless pills on the page (like the cards below them), with room above and below
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 18, marginBottom: 16 },
+  chip: { height: 34, paddingHorizontal: 12, borderRadius: 999, backgroundColor: C.card, justifyContent: 'center' },
+  chipOn: { backgroundColor: C.primary, borderColor: C.primary },
   chipText: { fontFamily: F.bodySemi, fontSize: 13, color: C.text },
   empty: { fontFamily: F.body, fontSize: 14, color: C.text2, padding: 16 },
   why: { paddingLeft: 56, paddingRight: 8, paddingBottom: 12, gap: 6 },

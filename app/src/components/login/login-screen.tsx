@@ -28,11 +28,15 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Airfield, AIRFIELD_MS } from '@/components/login/airfield';
 import { Swoosh } from '@/components/rw/icons';
 import { T, useWide } from '@/components/rw/ui';
-import { C, F } from '@/constants/runway';
+import { F, PALETTES } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
 import { enterSignedIn, NotLinked, signIn } from '@/lib/account';
 import { isAuthConfigured } from '@/lib/auth';
 import { useSession } from '@/lib/session';
+
+
+// the sign-in screen is a night airfield in every theme
+const NIGHT = PALETTES.dark;
 
 // the opening sequence, in ms from mount: the words arrive as the runway reaches the horizon
 const OPEN = { brand: AIRFIELD_MS.horizon + 150, words: AIRFIELD_MS.runway + 250, button: AIRFIELD_MS.runway + 650 };
@@ -104,7 +108,7 @@ export function LoginScreen() {
           <Text style={[s.headline, wide && s.headlineWide]} accessibilityRole="header">
             See the day you’d run short, before it happens.
           </Text>
-          <T tone="dim" style={[s.lede, wide && s.ledeWide]}>
+          <T style={[s.lede, wide && s.ledeWide, { color: NIGHT.text2 }]}>
             Runway forecasts your checking balance day by day and covers a dip before an overdraft fee lands.
           </T>
         </Settle>
@@ -113,13 +117,13 @@ export function LoginScreen() {
           {isAuthConfigured ? (
             <>
               <SignInButton busy={busy} wide={wide} onPress={onSignIn} />
-              <T tone="faint" style={s.note}>Auth0 handles your password. Runway never sees it.</T>
+              <T style={[s.note, { color: NIGHT.text3 }]}>Auth0 handles your password. Runway never sees it.</T>
             </>
           ) : (
-            <T tone="dim" style={s.note}>Sign-in isn’t switched on for this build. Set the Auth0 settings and rebuild.</T>
+            <T style={[s.note, { color: NIGHT.text2 }]}>Sign-in isn’t switched on for this build. Set the Auth0 settings and rebuild.</T>
           )}
           {shown && (
-            <T tone="red" style={s.note} accessibilityLiveRegion="polite">
+            <T style={[s.note, { color: NIGHT.red }]} accessibilityLiveRegion="polite">
               {shown}
             </T>
           )}
@@ -189,8 +193,8 @@ function Backdrop() {
     <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100" pointerEvents="none">
       <Defs>
         <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={C.bgTop} />
-          <Stop offset="0.66" stopColor={C.bg} />
+          <Stop offset="0" stopColor={NIGHT.bgTop} />
+          <Stop offset="0.66" stopColor={NIGHT.bg} />
           <Stop offset="1" stopColor="#101317" />
         </LinearGradient>
       </Defs>
@@ -200,15 +204,15 @@ function Backdrop() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: NIGHT.bg },
   column: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 28, paddingBottom: 24 },
 
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { fontFamily: F.condBold, fontSize: 20, color: C.text, letterSpacing: 5, textTransform: 'uppercase' },
+  wordmark: { fontFamily: F.condBold, fontSize: 20, color: NIGHT.text, letterSpacing: 5, textTransform: 'uppercase' },
 
   words: { alignItems: 'center', gap: 14 },
   // large display type: tight leading, negative tracking
-  headline: { fontFamily: F.condBold, fontSize: 40, lineHeight: 42, letterSpacing: -0.6, color: C.text, textAlign: 'center', maxWidth: 520 },
+  headline: { fontFamily: F.condBold, fontSize: 40, lineHeight: 42, letterSpacing: -0.6, color: NIGHT.text, textAlign: 'center', maxWidth: 520 },
   headlineWide: { fontSize: 68, lineHeight: 66, letterSpacing: -1.4, maxWidth: 760 },
   lede: { fontSize: 16, lineHeight: 24, textAlign: 'center', maxWidth: 420 },
   ledeWide: { fontSize: 18, lineHeight: 27, maxWidth: 520 },

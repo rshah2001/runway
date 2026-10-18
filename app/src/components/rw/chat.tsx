@@ -113,8 +113,8 @@ export function ChatLauncher() {
       {wide && <Animated.View style={[s.fabWrap, { bottom: fabBottom, right: 32 }, fabStyle]} pointerEvents="box-none">
         <PressableScale onPress={() => setStore({ chatOpen: !chatOpen })} style={s.fab} accessibilityRole="button"
           accessibilityLabel={chatOpen ? 'Close chat' : 'Ask Runway'}>
-          {chatOpen ? <Icon name="close" size={22} color="#111" /> : (
-            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          {chatOpen ? <Icon name="close" size={22} color={C.onPrimary} /> : (
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={C.onPrimary} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <Path d="M4 5.5h16v10H9l-5 3.5z" /><Path d="M8 10.5h8" />
             </Svg>
           )}
@@ -180,7 +180,7 @@ function ChatPanel({ wide }: { wide: boolean }) {
             {m.kind === 'text' && (
               <View style={{ alignItems: m.from === 'me' ? 'flex-end' : 'flex-start' }}>
                 <View style={[s.msg, m.from === 'me' ? s.me : s.bot]}>
-                  <T style={[s.msgText, m.from === 'me' && { color: '#111' }]}>{m.text}</T>
+                  <T style={[s.msgText, m.from === 'me' && { color: C.onPrimary }]}>{m.text}</T>
                 </View>
                 {m.tools?.length ? (
                   <View style={s.tools}>
@@ -209,7 +209,7 @@ function ChatPanel({ wide }: { wide: boolean }) {
           accessibilityLabel="Message" />
         <PressableScale onPress={() => send(text)} disabled={!text.trim() || busy} accessibilityRole="button" accessibilityLabel="Send"
           style={[s.send, (!text.trim() || busy) && { opacity: 0.35 }]}>
-          <Icon name="send" size={18} color="#111" />
+          <Icon name="send" size={18} color={C.onPrimary} />
         </PressableScale>
       </View>
     </KeyboardAvoidingView>
@@ -236,23 +236,23 @@ const s = StyleSheet.create({
     borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden',
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 30, shadowOffset: { width: 0, height: -8 }, elevation: 24 },
   grabHit: { alignSelf: 'center', paddingTop: 10, paddingBottom: 10, paddingHorizontal: 30 },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: '#3a4147' },
+  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: C.grab },
   headSheet: { borderBottomWidth: 0, paddingHorizontal: 20 },
   title: { fontFamily: F.bodySemi, fontSize: 22, color: C.text, letterSpacing: -0.2 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: C.line },
   thread: { gap: 10, paddingVertical: 14, paddingHorizontal: 12, flexGrow: 1, justifyContent: 'flex-end' },
   msg: { maxWidth: '88%', paddingVertical: 11, paddingHorizontal: 14, borderRadius: 14 },
   bot: { backgroundColor: C.card2, borderTopLeftRadius: 4 },
-  me: { backgroundColor: '#fff', borderTopRightRadius: 4 },
+  me: { backgroundColor: C.primary, borderTopRightRadius: 4 },
   msgText: { fontSize: 16, lineHeight: 22 },
   tools: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, marginLeft: 6 },
   chips: { gap: 8, paddingHorizontal: 12, paddingBottom: 10 },
   chip: { height: 38, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card2, justifyContent: 'center' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 12 },
-  input: { flex: 1, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.card2, borderWidth: 1, borderColor: '#2f363c',
+  input: { flex: 1, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.card2, borderWidth: 1, borderColor: C.line2,
     color: C.text, fontFamily: F.body, fontSize: 16 },
-  send: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  send: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
   fabWrap: { position: 'absolute', zIndex: 30 },
-  fab: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+  fab: { width: 58, height: 58, borderRadius: 29, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
 });

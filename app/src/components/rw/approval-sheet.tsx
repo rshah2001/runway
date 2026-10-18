@@ -81,7 +81,7 @@ export function ApprovalSheet() {
             {!done && (
               <PressableScale onPress={approve} disabled={phase === 'confirming'} accessibilityRole="button"
                 style={[s.btn, s.yes, phase === 'confirming' && { opacity: 0.7 }]}>
-                <Text style={[s.btnText, { color: '#111' }]}>{phase === 'confirming' ? 'Confirming…' : phase === 'retry' ? 'Try again' : 'Approve'}</Text>
+                <Text style={[s.btnText, { color: C.onPrimary }]}>{phase === 'confirming' ? 'Confirming…' : phase === 'retry' ? 'Try again' : 'Approve'}</Text>
               </PressableScale>
             )}
           </View>
@@ -96,13 +96,13 @@ const s = StyleSheet.create({
   lead: { fontSize: 15, marginTop: 4 },
   facts: { marginTop: 16, borderRadius: 16, backgroundColor: C.card2, paddingHorizontal: 14 },
   fact: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 11 },
-  factLine: { borderTopWidth: 1, borderTopColor: '#2f363c' },
+  factLine: { borderTopWidth: 1, borderTopColor: C.line2 },
   factK: { fontSize: 15 },
   factV: { fontFamily: F.bodySemi, fontSize: 15, color: C.text, flexShrink: 1, textAlign: 'right' },
   safe: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   btns: { flexDirection: 'row', gap: 10, marginTop: 16 },
   btn: { flex: 1, height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  no: { borderWidth: 1, borderColor: '#2f363c' },
-  yes: { backgroundColor: '#fff' },
+  no: { borderWidth: 1, borderColor: C.line2 },
+  yes: { backgroundColor: C.primary },
   btnText: { fontFamily: F.bodySemi, fontSize: 16 },
 });

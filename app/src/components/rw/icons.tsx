@@ -1,6 +1,8 @@
 // Monochrome line icons (20×20 grid, stroked) — quieter than emoji and identical on every platform.
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
+import { C } from '@/constants/runway';
+
 type P = { size?: number; color?: string };
 const base = (size: number, color: string) => ({
   width: size, height: size, viewBox: '0 0 20 20', fill: 'none', stroke: color,
@@ -29,7 +31,7 @@ const ICONS: Record<string, (p: Required<P>) => React.ReactElement> = {
 };
 
 /** Icon by name (event kind, spending category, or UI glyph); falls back to a receipt. */
-export function Icon({ name, size = 18, color = '#fff' }: P & { name: string }) {
+export function Icon({ name, size = 18, color = C.text }: P & { name: string }) {
   const Draw = ICONS[name] ?? ICONS.bill;
   return <Draw size={size} color={color} />;
 }

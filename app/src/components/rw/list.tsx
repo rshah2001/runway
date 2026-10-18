@@ -5,7 +5,7 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 
 /** "COMING UP", "YOUR LIMITS" — sits above a list card. */
 export function SectionLabel({ children, first }: PropsWithChildren<{ first?: boolean }>) {
@@ -36,7 +36,7 @@ export function Row({ first, left, title, sub, right, highlight }: {
 /** A round initial ("M") or a glyph in a soft circle. */
 export function Avatar({ name, children, tint }: PropsWithChildren<{ name?: string; tint?: string }>) {
   return (
-    <View style={[s.avatar, tint ? { backgroundColor: `${tint}26` } : null]}>
+    <View style={[s.avatar, tint ? { backgroundColor: alpha(tint, '26') } : null]}>
       {children ?? <Text style={s.initial}>{name?.[0] ?? '?'}</Text>}
     </View>
   );
@@ -58,7 +58,7 @@ const s = StyleSheet.create({
   list: { borderRadius: 20, backgroundColor: C.card, paddingHorizontal: 14, paddingVertical: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   rowLine: { borderTopWidth: 1, borderTopColor: C.line },
-  rowOn: { backgroundColor: 'rgba(255,255,255,0.06)', marginHorizontal: -14, paddingHorizontal: 14 },
+  rowOn: { backgroundColor: C.hover, marginHorizontal: -14, paddingHorizontal: 14 },
   title: { fontFamily: F.bodySemi, fontSize: 16, color: C.text },
   sub: { fontFamily: F.body, fontSize: 13, color: C.text2, marginTop: 1 },
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },

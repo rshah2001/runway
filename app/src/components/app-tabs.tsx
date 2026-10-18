@@ -55,7 +55,7 @@ const Bar = forwardRef<ComponentRef<typeof View>, TabListProps & { wide: boolean
         <Fade />
         <View ref={ref} {...props} style={s.pill}>{children}</View>
         <PressableScale onPress={openChat} style={s.chat} accessibilityRole="button" accessibilityLabel="Ask Runway">
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={C.onPrimary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
             <Path d="M4 5.5h16v10H9l-5 3.5z" /><Path d="M8 9.5h8M8 12.5h5" />
           </Svg>
         </PressableScale>
@@ -77,7 +77,7 @@ const Bar = forwardRef<ComponentRef<typeof View>, TabListProps & { wide: boolean
 
 const Tab = forwardRef<ComponentRef<typeof View>, TabTriggerSlotProps & { icon: string; wide: boolean }>(function Tab({ icon, wide, isFocused, children, ...props }, ref) {
   const { d, fill, circles } = ICON[icon];
-  const color = isFocused ? C.text : wide ? C.text3 : '#8f979e';
+  const color = isFocused ? C.text : wide ? C.text3 : C.text2;
   const glyph = (
     <Svg width={wide ? 18 : 22} height={wide ? 18 : 22} viewBox="0 0 24 24" fill={fill ? color : 'none'} stroke={fill ? 'none' : color} strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
       <Path d={d} />
@@ -106,20 +106,20 @@ function Fade() {
 
 const s = StyleSheet.create({
   dock: { position: 'absolute', left: 28, right: 28, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  fade: { position: 'absolute', left: -28, right: -28, bottom: -40, height: 130, experimental_backgroundImage: `linear-gradient(to top, ${C.bg} 45%, rgba(15,18,21,0))` },
+  fade: { position: 'absolute', left: -28, right: -28, bottom: -40, height: 130, experimental_backgroundImage: `linear-gradient(to top, ${C.bg} 45%, transparent)` },
   pill: {
     flex: 1, height: 52, padding: 4, borderRadius: 26, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(32,37,41,0.92)' : 'rgba(32,37,41,0.98)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: C.glass,
+    borderWidth: 1, borderColor: C.glassLine,
     shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 12,
     // frosted glass where the platform supports it (web); a near-opaque fill elsewhere
     ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(20px) saturate(1.6)' } as object) : {}),
   },
   pillTab: { flex: 1, height: '100%', borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   pillTabOn: { backgroundColor: C.bg },
-  chat: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#e9ecef', alignItems: 'center', justifyContent: 'center',
+  chat: { width: 52, height: 52, borderRadius: 26, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 12 },
-  topWrap: { backgroundColor: C.tabBar, borderBottomWidth: 1, borderBottomColor: '#20262c' },
+  topWrap: { backgroundColor: C.tabBar, borderBottomWidth: 1, borderBottomColor: C.line },
   top: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, height: 64 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 18 },

@@ -82,5 +82,5 @@ const s = StyleSheet.create({
   },
   panelWide: { left: '50%', width: 520, marginLeft: -260, bottom: 24, borderRadius: 28 },
   grabHit: { alignSelf: 'center', paddingTop: 10, paddingBottom: 14, paddingHorizontal: 30 },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: '#3a4147' },
+  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: C.grab },
 });
