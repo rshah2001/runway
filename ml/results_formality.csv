@@ -1,0 +1,7 @@
+model,spearman_test,band_accuracy_test,opposite_band_test,chat_side_accuracy,spearman_answers,spearman_blog,spearman_email,spearman_news
+rules (no learning),0.519,0.424,0.044,1.0,0.492,0.405,0.552,0.253
+words 1-2g + ridge (8k),0.705,0.582,0.032,0.8,0.611,0.598,0.706,0.403
+chars 2-4g + ridge (8k),0.736,0.604,0.024,0.85,0.651,0.632,0.781,0.442
+words + chars + ridge (8k+8k),0.736,0.608,0.032,0.8,0.657,0.619,0.76,0.448
+words 1-2g + ridge (20k),0.714,0.602,0.03,0.75,0.62,0.608,0.712,0.412
+SHIPPED: chars + 25% chat cues,0.733,0.595,0.027,0.95,0.667,0.629,0.762,0.431
