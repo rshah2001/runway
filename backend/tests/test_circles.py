@@ -31,6 +31,9 @@ class Members:
         monkeypatch.setattr(
             circles.inbox, "add", lambda conn, slug, kind, cid, actor: self.notes.append((slug, kind, actor))
         )
+        monkeypatch.setattr(
+            circles.inbox, "sent_recently", lambda conn, actor: sum(1 for n in self.notes if n[2] == actor)
+        )
 
     def execute(self, sql, params=None):  # remove() reads created_by; leave()/remove() revoke links
         creator = self.creator
@@ -172,3 +175,19 @@ def test_joining_by_link_tells_the_creator(monkeypatch) -> None:
     m.install(monkeypatch)
     circles.join_by_link(m, "alex", "tok")
     assert m.notes == [("sam", "circle_joined", "alex")]
+
+
+def test_invitations_are_capped_per_hour(monkeypatch) -> None:
+    m = Members({"maya": "active"})
+    m.install(monkeypatch)
+    for i in range(circles.INVITES_PER_HOUR):
+        circles.invite(m, "maya", "c", f"p{i}")
+    with pytest.raises(circles.CircleRefused):
+        circles.invite(m, "maya", "c", "one-more")
+
+
+def test_someone_who_declined_is_not_pinged_again(monkeypatch) -> None:
+    m = Members({"sam": "active", "jordan": "declined"})
+    m.install(monkeypatch)
+    circles.invite(m, "sam", "c", "jordan")  # the creator may ask again…
+    assert m.states["jordan"] == "invited" and m.notes == []  # …but no pop-up or push

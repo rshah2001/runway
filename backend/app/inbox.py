@@ -7,7 +7,8 @@ when they answer, the person who added them (and the circle's creator, for someo
 A row is written in the same transaction as the circle change, so a notification can never describe
 something that didn't happen. Phone push (Web Push, app/alerts.py) goes out afterwards, best effort, once
 per row; with "discreet notifications" on (the default) the lock screen says only that there's an update.
-Notifications carry names and the circle's name — never money.
+Notifications carry names and the circle's name — never money. The circle's name (free text) stays in the
+app; a lock screen gets at most "Sam added you to a circle". Invitations are capped per person per hour.
 """
 
 import logging
@@ -51,6 +52,16 @@ def add(conn: psycopg.Connection, slug: str, kind: str, circle_id: str, actor: s
         "INSERT INTO inbox (id, slug, kind, circle_id, actor) VALUES (%s, %s, %s, %s, %s)",
         (f"note-{secrets.token_hex(6)}", slug, kind, circle_id, actor),
     )
+
+
+def sent_recently(conn: psycopg.Connection, actor: str) -> int:
+    """Invitations `actor` sent in the last hour (the anti-spam cap in circles.invite)."""
+    row = conn.execute(
+        "SELECT count(*) AS n FROM inbox WHERE actor = %s AND kind = 'circle_invite' "
+        "AND created_at > now() - interval '1 hour'",
+        (actor,),
+    ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def mine(conn: psycopg.Connection, slug: str, limit: int = 10) -> list[Row]:
@@ -104,7 +115,8 @@ def _push_new() -> None:
             discreet = prefs.setting(r["slug"], "discreet_notifications")
             payload = {
                 "title": "Runway",
-                "body": "You have a new circle update." if discreet else text(r["kind"], r["actor_name"], r["circle"]),
+                # the circle's name is free text someone else typed, so it never reaches a lock screen
+                "body": "You have a new circle update." if discreet else text(r["kind"], r["actor_name"], "a circle"),
                 "url": "/circles",
                 "tag": f"circle-{r['id']}",
             }

@@ -98,8 +98,12 @@ def invite(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> N
     # any member could undo a removal or keep re-inviting a person who declined
     if current in ("removed", "declined") and not _is_creator(conn, circle_id, actor):
         raise CircleRefused("Only the person who made this circle can invite them again.")
+    # anyone on Runway can be added, so cap how many people one person can ping — no invitation spam
+    if inbox.sent_recently(conn, actor) >= INVITES_PER_HOUR:
+        raise CircleRefused("You've added a lot of people in the last hour. Try again a little later.")
     _set(conn, circle_id, slug, "invited", invited_by=actor)
-    inbox.add(conn, slug, "circle_invite", circle_id, actor)  # shows up for them — no link needed
+    if current != "declined":  # someone who said no isn't pinged again — the invitation just waits in Circles
+        inbox.add(conn, slug, "circle_invite", circle_id, actor)
 
 
 def answer(conn: psycopg.Connection, actor: str, circle_id: str, accept: bool) -> None:
@@ -154,6 +158,7 @@ def mine(conn: psycopg.Connection, viewer: str) -> list[Row]:
 
 
 LINK_DAYS = 7
+INVITES_PER_HOUR = 15
 
 
 def make_link(conn: psycopg.Connection, actor: str, circle_id: str) -> Row:
