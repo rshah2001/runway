@@ -86,3 +86,15 @@ def test_real_money_is_refused_when_sign_in_is_not_configured(real_money: None, 
 def test_with_real_money_off_the_simulation_stays_open(auth_on: None) -> None:
     body = {"persona": "maya", "contact_id": "maya-alex", "amount": 20, "memo": "x"}
     assert client.post("/p2p/send", json=body).status_code == 200
+
+
+def test_an_approved_pause_from_chat_goes_through_and_only_for_the_supporter(auth_on: None) -> None:
+    from app.agent import tools
+    from app.schemas import PendingAction
+
+    action = PendingAction(id="pause-test-sam", kind="pause_support", description="Pause your support for Maya")
+    tools.PENDING[action.id], tools.ACTION_PERSONA[action.id], tools.ACTION_PAUSE[action.id] = action, "sam", "maya"
+    assert client.post(f"/actions/{action.id}/approve", headers=as_("maya")).status_code == 403  # not hers to pause
+    r = client.post(f"/actions/{action.id}/approve", headers=as_("sam"))
+    assert r.status_code == 200 and r.json()["status"] == "executed"
+    assert client.post(f"/actions/{action.id}/approve", headers=as_("sam")).status_code == 409  # once
