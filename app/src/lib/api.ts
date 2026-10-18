@@ -1,5 +1,6 @@
 import type {
   ActivityItem,
+  PeopleSummary,
   Bridge,
   CircleView,
   ChatResponse,
@@ -83,6 +84,14 @@ export const api = {
   supportExposure: (limit: number, persona = currentPersona()) =>
     request<SupportSummary>('/support/exposure', { method: 'PUT', body: JSON.stringify({ persona, limit }) }),
   activity: (persona = currentPersona()) => request<ActivityItem[]>(`/activity?persona=${persona}`),
+  // send / request between people in my circles — any time, for anything
+  people: (persona = currentPersona()) => request<PeopleSummary>(`/people?persona=${persona}`),
+  sendTo: (to: string, amount: number, memo: string, persona = currentPersona(), clientKey = tapKey()) =>
+    request<PeopleSummary>('/people/send', { method: 'POST', body: JSON.stringify({ persona, to, amount, memo, client_key: clientKey }) }),
+  askFrom: (to: string, amount: number, memo: string, persona = currentPersona()) =>
+    request<PeopleSummary>('/people/request', { method: 'POST', body: JSON.stringify({ persona, to, amount, memo }) }),
+  answerAsk: (id: string, action: 'pay' | 'decline', persona = currentPersona()) =>
+    request<PeopleSummary>(`/people/requests/${id}/${action}`, { method: 'POST', body: JSON.stringify({ persona }) }),
   // named circles: membership only — joining one never grants access to anyone's money
   circles: (persona = currentPersona()) => request<CircleView[]>(`/circles?persona=${persona}`),
   createCircle: (name: string, persona = currentPersona()) =>

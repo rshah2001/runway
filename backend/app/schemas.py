@@ -378,6 +378,53 @@ class CirclePerson(BaseModel):
     slug: str | None = Field(None, pattern=PERSONA_SLUG)  # the person invited / removed
 
 
+class Person(BaseModel):
+    """Someone you can send to or ask: in one of your circles, or in a support agreement with you."""
+
+    slug: str
+    name: str
+    how: str  # "Family", "Weekend crew", "Safety net"…
+
+
+class PersonRequest(BaseModel):
+    id: str
+    from_slug: str
+    from_name: str
+    to_slug: str
+    to_name: str
+    amount: float
+    memo: str
+    status: Literal["open", "settling", "paid", "declined", "cancelled", "failed"]
+    created: date
+
+
+class PersonPayment(BaseModel):
+    id: str
+    from_slug: str
+    from_name: str
+    to_slug: str
+    to_name: str
+    amount: float
+    memo: str
+    date: date
+
+
+class PeopleSummary(BaseModel):
+    persona: str
+    people: list[Person]
+    asked_me: list[PersonRequest]  # waiting for MY answer
+    i_asked: list[PersonRequest]  # what I asked for, and what happened
+    payments: list[PersonPayment]  # money between me and the people in my circles, newest first
+
+
+class PersonMoney(BaseModel):
+    persona: str = Field("maya", pattern=PERSONA_SLUG)  # who is acting (ignored when signed in)
+    to: str = Field(pattern=PERSONA_SLUG)  # send: who gets it · request: who is asked
+    amount: float = Field(gt=0, le=1000)
+    memo: str = Field(min_length=1, max_length=60)
+    client_key: str | None = Field(None, pattern=r"^[A-Za-z0-9-]{8,64}$")  # send only: one per tap
+
+
 class ScenarioPoint(BaseModel):
     date: date
     balance: float

@@ -5,7 +5,7 @@
 // /p2p — nobody's balance, income or spending is ever in those responses; this screen only picks words.
 // Also here: asking your circle before a dip, paying support back early, sending money, the demo reset.
 import { Fragment, type ReactNode, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CircleLegend, CircleMap, type CirclePerson } from '@/components/rw/circle-map';
 import { Icon } from '@/components/rw/icons';
@@ -22,10 +22,10 @@ import { money, monthDay, plain, weekdayDate } from '@/lib/format';
 import type {
   Bridge,
   P2PPayment,
-  P2PSummary,
   SafetyEvent,
   SafetyLimit,
   SafetyNetSummary,
+  PeopleSummary,
   SupportAgreement,
   SupportSummary,
 } from '@/lib/types';
@@ -43,6 +43,7 @@ export default function CirclesScreen() {
   const sn = useLoad(() => api.safetyNet(), version);
   const sup = useLoad(() => api.support(), version);
   const p2p = useLoad(() => api.p2p(), version);
+  const ppl = useLoad(() => api.people(), version);
   const fc = useLoad(() => api.forecast(30), version);
   const me = useLoad(() => api.me(), version);
   const [consent, setConsent] = useState<SupportAgreement | null>(null);
@@ -76,9 +77,11 @@ export default function CirclesScreen() {
           <PeopleISupport d={d} sup={sup.data} onAgree={setConsent} onSaved={reload} />
 
           <OwesYou p2p={p2p.data} onAsked={reload} />
-          <SendMoney p2p={p2p.data} onSent={reload} />
+          <AskedYou ppl={ppl.data} onDone={reload} />
+          <SendOrRequest ppl={ppl.data} onDone={reload} />
+          <YouAsked ppl={ppl.data} />
 
-          <Recent events={d.events} payments={p2p.data?.payments ?? []} />
+          <Recent events={d.events} payments={[...(p2p.data?.payments ?? []), ...peoplePayments(ppl.data)]} />
         </>
       )}
       {d && d.borrowed.some((b) => b.status === 'active' || b.status === 'repay_failed') && <DemoPayday onDone={reload} />}
@@ -515,48 +518,125 @@ function PayBack({ b, onDone }: { b: Bridge; onDone: () => void }) {
   );
 }
 
-const SEND_AMOUNTS = [10, 20, 50];
+/** Money with people in my circles, shaped like contact payments for the history list. */
+function peoplePayments(ppl: PeopleSummary | null): P2PPayment[] {
+  if (!ppl) return [];
+  return ppl.payments.map((x) => {
+    const inbound = x.to_slug === ppl.persona;
+    return { id: x.id, date: x.date, direction: inbound ? 'in' : 'out', contact_id: inbound ? x.from_slug : x.to_slug,
+      contact: inbound ? x.from_name : x.to_name, amount: x.amount, memo: x.memo } as P2PPayment;
+  });
+}
 
-/** Send a friend money: pick who, pick how much, confirm. A real Nessie move (transfer + deposit). */
-function SendMoney({ p2p, onSent }: { p2p: P2PSummary | null; onSent: () => void }) {
+const QUICK_AMOUNTS = [10, 20, 50, 100];
+const NOTES = ['🎉 Festival', '🍕 Food', '🏠 Rent', '🎁 Gift'];
+
+/**
+ * Send money to, or ask money from, anyone in your circles — any time, for anything. A send is a real
+ * Nessie transfer (one per tap); a request waits for them to pay it from their own account.
+ */
+function SendOrRequest({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () => void }) {
+  const [mode, setMode] = useState<'send' | 'ask'>('send');
   const [to, setTo] = useState<string | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const contacts = p2p?.contacts ?? [];
-  if (!contacts.length) return null;
-  const who = contacts.find((c) => c.id === to);
+  const [custom, setCustom] = useState('');
+  const [note, setNote] = useState(NOTES[0]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const people = ppl?.people ?? [];
+  if (!people.length) return null;
+  const who = people.find((p) => p.slug === to);
+  const value = amount ?? (Number(custom) > 0 ? Math.round(Number(custom) * 100) / 100 : null);
+  const ready = who && value && value <= 1000 && note.trim();
   return (
     <>
-      <SectionLabel>Send money</SectionLabel>
+      <SectionLabel>Send or request</SectionLabel>
       <View style={[s.ask, { borderColor: '#2f363c' }]}>
         <View style={s.chips}>
-          {contacts.map((c) => (
-            <Pick key={c.id} on={to === c.id} label={c.name} onPress={() => { setTo(c.id); setNote(null); }} />
+          {(['send', 'ask'] as const).map((m) => (
+            <Pick key={m} on={mode === m} label={m === 'send' ? 'Send' : 'Request'} onPress={() => { setMode(m); setMsg(null); }} />
           ))}
+        </View>
+        <View style={[s.chips, { marginTop: 12 }]}>
+          {people.map((p) => <Pick key={p.slug} on={to === p.slug} label={p.name} onPress={() => { setTo(p.slug); setMsg(null); }} />)}
+        </View>
+        {who && <Text style={s.fineText}>{who.how}</Text>}
+        <View style={[s.chips, { marginTop: 10 }]}>
+          {QUICK_AMOUNTS.map((n) => <Pick key={n} on={amount === n} label={money(n, 0)} onPress={() => { setAmount(n); setCustom(''); }} />)}
+          <TextInput value={custom} onChangeText={(t) => { setCustom(t.replace(/[^0-9.]/g, '')); setAmount(null); }}
+            placeholder="Other $" placeholderTextColor={C.text3} keyboardType="decimal-pad" style={s.custom} accessibilityLabel="Other amount" />
         </View>
         <View style={[s.chips, { marginTop: 10 }]}>
-          {SEND_AMOUNTS.map((n) => (
-            <Pick key={n} on={amount === n} label={money(n, 0)} onPress={() => { setAmount(n); setNote(null); }} />
-          ))}
+          {NOTES.map((n) => <Pick key={n} on={note === n} label={n} onPress={() => setNote(n)} />)}
         </View>
-        {note && <Text style={s.askBody}>{note}</Text>}
-        {who && amount ? (
+        {msg && <Text style={s.askBody}>{msg}</Text>}
+        {ready ? (
           <View style={[s.askBtns, { justifyContent: 'flex-start' }]}>
-            <TwoTap label={`Send ${who.name} ${money(amount, 0)}`} confirm="Tap again to send" onPress={async () => {
-              try {
-                await api.p2pSend(who.id, amount, 'Sent with Runway');
-                setNote(`Sent ${money(amount, 0)} to ${who.name}.`);
-                setAmount(null);
-                onSent();
-              } catch (e) {
-                setNote(reason(e));
-              }
-            }} />
+            <TwoTap label={mode === 'send' ? `Send ${who.name} ${money(value, 0)}` : `Ask ${who.name} for ${money(value, 0)}`}
+              confirm="Tap again to confirm" onPress={async () => {
+                try {
+                  if (mode === 'send') await api.sendTo(who.slug, value, note);
+                  else await api.askFrom(who.slug, value, note);
+                  setMsg(mode === 'send' ? `Sent ${money(value, 0)} to ${who.name}.` : `Asked ${who.name} for ${money(value, 0)}. They'll see only the amount and your note.`);
+                  setAmount(null);
+                  setCustom('');
+                  onDone();
+                } catch (e) {
+                  setMsg(reason(e));
+                }
+              }} />
           </View>
         ) : (
-          <Text style={s.fineText}>Pick a person and an amount.</Text>
+          <Text style={s.fineText}>Pick a person, an amount and a note.</Text>
         )}
       </View>
+    </>
+  );
+}
+
+/** Requests waiting for my answer: pay from my own account, or decline. */
+function AskedYou({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () => void }) {
+  const [note, setNote] = useState<string | null>(null);
+  const open = ppl?.asked_me ?? [];
+  if (!open.length) return null;
+  return (
+    <>
+      <SectionLabel>Requests for you</SectionLabel>
+      <List>
+        {open.map((r, i) => (
+          <Row key={r.id} first={i === 0} left={<Avatar name={r.from_name} />} title={`${r.from_name} asked for ${money(r.amount, 0)}`}
+            sub={`${r.memo} · ${monthDay(r.created)}`}
+            right={r.status === 'open' ? (
+              <View style={s.owe}>
+                <PressableScale onPress={async () => { try { await api.answerAsk(r.id, 'decline'); onDone(); } catch (e) { setNote(reason(e)); } }}
+                  accessibilityRole="button" style={[s.askBtn, s.ghostBtn]}>
+                  <Text style={[s.askBtnText, { color: C.text }]}>Decline</Text>
+                </PressableScale>
+                <TwoTap label="Pay" confirm={`Pay ${money(r.amount, 0)}?`} onPress={async () => {
+                  try { await api.answerAsk(r.id, 'pay'); onDone(); } catch (e) { setNote(reason(e)); }
+                }} />
+              </View>
+            ) : <Amount>Paying…</Amount>} />
+        ))}
+      </List>
+      {note && <Fine>{note}</Fine>}
+    </>
+  );
+}
+
+/** What I asked people for, and what happened. */
+function YouAsked({ ppl }: { ppl: PeopleSummary | null }) {
+  const mine = (ppl?.i_asked ?? []).slice(0, 5);
+  if (!mine.length) return null;
+  const word: Record<string, string> = { open: 'Waiting', settling: 'Paying…', paid: 'Paid', declined: 'Declined', cancelled: 'Cancelled', failed: 'Being checked' };
+  return (
+    <>
+      <SectionLabel>You asked</SectionLabel>
+      <List>
+        {mine.map((r, i) => (
+          <Row key={r.id} first={i === 0} left={<Avatar name={r.to_name} />} title={`${r.to_name} · ${money(r.amount, 0)}`}
+            sub={`${r.memo} · ${monthDay(r.created)}`} right={<Amount tone={r.status === 'paid' ? 'green' : undefined}>{word[r.status]}</Amount>} />
+        ))}
+      </List>
     </>
   );
 }
@@ -858,6 +938,7 @@ const s = StyleSheet.create({
   pick: { height: 36, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
   pickOn: { backgroundColor: '#fff', borderColor: '#fff' },
   fineText: { fontFamily: F.body, fontSize: 13, lineHeight: 18, color: C.text2, marginTop: 8 },
+  custom: { height: 36, minWidth: 90, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   sheet: { padding: 22, paddingBottom: 26 },
   mapCard: { marginTop: 18, borderRadius: 24, backgroundColor: C.card, padding: 16, paddingBottom: 14 },

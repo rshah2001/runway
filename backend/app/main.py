@@ -8,6 +8,7 @@ import contextlib
 import logging
 import os
 import re
+import secrets
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -42,7 +43,9 @@ from app.schemas import (
     P2PSend,
     P2PSummary,
     PendingAction,
+    PeopleSummary,
     Persona,
+    PersonMoney,
     PushStatus,
     PushSubscription,
     Recurring,
@@ -434,6 +437,115 @@ def circle_change(circle_id: str, action: str, req: CirclePerson, user: Optional
     if action not in acts:
         raise HTTPException(404, "Unknown action")
     return _circle_act(user, req.persona, acts[action])
+
+
+# ---------- send / request between connected people (app/people_pay.py) ----------
+@app.get("/people", response_model=PeopleSummary)
+def people_summary(user: OptionalUser, persona: str = PERSONA) -> PeopleSummary:
+    """Who I can send to or ask (my circles and agreements), and requests/payments both ways."""
+    return safety_views.people_for(persona_for(user, persona))
+
+
+def _real_people_money() -> None:
+    if not data.writes_enabled():
+        raise HTTPException(503, "Real transfers are off right now.")
+
+
+@app.post("/people/send", response_model=PeopleSummary)
+def people_send(req: PersonMoney, user: OptionalUser) -> PeopleSummary:
+    """Send money to someone in your circles — any time, for anything. One payment per tap (client_key)."""
+    authorize_money(user, req.persona)
+    me = persona_for(user, req.persona) if user else req.persona
+    _real_people_money()
+    from decimal import Decimal
+
+    from app import people_pay
+    from app.db import pool
+
+    with pool.connection() as conn:
+        if not people_pay.connected(conn, me, req.to):
+            raise HTTPException(403, "You can only send to people in your circles.")
+    key = f"psend:{me}:{req.client_key or secrets.token_hex(8)}"
+    try:
+        people_pay.send(me, req.to, Decimal(str(req.amount)).quantize(Decimal("0.01")), req.memo, key=key)
+    except people_pay.RequestClosed:
+        raise HTTPException(409, "That payment is already being sent.") from None
+    except data.TransferNotMade as e:
+        raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
+    except Exception as e:
+        log.exception("person send needs reconciliation")
+        raise HTTPException(502, P2P_FAILED) from e
+    return safety_views.people_for(me)
+
+
+@app.post("/people/request", response_model=PeopleSummary)
+def people_request(req: PersonMoney, user: OptionalUser) -> PeopleSummary:
+    """Ask someone in your circles for money. Nothing moves until they pay it from their own account."""
+    me = _own_settings(user, req.persona)
+    if not get_settings().live:
+        return safety_views.people_for(me)
+    from decimal import Decimal
+
+    from app import people_pay
+    from app.db import pool
+
+    with pool.connection() as conn:
+        try:
+            people_pay.new_request(conn, me, req.to, Decimal(str(req.amount)).quantize(Decimal("0.01")), req.memo)
+        except people_pay.NotConnected as e:
+            raise HTTPException(403, str(e)) from None
+        conn.commit()
+    return safety_views.people_for(me)
+
+
+@app.post("/people/requests/{request_id}/{action}", response_model=PeopleSummary)
+def people_request_answer(request_id: str, action: str, req: CirclePerson, user: OptionalUser) -> PeopleSummary:
+    """The person asked pays (real money from their own account) or declines. Only they can."""
+    if not re.fullmatch(r"preq-[0-9a-f]{12}", request_id) or action not in ("pay", "decline"):
+        raise HTTPException(404, "Unknown request")
+    from app import people_pay
+    from app.db import pool
+
+    if action == "decline":
+        me = _own_settings(user, req.persona)
+        if get_settings().live:
+            with pool.connection() as conn:
+                if not people_pay.answer_decline(conn, request_id, me):
+                    raise HTTPException(409, "That request isn't waiting for you.")
+                conn.commit()
+        return safety_views.people_for(me)
+    authorize_money(user, req.persona)
+    me = persona_for(user, req.persona) if user else req.persona
+    _real_people_money()
+    with pool.connection() as conn:
+        claimed = people_pay.claim(conn, request_id, me)  # atomic open → settling, only by the person asked
+        conn.commit()
+    if claimed is None:
+        raise HTTPException(409, "That request isn't waiting for you.")
+    try:
+        row = people_pay.send(
+            me,
+            claimed["from_slug"],
+            claimed["amount"],
+            claimed["memo"],
+            key=f"preq:{request_id}",
+            request_id=request_id,
+        )
+    except data.TransferNotMade as e:
+        with pool.connection() as conn:
+            people_pay.finish(conn, request_id, "open")  # nothing moved: it can be paid again
+            conn.commit()
+        raise HTTPException(503, "The bank didn't accept the payment — nothing moved, try again") from e
+    except Exception as e:
+        with pool.connection() as conn:
+            people_pay.finish(conn, request_id, "failed")  # outcome unclear: never paid twice
+            conn.commit()
+        log.exception("person request payment needs reconciliation")
+        raise HTTPException(502, P2P_FAILED) from e
+    with pool.connection() as conn:
+        people_pay.finish(conn, request_id, "paid", row["id"])
+        conn.commit()
+    return safety_views.people_for(me)
 
 
 @app.get("/forecast/scenarios", response_model=Scenarios)
