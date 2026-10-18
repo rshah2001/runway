@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/rw/icons';
 import { PressableScale } from '@/components/rw/ui';
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { moneyMoved, useStore } from '@/lib/store';
@@ -61,7 +61,7 @@ function Card({ note, more, onGone }: { note: InboxItem; more: number; onGone: (
     <Animated.View entering={FadeInUp.duration(260)} exiting={FadeOutUp.duration(180)} style={s.card}
       accessibilityRole="alert" accessibilityLiveRegion="polite">
       <View style={s.row}>
-        <View style={[s.badge, { backgroundColor: invite ? `${C.green}22` : `${C.blue}22` }]}>
+        <View style={[s.badge, { backgroundColor: invite ? alpha(C.green, '22') : alpha(C.blue, '22') }]}>
           <Icon name={invite ? 'shield' : 'check'} size={18} color={invite ? C.green : C.blue} />
         </View>
         <View style={{ flex: 1 }}>
@@ -96,7 +96,7 @@ const s = StyleSheet.create({
   wrap: { position: 'absolute', left: 12, right: 12, alignItems: 'center', zIndex: 50 },
   card: {
     width: '100%', maxWidth: 440, borderRadius: 20, padding: 14, backgroundColor: C.card2,
-    borderWidth: 1, borderColor: '#343c42', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
+    borderWidth: 1, borderColor: C.line2, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -106,7 +106,7 @@ const s = StyleSheet.create({
   close: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   btns: { flexDirection: 'row', gap: 8, marginTop: 12 },
   btn: { flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  ghost: { borderWidth: 1, borderColor: '#3a4248' },
-  join: { backgroundColor: '#fff' },
-  btnText: { fontFamily: F.bodySemi, fontSize: 14, color: '#111' },
+  ghost: { borderWidth: 1, borderColor: C.line2 },
+  join: { backgroundColor: C.primary },
+  btnText: { fontFamily: F.bodySemi, fontSize: 14, color: C.onPrimary },
 });
