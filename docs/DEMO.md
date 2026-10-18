@@ -88,7 +88,7 @@ judged scenario pinned on the real engine for every demo day.
 **What we learned.** The interesting problem isn't predicting a shortfall — it's coordinating help
 without turning people's finances into a group chat.
 
-**What's next.** Real bank auth per customer, partial repayment plans, and letting supporters set
+**What's next.** Real bank auth per customer, automatic part payments on payday, and letting supporters set
 "help only when it's for rent or bills" rules — still without seeing what the money is for.
 
 **Built with:** Capital One Nessie · Google Gemini · Auth0 · Tiger Data · Vultr · GoDaddy Registry · FastAPI · Expo / React Native · PostgreSQL / TimescaleDB

@@ -14,7 +14,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_router_baseline_is_perfect_on_every_metric() -> None:
     rows = agent_eval.run()
     failures = [r for r in rows if not (r["tool"] and r["answer"] and r["grounded"])]
-    assert len(rows) == 58 and failures == []
+    assert len(rows) == 63 and failures == []
 
 
 def test_eval_has_both_verdicts() -> None:

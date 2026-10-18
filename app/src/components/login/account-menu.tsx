@@ -44,6 +44,8 @@ export function AccountMenu() {
   const [editing, setEditing] = useState(false); // the "Money I keep" sheet
   const [quiet, setQuiet] = useState<boolean | null>(null); // alerts only, read when the menu opens
   const [savingQuiet, setSavingQuiet] = useState(false);
+  const [aiActs, setAiActs] = useState<boolean | null>(null); // may Ask Runway set things up?
+  const [savingAi, setSavingAi] = useState(false);
   if (session.mode !== 'signed-in') return null;
   const name = session.name ?? 'there';
 
@@ -58,7 +60,8 @@ export function AccountMenu() {
     api.me().then((m) => {
       setKeep(typeof m.safe_floor === 'number' ? m.safe_floor : null);
       setQuiet(typeof m.alerts_only === 'boolean' ? m.alerts_only : null); // older server: no switch
-    }).catch(() => { setKeep(null); setQuiet(null); });
+      setAiActs(typeof m.ai_actions === 'boolean' ? m.ai_actions : null);
+    }).catch(() => { setKeep(null); setQuiet(null); setAiActs(null); });
   }
 
   async function toggleQuiet() {
@@ -73,6 +76,19 @@ export function AccountMenu() {
       // the switch stays where it was; nothing changed on the server
     } finally {
       setSavingQuiet(false);
+    }
+  }
+
+  async function toggleAi() {
+    if (aiActs === null) return;
+    setSavingAi(true);
+    try {
+      const m = await api.setPreferences({ ai_actions: !aiActs });
+      setAiActs(!!m.ai_actions);
+    } catch {
+      // the switch stays where it was; nothing changed on the server
+    } finally {
+      setSavingAi(false);
     }
   }
 
@@ -140,6 +156,19 @@ export function AccountMenu() {
                 </View>
                 <View style={[s.track, quiet && s.trackOn, savingQuiet && { opacity: 0.6 }]}>
                   <View style={[s.knob, quiet && s.knobOn]} />
+                </View>
+              </Pressable>
+            )}
+            {aiActs !== null && (
+              <Pressable onPress={toggleAi} disabled={savingAi} accessibilityRole="switch" accessibilityState={{ checked: aiActs }}
+                accessibilityLabel="Let Ask Runway set things up for me: money, circles and invites, each one approved by me"
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.itemText, { color: C.text }]}>Let Ask Runway set things up</Text>
+                  <Text style={s.whoSub}>Money, circles, invites — you approve each one</Text>
+                </View>
+                <View style={[s.track, aiActs && s.trackOn, savingAi && { opacity: 0.6 }]}>
+                  <View style={[s.knob, aiActs && s.knobOn]} />
                 </View>
               </Pressable>
             )}

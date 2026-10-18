@@ -636,6 +636,8 @@ def weekly_brief(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = 
 # who a pending "pause support" is for: action id -> the person being supported (the supporter is
 # ACTION_PERSONA). main.py's approve route reads it through pause_details().
 ACTION_PAUSE: dict[str, str] = {}
+# what any other pending action will do (circles, sending, paying back): see app/agent/actions.py
+ACTION_DETAILS: dict[str, dict[str, Any]] = {}
 
 # what set a supporter's safe amount, in plain words (guardian.Bound)
 ROOM_REASON = {
@@ -773,6 +775,7 @@ def discard(action_id: str) -> None:
     ACTION_PERSONA.pop(action_id, None)
     ACTION_P2P.pop(action_id, None)
     ACTION_PAUSE.pop(action_id, None)
+    ACTION_DETAILS.pop(action_id, None)
 
 
 def persona_of(action_id: str) -> str:
@@ -958,8 +961,19 @@ def call(
     fn = READ_TOOLS.get(name) or WRITE_TOOLS.get(name)
     if fn is None:
         return {"error": f"Unknown tool {name!r}"}
+    if name in WRITE_TOOLS and not actions.allowed(persona):
+        return actions.no_permission(name)  # the user's switch, checked here so no prompt gets past it
     args = {k: v for k, v in arguments.items() if k not in ("persona", "today")}
     try:
         return fn(**args, persona=persona, today=today)
     except (TypeError, ValueError, sources.UnknownPersona) as e:
         return {"error": str(e)}
+
+
+# The rest of what Ask Runway can set up (circles, sending, paying back) lives in actions.py; it uses
+# this module's PENDING, so it's merged in last.
+from app.agent import actions  # noqa: E402
+
+READ_TOOLS.update(actions.READ_TOOLS)
+WRITE_TOOLS.update(actions.WRITE_TOOLS)
+DECLARATIONS.extend(actions.DECLARATIONS)

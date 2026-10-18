@@ -562,20 +562,30 @@ function WhatTheySee({ on, onChanged }: { on: boolean | undefined; onChanged: ()
   );
 }
 
-/** Pay a bridge back before payday — refused (with the reason) if it would take you under what you keep. */
+/** Pay a bridge back before payday, all of it or part (the rest goes back on payday) — refused (with the
+ * reason) if it would take you under what you keep. */
 function PayBack({ b, onDone }: { b: Bridge; onDone: () => void }) {
   const [note, setNote] = useState<string | null>(null);
+  const [typed, setTyped] = useState(''); // empty = all of it
+  const part = Number(typed);
+  const amount = typed && part >= 1 && part < b.amount ? Math.round(part * 100) / 100 : b.amount;
   return (
     <View style={{ alignItems: 'flex-end', gap: 4, maxWidth: 220 }}>
-      <TwoTap label="Pay back" confirm={`Pay ${money(b.amount, 0)}?`} onPress={async () => {
-        setNote(null);
-        try {
-          await api.repayBridge(b.id);
-          onDone();
-        } catch (e) {
-          setNote(reason(e));
-        }
-      }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <TextInput value={typed} onChangeText={(t) => setTyped(t.replace(/[^0-9.]/g, ''))} placeholder="All"
+          placeholderTextColor={C.text3} keyboardType="decimal-pad" accessibilityLabel={`Amount to pay back, up to ${money(b.amount, 2)}`}
+          style={[s.amountChip, s.amountInput, { flex: 0, width: 64 }, !!typed && { borderColor: C.text2 }]} />
+        <TwoTap label="Pay back" confirm={`Pay ${money(amount, amount % 1 ? 2 : 0)}?`} onPress={async () => {
+          setNote(null);
+          try {
+            await api.repayBridge(b.id, amount < b.amount ? amount : undefined);
+            setTyped('');
+            onDone();
+          } catch (e) {
+            setNote(reason(e));
+          }
+        }} />
+      </View>
       {note && <Text style={[s.fineText, { textAlign: 'right' }]}>{plain(note)}</Text>}
     </View>
   );

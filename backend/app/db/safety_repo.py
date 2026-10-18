@@ -104,6 +104,40 @@ _BRIDGE = """SELECT b.*, lp.first_name AS lender_name, bp.first_name AS borrower
              JOIN personas lp ON lp.slug = b.lender_slug JOIN personas bp ON bp.slug = b.borrower_slug"""
 
 
+def repay_part(
+    conn: psycopg.Connection,
+    bridge_id: str,
+    from_status: tuple[str, ...],
+    back_to: str,
+    amount: Decimal,
+    t_id: str | None,
+    d_id: str | None,
+) -> Row | None:
+    """Settle part of a bridge: the open bridge's amount drops by `amount` and it goes back to `back_to`;
+    the part paid becomes its own closed 'repaid' row (part_of = the bridge). One compare-and-set, like
+    `transition`. Returns the part row, or None if the bridge moved or the part isn't smaller than it."""
+    left = conn.execute(
+        """UPDATE bridges SET amount = amount - %(amt)s, status = %(to)s, status_changed_at = now()
+           WHERE id = %(id)s AND status = ANY(%(frm)s) AND amount > %(amt)s RETURNING id""",
+        {"amt": amount, "to": back_to, "id": bridge_id, "frm": list(from_status)},
+    ).fetchone()
+    if left is None:
+        return None
+    n = conn.execute("SELECT count(*) AS n FROM bridges WHERE part_of = %s", (bridge_id,)).fetchone()["n"]
+    part_id = f"{bridge_id}-p{n + 1}"
+    conn.execute(
+        """INSERT INTO bridges (id, borrower_slug, lender_slug, amount, reason, status, mode, shortfall_date,
+                                due_date, created_at, funded_at, repaid_at, approval_channel, borrower_floor,
+                                agreement_version, decision_id, back_transfer_id, back_deposit_id, part_of)
+           SELECT %(part)s, borrower_slug, lender_slug, %(amt)s, reason, 'repaid', mode, shortfall_date,
+                  due_date, created_at, funded_at, now(), approval_channel, borrower_floor,
+                  agreement_version, decision_id, %(t)s, %(d)s, id
+           FROM bridges WHERE id = %(id)s""",
+        {"part": part_id, "amt": amount, "t": t_id, "d": d_id, "id": bridge_id},
+    )
+    return bridge(conn, part_id)
+
+
 def insert_bridge(conn: psycopg.Connection, b: Row) -> None:
     conn.execute(
         """INSERT INTO bridges (id, borrower_slug, lender_slug, amount, reason, status, mode, shortfall_date, due_date,

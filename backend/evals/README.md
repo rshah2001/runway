@@ -34,11 +34,16 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 
 | Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
 |---|---|---|---|---|---|
-| Gemini — Maya (genz voice) | 23 | 100% | 96% | 100% | 0 |
-| Gemini — Jordan (direct voice) | 17 | 100% | 94% | 100% | 0 |
+| Gemini — Maya (genz voice) | 28 | 100% | 93% | 100% | 0 |
+| Gemini — Jordan (direct voice) | 17 | 100% | 100% | 100% | 0 |
 | Gemini — Sam (classic voice) | 18 | 100% | 100% | 100% | 0 |
-| **Gemini (`gemini-3.8-flash`) — all** | 58 | **100%** | **97%** | **100%** | 0 |
-| Rule-based router (offline baseline) | 58 | 100% | 100% | 100% | — |
+| **Gemini (`gemini-3.8-flash`, low thinking) — all** | 63 | **100%** | **97%** | **100%** | 0 |
+| Rule-based router (offline baseline) | 63 | 100% | 100% | 100% | — |
+
+Re-run on 2026-10-18 with the five new action questions (part repayment, sending, a circle, and two with
+the AI-actions switch off): all five passed. The two misses were Maya affordability questions with a correct
+"no" worded "You're gonna dip below your floor if you buy it…", which the first-sentence grader doesn't read
+as a no; the table keeps the score. The 58-question run before it is described next.
 
 Re-run on the night of 2026-10-17 on all 58 questions (now including the peer-to-peer and support cases),
 live key, zero API errors, so no answer came from the fallback. Both misses were "what can I cut back on?"
@@ -176,6 +181,25 @@ when it was fine, so the voice flipped between a bank letter and a group chat. T
 voice and only changes the mood. Runs on 2026-10-17, `gemini-3.8-flash`; three replies per cell is a
 small sample, so treat this as a regression check rather than a precise rate. The rules are unit-tested
 in `tests/test_evals.py`. Run it with `python -m evals.tone_eval` (needs `GEMINI_API_KEY`).
+
+## Doing things, and the switch
+
+Ask Runway can set up a savings transfer, a request, sending money to someone in your circles, paying a
+supporter back (all or part), pausing or resuming support, and circle changes (create — with invites —
+invite, remove, leave, answer an invitation, share a link). Two locks, both in code rather than the prompt:
+
+- **Permission** — only if the person turned on *Let Ask Runway set things up* (off by default). Off, every
+  action tool returns `no_permission` from `tools.call` (and the router checks it on its own paths), so the
+  model can't talk its way past it; the reply says so and where to do it by hand.
+- **Approval** — every action is only a pending card; `/actions/{id}/approve` does it through the same
+  functions the app's buttons use. Names are resolved against the person's own circles; the model never
+  picks an id.
+
+The agent eval has five questions for this (63 in all): a part repayment (`$40` of `$100`), sending, a
+circle, and the first two again with the switch off, where the right answer proposes nothing and says it
+doesn't have permission. Tried on live Gemini (Oct 18): each card was exactly what was asked
+(`Pay Sam back $40.00 of $100.00`, `Send $20.00 to Jordan · gas`), "Send Priya $15" proposed nothing because
+Priya isn't in a circle, and with the switch off every action was declined with both ways forward.
 
 ## Latency
 

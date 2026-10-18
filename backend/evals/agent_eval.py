@@ -25,8 +25,9 @@ from typing import Any
 
 os.environ.setdefault("RUNWAY_FORCE_MOCK", "1")  # score the deterministic seeded data, never live balances
 
+from app import prefs  # noqa: E402
+from app.agent import actions, tools, voice  # noqa: E402
 from app.agent import chat as agent  # noqa: E402
-from app.agent import tools, voice  # noqa: E402
 from app.schemas import ChatResponse  # noqa: E402
 
 TODAY = date(2026, 10, 16)  # fixed so ground truth never drifts
@@ -68,6 +69,7 @@ class Case:
     tool: str
     check: Callable[[ChatResponse], bool]
     truth: dict[str, Any] = field(default_factory=dict)
+    allowed: bool = True  # has this person turned on "Let Ask Runway set things up"?
 
 
 def _affordability_case(persona: str, i: int, amount: float, when: str) -> Case:
@@ -179,7 +181,28 @@ def build_cases() -> list[Case]:
     room = tools.room_to_help("Maya", persona="sam", today=TODAY)
     cases.append(Case("sam", "Will helping Maya affect my bills?", "room_to_help", _quotes(room["safe_to_help"]), room))
     cases.append(Case("sam", "Pause my support for Maya", "propose_pause_support", _pause_proposed, {}))
+    # doing things: a part repayment, sending, a circle; each only a proposal of exactly what was asked
+    owed = actions.pay_back("Sam", 40, persona="maya", today=TODAY)  # ground truth for "how much stays out"
+    tools.discard(owed.pop("action_id"))
+    cases.append(Case("maya", "Pay Sam back $40", "pay_back", _proposes("repay", 40.0), owed))
+    cases.append(Case("maya", "Send Jordan $20 for gas", "send_money", _proposes("person_send", 20.0), {}))
+    cases.append(Case("maya", "Create a circle called Roommates", "create_circle", _proposes("circle_create"), {}))
+    # ...and with the switch off: no proposal, and it says it doesn't have permission
+    cases.append(Case("maya", "Pay Sam back $40", "pay_back", _no_permission, {}, allowed=False))
+    cases.append(Case("maya", "Send Jordan $20 for gas", "send_money", _no_permission, {}, allowed=False))
     return cases
+
+
+def _proposes(kind: str, amount: float | None = None) -> Callable[[ChatResponse], bool]:
+    def check(r: ChatResponse) -> bool:
+        a = r.pending_action
+        return a is not None and a.kind == kind and (amount is None or a.amount == amount)
+
+    return check
+
+
+def _no_permission(r: ChatResponse) -> bool:
+    return r.pending_action is None and "permission" in r.reply.lower()
 
 
 def _pause_proposed(r: ChatResponse) -> bool:
@@ -221,6 +244,7 @@ def _ask(case: Case, client: Any) -> tuple[ChatResponse | None, list[dict[str, A
 def run(client: Any = None) -> list[dict[str, Any]]:
     rows = []
     for case in build_cases():
+        prefs.set_setting(case.persona, "ai_actions", case.allowed)  # demo data: kept in memory
         r, seen = _ask(case, client)
         row: dict[str, Any] = {"persona": case.persona, "message": case.message}
         if r is None:
