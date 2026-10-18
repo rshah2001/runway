@@ -22,7 +22,7 @@ import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, w
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { C, F, MAX_WIDTH, RADIUS, WIDE } from '@/constants/runway';
+import { alpha, C, F, MAX_WIDTH, RADIUS, WIDE } from '@/constants/runway';
 
 /** True on the desktop website (and tablets in landscape). */
 export const useWide = () => useWindowDimensions().width >= WIDE;
@@ -66,7 +66,7 @@ export function CardHeader({ title, right, chevron = false }: { title: string; r
 /** Tinted square with a short value or glyph, as in "! BELOW FLOOR". */
 export function Badge({ tone, children }: PropsWithChildren<{ tone: 'red' | 'green' | 'amber' | 'blue' }>) {
   return (
-    <View style={[s.badge, { backgroundColor: `${TONE[tone]}29` }]}>
+    <View style={[s.badge, { backgroundColor: alpha(TONE[tone], '29') }]}>
       <Caps tone={tone} size={14} style={{ letterSpacing: 0.4 }}>{children}</Caps>
     </View>
   );
@@ -119,7 +119,7 @@ export function PressableScale({ style, children, ...p }: Omit<PressableProps, '
 export function Btn({ label, ghost, disabled, onPress, style }: { label: string; ghost?: boolean; disabled?: boolean; onPress?: () => void; style?: StyleProp<ViewStyle> }) {
   return (
     <PressableScale onPress={onPress} disabled={disabled} accessibilityRole="button" style={[s.btn, ghost && s.btnGhost, disabled && { opacity: 0.55 }, style]}>
-      <Caps size={15} style={{ color: ghost ? C.text2 : '#111', letterSpacing: 1.5 }}>{label}</Caps>
+      <Caps size={15} style={{ color: ghost ? C.text2 : C.onPrimary, letterSpacing: 1.5 }}>{label}</Caps>
     </PressableScale>
   );
 }
@@ -147,7 +147,7 @@ export function Page({ children, onRefresh, refreshing = false, scroll = true, b
         <Defs>
           <LinearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={C.bgTop} />
-            <Stop offset="0.35" stopColor="#12161a" />
+            <Stop offset="0.35" stopColor={C.bgMid} />
             <Stop offset="0.7" stopColor={C.bg} />
           </LinearGradient>
         </Defs>
@@ -187,7 +187,7 @@ const s = StyleSheet.create({
   cardHd: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   badge: { width: 34, height: 34, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   section: { fontFamily: F.cond, fontSize: 26, color: C.text, paddingTop: 24, paddingBottom: 10, paddingHorizontal: 4 },
-  btn: { height: 40, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  btn: { height: 40, paddingHorizontal: 18, borderRadius: 999, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
   btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.line },
   page: { flex: 1, backgroundColor: C.bg, overflow: 'hidden' },
   inner: { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', flex: 1 },

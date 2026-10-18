@@ -1,10 +1,10 @@
 import { Barlow_400Regular, Barlow_500Medium, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { BarlowCondensed_500Medium, BarlowCondensed_600SemiBold, BarlowCondensed_700Bold, useFonts } from '@expo-google-fonts/barlow-condensed';
-import { DarkTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '@/components/login/login-screen';
@@ -14,12 +14,18 @@ import { ChatLauncher } from '@/components/rw/chat';
 import { C } from '@/constants/runway';
 import { bootSession } from '@/lib/account';
 import { useSession } from '@/lib/session';
+import { useAppearance } from '@/lib/theme';
 import { moneyMoved, startAutoRefresh } from '@/lib/store';
 
 SplashScreen.preventAutoHideAsync();
 
-// Runway is dark-only: the charcoal look is the brand, not a theme option.
-const theme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: C.bg, card: C.tabBar, text: C.text, border: C.line, primary: C.text } };
+const colors = { background: C.bg, card: C.tabBar, text: C.text, border: C.line, primary: C.text };
+const THEMES = {
+  dark: { ...DarkTheme, colors: { ...DarkTheme.colors, ...colors } },
+  light: { ...DefaultTheme, colors: { ...DefaultTheme.colors, ...colors } },
+};
+// The sign-in screen is a night airfield whatever the theme: its colour variables are pinned to dark.
+const PIN_DARK = { dataSet: { theme: 'dark' } } as object;
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -28,6 +34,7 @@ export default function RootLayout() {
   });
 
   const session = useSession();
+  const { scheme } = useAppearance();
   useEffect(() => {
     bootSession(); // resume an Auth0 session or this tab's demo choice; otherwise the login screen
   }, []);
@@ -52,9 +59,9 @@ export default function RootLayout() {
   if (!loaded && !error && Platform.OS !== 'web') return null;
 
   return (
-    <ThemeProvider value={theme}>
-      <StatusBar style="light" />
-      {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <LoginScreen /> : (
+    <ThemeProvider value={THEMES[scheme]}>
+      <StatusBar style={scheme === 'light' && session.mode === 'signed-in' ? 'dark' : 'light'} />
+      {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <View style={{ flex: 1 }} {...PIN_DARK}><LoginScreen /></View> : (
         <>
           <AppTabs />
           <ChatLauncher />

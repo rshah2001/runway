@@ -160,12 +160,12 @@ export function BalanceChart({ f, spend, ghost, focusIndex, onScrub, takeoff = 0
   const cursorLine = useAnimatedProps(() => ({ x1: cx.get(), x2: cx.get(), opacity: cOn.get() }));
   const cursorDot = useAnimatedProps(() => {
     const v = blend(from.get(), to.get(), morph.get(), offset.get())[Math.round(cIdx.get())];
-    return { cx: cx.get(), cy: yIn(v), opacity: cOn.get(), fill: v < f.safe_floor ? C.red : '#fff' };
+    return { cx: cx.get(), cy: yIn(v), opacity: cOn.get(), fill: v < f.safe_floor ? C.red : C.text };
   });
 
   const lowI = f.points.findIndex((p) => p.date === f.low.date);
   const dipping = f.low.balance - spend < f.safe_floor;
-  const lineColor = dipping ? '#fff' : C.green; // the line turns green once every day clears the cushion
+  const lineColor = dipping ? C.text : C.green; // the line turns green once every day clears the cushion
 
   // Takeoff: the cushion line is the runway. The plane rolls along it and lifts off after ~55% of the roll.
   const fly = useSharedValue(0);
@@ -216,7 +216,7 @@ export function BalanceChart({ f, spend, ghost, focusIndex, onScrub, takeoff = 0
             <Defs>
               <LinearGradient id="fillUp" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor={lineColor} stopOpacity={0.14} />
-                <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+                <Stop offset="1" stopColor={C.text} stopOpacity={0} />
               </LinearGradient>
               <ClipPath id="above"><Rect x={0} y={0} width={w} height={floorY} /></ClipPath>
               <ClipPath id="below"><Rect x={0} y={floorY} width={w} height={CH - floorY} /></ClipPath>
@@ -235,17 +235,17 @@ export function BalanceChart({ f, spend, ghost, focusIndex, onScrub, takeoff = 0
             {pays.map((i) => (
               <RidingDot key={i} i={i} x={xOf(i)} from={from} to={to} morph={morph} offset={offset} yIn={yIn} />
             ))}
-            <AnimatedCircle cx={xOf(0)} r={5} fill="#fff" animatedProps={todayDot} />
+            <AnimatedCircle cx={xOf(0)} r={5} fill={C.text} animatedProps={todayDot} />
             {lowI >= 0 && dipping && (
               <RidingLabel i={lowI} x={xOf(lowI)} from={from} to={to} morph={morph} offset={offset} yIn={yIn} anchor={anchor}
                 text={`${money(f.low.balance - spend, 0)} on ${monthDay(f.low.date)}`} />
             )}
-            <AnimatedLine y1={PAD.top - 8} y2={CH - PAD.bottom} stroke="#fff" strokeOpacity={0.5} strokeWidth={1} animatedProps={cursorLine} />
+            <AnimatedLine y1={PAD.top - 8} y2={CH - PAD.bottom} stroke={C.text} strokeOpacity={0.5} strokeWidth={1} animatedProps={cursorLine} />
             <AnimatedCircle r={6} stroke={C.card} strokeWidth={2.5} animatedProps={cursorDot} />
           </Svg>
         )}
         <Animated.View pointerEvents="none" style={[s.plane, plane]}>
-          <Svg width={26} height={26} viewBox="0 0 24 24" fill="#fff">
+          <Svg width={26} height={26} viewBox="0 0 24 24" fill={C.text}>
             <Path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" />
           </Svg>
         </Animated.View>
@@ -307,18 +307,18 @@ const s = StyleSheet.create({
   tileValue: { ...SYS, fontSize: 26, fontWeight: '700', letterSpacing: -0.5, color: C.text, fontVariant: ['tabular-nums'], marginTop: 6 },
   tileSub: { ...SYS, fontSize: 12.5, lineHeight: 17, color: C.text3, marginTop: 2 },
 
-  glass: { backgroundColor: 'rgba(30,38,48,0.72)', borderWidth: 1, borderColor: 'rgba(140,165,190,0.16)', borderRadius: RADIUS + 4, padding: 22 },
+  glass: { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: RADIUS + 4, padding: 22 },
   cardTitle: { ...SYS, fontSize: 19, fontWeight: '600', color: C.text },
 
   callout: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16 },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  action: { alignSelf: 'flex-start', height: 40, paddingHorizontal: 18, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  actionGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(140,165,190,0.3)' },
-  actionText: { ...SYS, fontSize: 15, fontWeight: '600', color: '#111' },
+  action: { alignSelf: 'flex-start', height: 40, paddingHorizontal: 18, borderRadius: 20, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  actionGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.line2 },
+  actionText: { ...SYS, fontSize: 15, fontWeight: '600', color: C.onPrimary },
   cancel: { ...SYS, fontSize: 15, color: C.text2 },
   twoActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
   noteText: { ...SYS, fontSize: 14, lineHeight: 20, color: C.text2, marginTop: 8 },
-  limitBox: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(140,165,190,0.16)' },
+  limitBox: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: C.hover, borderWidth: 1, borderColor: C.line },
   demo: { alignItems: 'center', marginTop: 8 },
   calloutTitle: { ...SYS, fontSize: 16, fontWeight: '700', color: C.text },
   calloutText: { ...SYS, fontSize: 15, lineHeight: 22, color: C.text2, marginTop: 3 },
@@ -334,8 +334,8 @@ const s = StyleSheet.create({
   whatIf: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 18 },
   whatIfLabel: { ...SYS, fontSize: 15 },
   chips: { flexDirection: 'row', gap: 8 },
-  chip: { height: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(140,165,190,0.22)', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
-  chipOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  chip: { height: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line2, backgroundColor: C.hover, alignItems: 'center', justifyContent: 'center' },
+  chipOn: { backgroundColor: C.primary, borderColor: C.primary },
   chipText: { ...SYS, fontWeight: '600', fontSize: 15, color: C.text },
-  chipTextOn: { color: '#111' },
+  chipTextOn: { color: C.onPrimary },
 });

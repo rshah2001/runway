@@ -54,6 +54,6 @@ const s = StyleSheet.create({
   card: { marginTop: 18, borderRadius: 20, backgroundColor: C.card, padding: 20, gap: 10 },
   title: { fontFamily: F.bodySemi, fontSize: 22, color: C.text, letterSpacing: -0.3 },
   body: { fontFamily: F.body, fontSize: 15, lineHeight: 21, color: C.text2 },
-  btn: { marginTop: 8, height: 48, borderRadius: 999, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  btnText: { fontFamily: F.bodySemi, fontSize: 16, color: '#111' },
+  btn: { marginTop: 8, height: 48, borderRadius: 999, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  btnText: { fontFamily: F.bodySemi, fontSize: 16, color: C.onPrimary },
 });

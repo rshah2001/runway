@@ -105,8 +105,8 @@ function BalanceLine({ f }: { f: Forecast }) {
           <Svg width={w} height={CH}>
             <Defs>
               <LinearGradient id="fillUp" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#ffffff" stopOpacity={0.14} />
-                <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+                <Stop offset="0" stopColor={C.text} stopOpacity={0.14} />
+                <Stop offset="1" stopColor={C.text} stopOpacity={0} />
               </LinearGradient>
               <ClipPath id="above"><Rect x={0} y={0} width={w} height={floorY} /></ClipPath>
               <ClipPath id="below"><Rect x={0} y={floorY} width={w} height={CH - floorY} /></ClipPath>
@@ -120,7 +120,7 @@ function BalanceLine({ f }: { f: Forecast }) {
             </SvgText>
             {/* the balance: white above the line you keep, red below it */}
             <G clipPath="url(#above)">
-              <AnimatedPath d={line} fill="none" stroke="#fff" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"
+              <AnimatedPath d={line} fill="none" stroke={C.text} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"
                 strokeDasharray={`${length} ${length}`} animatedProps={lineProps} />
             </G>
             <G clipPath="url(#below)">
@@ -128,7 +128,7 @@ function BalanceLine({ f }: { f: Forecast }) {
                 strokeDasharray={`${length} ${length}`} animatedProps={lineProps} />
             </G>
             {pays.map((i) => <Circle key={i} cx={xy[i][0]} cy={xy[i][1]} r={4.5} fill={C.green} />)}
-            <Circle cx={xy[0][0]} cy={xy[0][1]} r={5} fill="#fff" />
+            <Circle cx={xy[0][0]} cy={xy[0][1]} r={5} fill={C.text} />
             {lowI >= 0 && dipping && (
               <G>
                 <Circle cx={xy[lowI][0]} cy={xy[lowI][1]} r={5.5} fill={C.red} stroke={C.card} strokeWidth={2} />
@@ -280,8 +280,8 @@ const s = StyleSheet.create({
   legendDot: { width: 9, height: 9, borderRadius: 5 },
 
   fix: { marginTop: 18, gap: 10 },
-  fixBtn: { alignSelf: 'flex-start', height: 50, paddingHorizontal: 26, borderRadius: 25, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  fixText: { fontFamily: F.bodySemi, fontSize: 17, color: '#111' },
+  fixBtn: { alignSelf: 'flex-start', height: 50, paddingHorizontal: 26, borderRadius: 25, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  fixText: { fontFamily: F.bodySemi, fontSize: 17, color: C.onPrimary },
   fixNote: { fontSize: 15, lineHeight: 21 },
 
   card: { backgroundColor: C.card, borderRadius: RADIUS + 4, padding: 22 },

@@ -18,7 +18,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { PressableScale } from '@/components/rw/ui';
 import { describe, eventsOn, Fix } from '@/components/today/today-home';
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 import { api } from '@/lib/api';
 import { weekdayDate } from '@/lib/format';
 import { enablePush, pushState, type PushState } from '@/lib/push';
@@ -50,7 +50,7 @@ export function QuietToday({ f, me }: { f: Forecast; me: Me | null }) {
 
   return (
     <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={s.wrap}>
-      <View style={[s.glyph, { backgroundColor: `${tone}1f` }]} accessibilityElementsHidden importantForAccessibility="no">
+      <View style={[s.glyph, { backgroundColor: alpha(tone, '1f') }]} accessibilityElementsHidden importantForAccessibility="no">
         <Svg width={34} height={34} viewBox="0 0 24 24" fill="none" stroke={tone} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
           {clear ? <Path d="M5 12.5l4.5 4.5L19 7.5" /> : (
             <>

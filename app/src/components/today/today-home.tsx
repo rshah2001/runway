@@ -22,7 +22,7 @@ import { Icon } from '@/components/rw/icons';
 import { Amount, Avatar, List, Row, SectionLabel } from '@/components/rw/list';
 import { PressableScale, useWide } from '@/components/rw/ui';
 import { BalanceChart } from '@/components/today/today-interactive';
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { money, monthDay, weekdayDate } from '@/lib/format';
@@ -140,7 +140,7 @@ function Hero({ view, spend, point, open, onToggle }: {
       <Text style={s.balLabel}>{point ? weekdayDate(point.date) : spend ? `If you spend ${money(spend, 0)} today` : 'In checking'}</Text>
       <Text style={[s.evLine, wide && { textAlign: 'left' }]}>{point ? (events.length ? describe(events) : 'Everyday spending only') : ' '}</Text>
       <PressableScale onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: open }}
-        accessibilityHint="Shows what's behind this" style={[s.pill, { backgroundColor: `${tone}22` }]}>
+        accessibilityHint="Shows what's behind this" style={[s.pill, { backgroundColor: alpha(tone, '22') }]}>
         <View style={[s.pillDot, { backgroundColor: tone }]} />
         <Text style={[s.pillText, { color: tone }]}>{status}</Text>
         <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={tone} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
@@ -236,7 +236,7 @@ function WhatIf({ spend, onChange }: { spend: number; onChange: (n: number) => v
         <View style={[s.chip, s.chipOn, s.customBox]}>
           <Text style={[s.chipText, { color: C.text3 }]}>$</Text>
           <TextInput autoFocus value={text} onChangeText={setText} onSubmitEditing={apply} onBlur={apply}
-            keyboardType="decimal-pad" returnKeyType="done" placeholder="0" placeholderTextColor="#9aa1a8"
+            keyboardType="decimal-pad" returnKeyType="done" placeholder="0" placeholderTextColor={C.text3}
             accessibilityLabel="Your own amount" style={s.customInput} maxLength={6} />
         </View>
       ) : (
@@ -252,7 +252,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }}
       accessibilityLabel={label === 'Custom' ? 'What if I spend my own amount today' : `What if I spend ${label} today`}
       style={[s.chip, on && s.chipOn]}>
-      <Text style={[s.chipText, on && { color: '#111' }]}>{label}</Text>
+      <Text style={[s.chipText, on && { color: C.onPrimary }]}>{label}</Text>
     </PressableScale>
   );
 }
@@ -394,7 +394,7 @@ function safetyNetLine(d: SafetyNetSummary | null, sup: SupportSummary | null): 
   if (lent.length) {
     const total = lent.reduce((t, b) => t + b.amount, 0);
     const who = lent.map((b) => b.borrower_name).join(' and ');
-    return { title: `Your support is active: ${money(total, 0)} with ${who}`, sub: `Expected back ${weekdayDate(lent[0].due_date)}.`, tint: '#7cb8ff' };
+    return { title: `Your support is active: ${money(total, 0)} with ${who}`, sub: `Expected back ${weekdayDate(lent[0].due_date)}.`, tint: C.cover };
   }
   const offers = [...sup.supporters, ...sup.supporting].filter((a) => !a.i_agreed && a.they_agreed);
   if (offers.length) return { title: 'Someone is waiting for your answer', sub: 'Review a Quiet Support Agreement.', tint: C.amber };
@@ -403,7 +403,7 @@ function safetyNetLine(d: SafetyNetSummary | null, sup: SupportSummary | null): 
     return { title: 'Your trusted circle is ready', sub: `${ready.length === 1 ? ready[0].supporter_name : `${ready.length} people`} agreed to cover a short gap — without seeing your money.`, tint: C.green };
   }
   if (sup.supporting.some((a) => a.state === 'active')) {
-    return { title: 'You’re someone’s safety net', sub: 'Runway only uses your help when your own bills stay covered.', tint: '#7cb8ff' };
+    return { title: 'You’re someone’s safety net', sub: 'Runway only uses your help when your own bills stay covered.', tint: C.cover };
   }
   return null;
 }
@@ -447,13 +447,13 @@ const s = StyleSheet.create({
   whatIf: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   whatIfLabel: { fontFamily: F.body, fontSize: 14, color: C.text2, marginRight: 2 },
   chip: { height: 34, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
-  chipOn: { backgroundColor: '#fff' },
+  chipOn: { backgroundColor: C.primary },
   chipText: { fontFamily: F.bodySemi, fontSize: 14, color: C.text },
   customBox: { flexDirection: 'row', gap: 2, paddingHorizontal: 12 },
-  customInput: { width: 56, fontFamily: F.bodySemi, fontSize: 14, color: '#111', padding: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}) },
+  customInput: { width: 56, fontFamily: F.bodySemi, fontSize: 14, color: C.onPrimary, padding: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}) },
 
-  cta: { height: 52, borderRadius: 999, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  ctaText: { fontFamily: F.bodySemi, fontSize: 17, color: '#111' },
+  cta: { height: 52, borderRadius: 999, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  ctaText: { fontFamily: F.bodySemi, fontSize: 17, color: C.onPrimary },
   fixNote: { fontFamily: F.body, fontSize: 13, color: C.text2, marginTop: 10, textAlign: 'center' },
   done: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
   doneSub: { fontFamily: F.body, fontSize: 13, color: C.text2 },
