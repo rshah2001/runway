@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <!--
-  Runway launch film — proof of style (scenes 1–2, ~20 s). A frame-timed composition on a 1920×1080 stage,
+  Runway launch film (~110 s): scenes 1–9, real app footage in film/, music in film/music.mp3. A frame-timed composition on a 1920×1080 stage,
   scaled to the window. Space / click: play from the start · R: restart · M: sound on/off · F: full screen.
   The soundtrack is synthesised here (Web Audio), so it's original: a drone, a notification tone, and an
   impact + pulse at the reveal. Swap in a licensed track in the edit if you prefer.
@@ -44,6 +44,33 @@
   .badge { border-radius: 40px; overflow: hidden; box-shadow: 0 40px 120px rgba(105,32,85,.45), 0 0 0 1px rgba(255,255,255,.14); line-height: 0; }
   .mark .word { font-family: 'Barlow Condensed'; font-weight: 600; font-size: 120px; letter-spacing: .32em; margin-right: -.32em; }
   .tag { top: 760px; font-size: 58px; font-weight: 500; color: #e9edf0; }
+  /* real app footage: a floating window the camera moves over */
+  .rig { position: absolute; inset: 0; perspective: 2600px; pointer-events: none; }
+  .win { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; border-radius: 26px; overflow: hidden; opacity: 0;
+    box-shadow: 0 60px 160px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.12); background: #0f1215; will-change: transform, opacity; }
+  .win img { position: absolute; inset: 0; width: 1440px; height: 900px; display: block; }
+  .win img.alt { opacity: 0; }
+  .hl { position: absolute; border-radius: 18px; border: 3px solid #46d483; box-shadow: 0 0 0 6px rgba(70,212,131,.18), 0 0 40px rgba(70,212,131,.45); opacity: 0; }
+  .hl.coral { border-color: #ff6b5e; box-shadow: 0 0 0 6px rgba(255,107,94,.18), 0 0 40px rgba(255,107,94,.45); }
+  #scrim { z-index: 2; } .cap { z-index: 3; }
+  .cap { position: absolute; left: 120px; width: 720px; font-weight: 600; font-size: 76px; line-height: 1.02; letter-spacing: -0.025em; opacity: 0; will-change: transform, opacity, filter; }
+  .cap small { display: block; margin-top: 22px; font-size: 26px; font-weight: 500; letter-spacing: 0; color: rgba(255,255,255,.7); line-height: 1.35; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px; border-radius: 99px; font-size: 20px; font-weight: 600;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); color: #fff; letter-spacing: 0; }
+  .chip i { width: 10px; height: 10px; border-radius: 50%; background: #46d483; }
+  .word3 { position: absolute; left: 0; width: 100%; top: 380px; text-align: center; font-weight: 700; font-size: 220px; letter-spacing: -0.04em; opacity: 0; }
+  .card3 { position: absolute; top: 300px; width: 470px; height: 420px; border-radius: 40px; padding: 36px; opacity: 0;
+    background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.04)); border: 1px solid rgba(255,255,255,.18);
+    backdrop-filter: blur(20px); box-shadow: 0 50px 120px rgba(0,0,0,.55); }
+  .card3 .who { display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 600; }
+  .card3 .av { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: #252b30; border: 3px solid #46d483; font-size: 32px; }
+  .card3 .agreed { margin-top: 28px; font-size: 24px; color: rgba(255,255,255,.65); }
+  .card3 .safe { font-family: 'Barlow Condensed'; font-weight: 700; font-size: 150px; line-height: 1; margin-top: 8px; letter-spacing: -0.02em; }
+  .card3 .why { font-size: 22px; color: rgba(255,255,255,.7); line-height: 1.35; }
+  .sum { position: absolute; left: 0; width: 100%; top: 790px; text-align: center; font-size: 46px; font-weight: 600; opacity: 0; }
+  .sum b { font-family: 'Barlow Condensed'; font-size: 80px; color: #46d483; margin-right: 18px; }
+  .fine { position: absolute; left: 0; width: 100%; bottom: 48px; text-align: center; font-size: 22px; color: rgba(255,255,255,.55); opacity: 0; letter-spacing: .01em; }
+  svg.overlay { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
   .hud { position: fixed; right: 16px; bottom: 12px; font-size: 13px; color: #555; z-index: 9; font-family: 'Barlow'; }
   .start { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; background: #000; cursor: pointer; }
   .start div { text-align: center; color: #8a939b; font-size: 18px; line-height: 1.8; }
@@ -106,8 +133,60 @@
     <div class="word" id="word">RUNWAY</div>
   </div>
   <div class="line tag" id="tag">See the dip before it happens.</div>
+
+  <div id="scrim" style="position:absolute;inset:0;opacity:0;pointer-events:none;background:linear-gradient(90deg, rgba(0,0,0,.92) 0, rgba(0,0,0,.78) 30%, rgba(0,0,0,.25) 52%, transparent 62%)"></div>
+  <!-- scene 3 · Today (real footage) -->
+  <div class="rig"><div class="win" id="wToday"><img src="film/today.png" alt="" /><img class="alt" id="wTodayAlt" src="film/today-whatif.png" alt="" />
+    <div class="hl coral" id="hDip"></div><div class="hl" id="hChips"></div><div class="hl" id="hBal"></div></div></div>
+  <div class="cap" id="c3a" style="top:380px">Know what’s coming.</div>
+  <div class="cap" id="c3b" style="top:380px">Before it happens.<small>Your balance, day by day, 30 days out — from your Capital One accounts.</small></div>
+  <div class="cap" id="c3c" style="top:380px">What if I spend $100 today?<small>The forecast answers instantly.</small></div>
+
+  <!-- scene 4 · Ask Runway (real footage) -->
+  <div class="rig"><div class="win" id="wAsk"><img src="film/ask.png" alt="" /><div class="hl" id="hUsed"></div></div></div>
+  <div class="cap" id="c4a" style="top:380px">Ask anything.</div>
+  <div class="cap" id="c4b" style="top:380px">Every number grounded.<small>Gemini picks the tool. The forecast engine does the maths.</small></div>
+
+  <!-- scene 5 · support without the spotlight -->
+  <div class="line big" id="c5a" style="top:400px;font-size:104px">Sometimes asking is<br/>the hardest part.</div>
+  <div class="rig"><div class="win" id="wCircles"><img src="film/circles.png" alt="" /></div></div>
+  <div class="cap" id="c5b" style="top:300px">Your money stays private.</div>
+  <div class="cap" id="c5c" style="top:300px">Support is agreed to in advance.</div>
+  <div class="cap" id="c5d" style="top:300px">No purchase history shared.<small>Each line is its own agreement — both people said yes.</small></div>
+
+  <!-- scene 6 · from prediction to action -->
+  <div class="word3" id="w6a">Forecast.</div>
+  <div class="word3" id="w6b">Protect.</div>
+  <div class="word3 green" id="w6c" style="color:#46d483">Move.</div>
+  <div class="card3" id="g1" style="left:170px"><div class="who"><div class="av">S</div>Sam</div><div class="agreed">Agreed up to $150</div><div class="safe">$90</div><div class="why">A loan payment lands before Maya could pay back.</div></div>
+  <div class="card3" id="g2" style="left:725px"><div class="who"><div class="av">E</div>Emma</div><div class="agreed">Agreed up to $45</div><div class="safe">$45</div><div class="why">Room to spare until her own payday.</div></div>
+  <div class="card3" id="g3" style="left:1280px"><div class="who"><div class="av" style="border-style:dashed">J</div>Jordan</div><div class="agreed">Agreed up to $300</div><div class="safe" style="color:rgba(255,255,255,.4)">$0</div><div class="why">His mortgage is due that week. He isn’t even told.</div></div>
+  <div class="sum" id="gSum"><b>$90 + $45</b>covers Maya’s $135 — and protects the protectors.</div>
+  <div class="fine" id="gFine">Network Guardian checks each supporter’s own forecast first · the pinned demo scenario, verified in our tests</div>
+  <div class="rig"><div class="win" id="wAct"><img src="film/activity.png" alt="" /><div class="hl" id="hAct"></div></div></div>
+  <div class="cap" id="c6d" style="top:330px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small></div>
+
+  <!-- scene 7 · privacy and trust -->
+  <div class="rig"><div class="win" id="wPriv"><img src="film/ask-privacy.png" alt="" /><div class="hl" id="hGuard"></div></div></div>
+  <div class="rig"><div class="win" id="wSee"><img src="film/cover.png" alt="" /></div></div>
+  <div class="cap" id="c7a" style="top:360px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say.</small></div>
+  <div class="cap" id="c7b" style="top:360px">Trust without exposure.<small>Supporters see what they covered and when it’s back. Never your balance, spending or reasons.</small></div>
+
+  <!-- scene 8 · repayment -->
+  <svg class="overlay" viewBox="0 0 1920 1080" aria-hidden="true">
+    <line id="r8cushion" x1="180" y1="640" x2="1740" y2="640" stroke="#f5b83d" stroke-width="2" stroke-dasharray="10 14" opacity="0" />
+    <path id="r8red" d="M180 420 C 520 440, 760 520, 900 700" fill="none" stroke="#ff6b5e" stroke-width="7" stroke-linecap="round" />
+    <path id="r8green" d="M900 700 C 980 760, 1080 520, 1200 430 S 1500 330, 1740 300" fill="none" stroke="#46d483" stroke-width="7" stroke-linecap="round" />
+  </svg>
+  <div class="line mid" id="c8" style="top:170px;font-size:76px;font-weight:600;color:#fff">Support today. Repayment when safe.</div>
+  <div class="fine" id="f8" style="bottom:150px;font-size:26px;color:rgba(255,255,255,.75)">It goes back after a verified payday — never before it’s safe for you.</div>
+
+  <!-- scene 9 · final -->
+  <div class="line mid" id="c9a" style="top:880px;font-size:46px;color:rgba(255,255,255,.85)">Support without the spotlight.</div>
+  <div class="line" id="c9b" style="top:960px;font-size:30px;font-weight:500;color:rgba(255,255,255,.55);letter-spacing:.04em">sixsevenbucksleft.vip</div>
+  <audio id="music" src="film/music.mp3" preload="auto"></audio>
 </div>
-<div class="start" id="start"><div><b>Runway — proof of style</b>Click or press Space to play with sound · R restart · M mute · F full screen</div></div>
+<div class="start" id="start"><div><b>Runway</b>Click or press Space to play with sound · Space pause · ← → jump 5 s · R restart · M mute · F full screen</div></div>
 <div class="hud" id="hud"></div>
 
 <script>
@@ -130,6 +209,27 @@
     el.style.transform = 'translateY(' + ((1 - i) * 40 - o * 30) + 'px) scale(' + (1.04 - .04 * i + o * .02) + ')';
     el.style.letterSpacing = (0.02 - 0.04 * i) + 'em';
   }
+  // keyframed camera over a footage window: keys = [[t, {x, y, s, rx, ry, o, fx, fy}], …]
+  // (x, y) is the point of the 1440×900 screen to hold at screen point (fx, fy), scaled by s
+  function track(t, keys) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (var k = 1; k < keys.length; k++) {
+      if (t <= keys[k][0]) {
+        var a = keys[k - 1], b = keys[k], e = ease((t - a[0]) / (b[0] - a[0])), o = {};
+        for (var n in b[1]) o[n] = (a[1][n] === undefined ? b[1][n] : a[1][n]) + (b[1][n] - (a[1][n] === undefined ? b[1][n] : a[1][n])) * e;
+        return o;
+      }
+    }
+    return keys[keys.length - 1][1];
+  }
+  function shot(el, v) {
+    var fx = v.fx === undefined ? 1240 : v.fx, fy = v.fy === undefined ? 540 : v.fy;
+    el.style.transformOrigin = v.x + 'px ' + v.y + 'px';
+    el.style.transform = 'translate(' + (fx - v.x) + 'px,' + (fy - v.y) + 'px) rotateX(' + (v.rx || 0) + 'deg) rotateY(' + (v.ry || 0) + 'deg) scale(' + v.s + ')';
+    el.style.opacity = v.o === undefined ? 1 : v.o;
+  }
+  function box(el, x, y, w, h, o) { el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = w + 'px'; el.style.height = h + 'px'; el.style.opacity = o; }
+  function pulse(t, a, b) { return Math.sin(Math.PI * seg(t, a, b)); } // 0 → 1 → 0
   function draw(path, p) { var L = path._L || (path._L = path.getTotalLength()); path.style.strokeDasharray = L; path.style.strokeDashoffset = L * (1 - clamp(p)); }
 
   // dust: a few slow motes catching light
@@ -137,7 +237,7 @@
   for (var i = 0; i < 70; i++) motes.push({ x: Math.random() * 1920, y: Math.random() * 1080, r: Math.random() * 1.6 + .3, v: Math.random() * .25 + .05, a: Math.random() * .5 + .1 });
 
   var fallW = $('fallW'), fallR = $('fallR'), fallG = $('fallRglow'), riseP = $('riseP'), riseG = $('riseGlow'), tip = $('tip'), cam = $('cam');
-  var DUR = 20.5;
+  var DUR = 111;
 
   function frame(t) {
     // ---- scene 1: the problem (0–10.5 s) ----
@@ -155,19 +255,21 @@
     // ---- scene 2: the reveal (10.5–20.5 s) ----
     var rp = out(seg(t, 10.55, 12.3));
     draw(riseP, rp); draw(riseG, rp);
+    var push = ease(seg(t, 10.4, 12.4)) * (1 - ease(seg(t, 12.6, 14)));
+    if (t <= 103.8) { // (the final scene drives the curve itself)
     var fallFade = 1 - ease(seg(t, 12.6, 13.6));
     $('fall').setAttribute('opacity', fallFade); riseP.setAttribute('opacity', 1 - ease(seg(t, 13.2, 14))); riseG.setAttribute('opacity', .8 * (1 - ease(seg(t, 13.2, 14))));
     // the tip of the line, and a camera that chases it
     var showTip = t > 10.55 && t < 13.6;
     if (showTip) { var L = riseP._L || riseP.getTotalLength(), pt = riseP.getPointAtLength(L * rp); tip.setAttribute('cx', pt.x); tip.setAttribute('cy', pt.y); }
     tip.setAttribute('opacity', showTip ? 1 - ease(seg(t, 12.8, 13.6)) : 0);
-    var push = ease(seg(t, 10.4, 12.4)) * (1 - ease(seg(t, 12.6, 14)));
     var drift = 1 + .03 * ease(seg(t, 6.6, 10.4));
     cam.setAttribute('transform', 'translate(' + (-300 * push) + ',' + (220 * push) + ') scale(' + (drift + .35 * push) + ')');
     cam.style.transformOrigin = '960px 540px';
+    } else tip.setAttribute('opacity', 0);
 
     // light comes up with the beat, glass panels sweep past in depth
-    $('glow').style.opacity = .15 * ease(seg(t, 6.5, 10)) + .85 * out(seg(t, 10.5, 12)) * (1 - .4 * ease(seg(t, 16, 20)));
+    $('glow').style.opacity = .15 * ease(seg(t, 6.5, 10)) + .85 * out(seg(t, 10.5, 12)) * (1 - .45 * ease(seg(t, 16, 20))) * (1 - .5 * pulse(t, 49, 53.5)) + .25 * ease(seg(t, 104, 107));
     ['p1', 'p2', 'p3', 'p4'].forEach(function (id, k) {
       var a = 11 + k * .25, pv = seg(t, a, a + 3.2), el = $(id);
       el.style.opacity = Math.sin(Math.PI * pv) * .9;
@@ -175,20 +277,127 @@
     });
 
     // the logo: the badge arrives and its curve draws itself (white → coral → green), then the wordmark settles
-    var m = out(seg(t, 13.4, 15));
+    var m = out(seg(t, 13.4, 15)) * (1 - ease(seg(t, 19.2, 20.2))) + out(seg(t, 105.6, 107)) * (t > 100 ? 1 : 0);
     $('mark').style.opacity = m; $('mark').style.filter = 'blur(' + (1 - m) * 16 + 'px)';
     $('mark').style.transform = 'scale(' + (1.12 - .12 * m) + ')';
     $('word').style.letterSpacing = (0.32 + 0.5 * (1 - m)) + 'em';
-    var lp = ease(seg(t, 13.6, 15.2));
+    var lp = t > 100 ? ease(seg(t, 105.8, 107.2)) : ease(seg(t, 13.6, 15.2));
     draw($('logoLine'), lp); draw($('logoGlow'), lp);
-    $('logoDot').setAttribute('opacity', out(seg(t, 14.4, 14.8)));
-    title($('tag'), t, 15.6, 16.8, 99, 100);
+    $('logoDot').setAttribute('opacity', t > 100 ? out(seg(t, 106.6, 107)) : out(seg(t, 14.4, 14.8)));
+    title($('tag'), t, 15.6, 16.8, 19.2, 20); if (t > 100) title($('tag'), t, 107.2, 108.2, 200, 201);
+    later(t);
 
     // dust
     dust.clearRect(0, 0, 1920, 1080);
     var dv = .25 + .75 * ease(seg(t, 10.5, 12));
     motes.forEach(function (p) { p.y -= p.v * (1 + 4 * push); if (p.y < -5) { p.y = 1085; p.x = Math.random() * 1920; } dust.globalAlpha = p.a * dv; dust.fillStyle = '#fff'; dust.beginPath(); dust.arc(p.x, p.y, p.r, 0, 6.283); dust.fill(); });
     $('hud').textContent = t.toFixed(1) + ' s';
+  }
+
+  // ---------------- scenes 3–9 (20 s → 110 s), on the music: lift 0:46 · drop 1:09 · peak 1:44 ----------------
+  function later(t) {
+    // 3 · Today — the real screen; the camera finds the low point, then a what-if
+    shot($('wToday'), track(t, [
+      [20.0, { x: 720, y: 450, s: .55, rx: 18, ry: -14, o: 0, fx: 1200 }],
+      [21.6, { x: 720, y: 450, s: .74, rx: 4, ry: -10, o: 1, fx: 1200 }],
+      [24.0, { x: 620, y: 470, s: .9, rx: 2, ry: -8, o: 1, fx: 1220 }],
+      [27.5, { x: 575, y: 545, s: 1.75, rx: 0, ry: -4, o: 1, fx: 1220 }],
+      [29.5, { x: 575, y: 545, s: 1.8, rx: 0, ry: -3, o: 1, fx: 1220 }],
+      [31.2, { x: 450, y: 560, s: 1.35, rx: 0, ry: -6, o: 1, fx: 1220 }],
+      [33.6, { x: 420, y: 420, s: 1.3, rx: 0, ry: -5, o: 1, fx: 1220 }],
+      [35.2, { x: 330, y: 300, s: 1.4, rx: 0, ry: -5, o: 1, fx: 1220 }],
+      [36.2, { x: 700, y: 470, s: 1.25, rx: -6, ry: 10, o: 0, fx: 1300 }]]));
+    $('wTodayAlt').style.opacity = ease(seg(t, 30.2, 31));
+    box($('hDip'), 515, 515, 130, 100, pulse(t, 26.8, 30.2));
+    box($('hChips'), 308, 684, 290, 46, pulse(t, 30.6, 33.6));
+    box($('hBal'), 118, 116, 172, 100, pulse(t, 33.4, 35.8));
+    title($('c3a'), t, 21.4, 22.6, 24.4, 25.0);
+    title($('c3b'), t, 25.0, 26.2, 29.6, 30.2);
+    title($('c3c'), t, 30.3, 31.4, 35.4, 36.0);
+
+    // 4 · Ask Runway — the real answer, from the purchase simulator
+    shot($('wAsk'), track(t, [
+      [36.0, { x: 1190, y: 440, s: .7, rx: 10, ry: 16, o: 0, fx: 1260 }],
+      [37.4, { x: 1190, y: 440, s: .95, rx: 0, ry: 6, o: 1, fx: 1260 }],
+      [41.5, { x: 1250, y: 560, s: 1.55, rx: 0, ry: 3, o: 1, fx: 1260 }],
+      [45.5, { x: 1250, y: 640, s: 1.7, rx: 0, ry: 2, o: 1, fx: 1260 }],
+      [48.0, { x: 1250, y: 640, s: 1.75, rx: 0, ry: 2, o: 1, fx: 1260 }],
+      [49.0, { x: 1250, y: 640, s: 1.9, rx: -4, ry: -8, o: 0, fx: 1260 }]]));
+    $('hUsed').style.opacity = 0;
+    title($('c4a'), t, 37.4, 38.6, 42.0, 42.6);
+    title($('c4b'), t, 42.6, 43.8, 48.2, 48.9);
+
+    // 5 · the emotional centre
+    title($('c5a'), t, 49.2, 50.6, 53.0, 53.8);
+    shot($('wCircles'), track(t, [
+      [53.6, { x: 440, y: 560, s: .8, rx: 14, ry: 18, o: 0, fx: 1300 }],
+      [55.2, { x: 440, y: 560, s: 1.05, rx: 2, ry: 8, o: 1, fx: 1300 }],
+      [62.0, { x: 440, y: 590, s: 1.35, rx: 0, ry: 4, o: 1, fx: 1300 }],
+      [65.2, { x: 440, y: 590, s: 1.4, rx: 0, ry: 3, o: 1, fx: 1300 }],
+      [66.2, { x: 440, y: 590, s: 1.6, rx: 0, ry: 0, o: 0, fx: 1300 }]]));
+    title($('c5b'), t, 55.4, 56.6, 58.6, 59.2);
+    title($('c5c'), t, 59.2, 60.4, 62.2, 62.8);
+    title($('c5d'), t, 62.8, 64.0, 65.4, 66.0);
+
+    // 6 · forecast / protect / move — on the beats into the drop, then the Guardian and real transfers
+    [['w6a', 66.1], ['w6b', 67.2], ['w6c', 68.3]].forEach(function (w) {
+      var el = $(w[0]), i = out(seg(t, w[1], w[1] + .25)), o = ease(seg(t, w[1] + .85, w[1] + 1.05));
+      el.style.opacity = i * (1 - o); el.style.transform = 'scale(' + (1.25 - .25 * i - .1 * o) + ')'; el.style.filter = 'blur(' + ((1 - i) * 20 + o * 10) + 'px)';
+    });
+    ['g1', 'g2', 'g3'].forEach(function (id, k) {
+      var a = 69.2 + k * .35, i = out(seg(t, a, a + .9)), o = ease(seg(t, 75.6, 76.4)), el = $(id);
+      el.style.opacity = i * (1 - o);
+      el.style.transform = 'perspective(1600px) translateY(' + (120 * (1 - i)) + 'px) rotateX(' + (24 * (1 - i)) + 'deg) rotateY(' + ((k - 1) * -10) + 'deg) scale(' + (1 - .06 * o) + ')';
+    });
+    var gs = out(seg(t, 71.6, 72.6)) * (1 - ease(seg(t, 75.6, 76.4)));
+    $('gSum').style.opacity = gs; $('gSum').style.transform = 'translateY(' + (30 * (1 - gs)) + 'px)';
+    $('gFine').style.opacity = gs * .9;
+    shot($('wAct'), track(t, [
+      [76.2, { x: 720, y: 400, s: .8, rx: 16, ry: 12, o: 0, fx: 1260 }],
+      [77.8, { x: 720, y: 400, s: 1.1, rx: 2, ry: 5, o: 1, fx: 1260 }],
+      [83.5, { x: 720, y: 360, s: 1.35, rx: 0, ry: 3, o: 1, fx: 1260 }],
+      [85.0, { x: 720, y: 360, s: 1.5, rx: -4, ry: -6, o: 0, fx: 1260 }]]));
+    box($('hAct'), 300, 248, 840, 156, pulse(t, 78.6, 84.2));
+    title($('c6d'), t, 77.4, 78.6, 84.0, 84.8);
+
+    // 7 · privacy and trust
+    shot($('wPriv'), track(t, [
+      [85.0, { x: 1190, y: 520, s: .8, rx: 12, ry: 14, o: 0, fx: 1260 }],
+      [86.4, { x: 1190, y: 520, s: 1.1, rx: 0, ry: 5, o: 1, fx: 1260 }],
+      [90.6, { x: 1250, y: 650, s: 1.6, rx: 0, ry: 3, o: 1, fx: 1260 }],
+      [91.4, { x: 1250, y: 650, s: 1.7, rx: -4, ry: -8, o: 0, fx: 1260 }]]));
+    $('hGuard').style.opacity = 0;
+    shot($('wSee'), track(t, [
+      [91.2, { x: 440, y: 700, s: .9, rx: 10, ry: 14, o: 0, fx: 1300 }],
+      [92.6, { x: 440, y: 700, s: 1.35, rx: 0, ry: 4, o: 1, fx: 1300 }],
+      [96.2, { x: 440, y: 710, s: 1.5, rx: 0, ry: 2, o: 1, fx: 1300 }],
+      [97.0, { x: 440, y: 710, s: 1.6, rx: 0, ry: 0, o: 0, fx: 1300 }]]));
+    title($('c7a'), t, 86.0, 87.2, 90.6, 91.2);
+    title($('c7b'), t, 91.6, 92.8, 96.2, 96.9);
+
+    // 8 · repayment — the dip becomes a recovery
+    var r8 = pulse(t, 97, 104.4);
+    $('r8cushion').setAttribute('opacity', .8 * Math.min(1, r8 * 2));
+    draw($('r8red'), ease(seg(t, 97.4, 99.2))); draw($('r8green'), out(seg(t, 99.4, 101.6)));
+    var r8o = 1 - ease(seg(t, 103.4, 104.2));
+    $('r8red').setAttribute('opacity', (t > 97 ? 1 : 0) * r8o); $('r8green').setAttribute('opacity', (t > 97 ? 1 : 0) * r8o);
+    title($('c8'), t, 97.6, 98.8, 103.4, 104.0);
+    var f8 = out(seg(t, 100.2, 101.2)) * (1 - ease(seg(t, 103.4, 104)));
+    $('f8').style.opacity = f8;
+
+    // 9 · the final reveal (with the curve dipping red and rising green once more)
+    if (t > 103.8) {
+      ['fallW', 'fallR', 'fallRglow'].forEach(function (id) { draw($(id), ease(seg(t, 104, 105.2))); });
+      $('fall').setAttribute('opacity', 1 - ease(seg(t, 105.6, 106.4)));
+      var rp9 = out(seg(t, 105.2, 106.2)); draw($('riseP'), rp9); draw($('riseGlow'), rp9);
+      $('riseP').setAttribute('opacity', 1 - ease(seg(t, 106, 106.8))); $('riseGlow').setAttribute('opacity', .8 * (1 - ease(seg(t, 106, 106.8))));
+      $('cushion').setAttribute('opacity', .6 * (1 - ease(seg(t, 105.6, 106.4))));
+      $('cam').setAttribute('transform', 'translate(0,0) scale(1)');
+    }
+    title($('c9a'), t, 108.0, 109.0, 200, 201);
+    title($('c9b'), t, 108.6, 109.6, 200, 201);
+    var capOn = 0; [].forEach.call(document.querySelectorAll('.cap'), function (c) { capOn = Math.max(capOn, +c.style.opacity || 0); });
+    $('scrim').style.opacity = capOn;
   }
 
   // ---- sound: original, synthesised ----
@@ -221,16 +430,41 @@
     [523, 659, 784, 988].forEach(function (f, k) { tone(t0 + 13.6 + k * .09, f, 2.4, 'sine', .05); }); // the logo chord
   }
 
-  var start = null, raf = 0;
+  var start = null, raf = 0, paused = false, pausedAt = 0;
+  // the film's clock follows the music when it plays, so picture and sound stay locked together
+  function now() {
+    var m = $('music');
+    if (!m.paused && m.currentTime > 0 && !m.ended) return m.currentTime;
+    return paused ? pausedAt : (performance.now() - start) / 1000;
+  }
+  function playFrom(t0) {
+    start = performance.now() - t0 * 1000; cancelAnimationFrame(raf);
+    (function loop() {
+      var t = now(), m = $('music');
+      m.volume = muted ? 0 : Math.max(0, 1 - Math.max(0, t - 107.6) / 3); // fade out over the last seconds
+      frame(Math.min(t, DUR)); if (t < DUR + 1) raf = requestAnimationFrame(loop);
+    })();
+  }
   function play() {
     $('start').style.display = 'none';
-    try { audio(); if (ac.state === 'suspended') ac.resume(); master.gain.value = muted ? 0 : .9; score(ac.currentTime); } catch (e) {}
-    start = performance.now(); cancelAnimationFrame(raf);
-    (function loop(now) { var t = (now - start) / 1000; frame(Math.min(t, DUR)); if (t < DUR + 1) raf = requestAnimationFrame(loop); })(start);
+    var music = $('music');
+    playFrom(0);
+    function useSynth() { try { audio(); if (ac.state === 'suspended') ac.resume(); master.gain.value = muted ? 0 : .9; score(ac.currentTime); } catch (e) {} }
+    music.currentTime = 0; music.volume = muted ? 0 : 1;
+    var p = music.play(); if (p && p.catch) p.catch(useSynth); else if (!p) useSynth();
   }
   $('start').addEventListener('click', play);
   addEventListener('keydown', function (e) {
-    if (e.key === ' ' || e.key === 'r' || e.key === 'R') { e.preventDefault(); if (ac) { try { ac.close(); } catch (x) {} ac = null; } play(); }
+    if (e.key === 'r' || e.key === 'R' || (e.key === ' ' && start === null)) { e.preventDefault(); if (ac) { try { ac.close(); } catch (x) {} ac = null; } play(); }
+    else if (e.key === ' ' || e.key === 'k' || e.key === 'K') { // pause / resume
+      e.preventDefault(); var m = $('music');
+      if (!paused) { pausedAt = now(); paused = true; m.pause(); cancelAnimationFrame(raf); }
+      else { paused = false; m.currentTime = pausedAt; m.play().catch(function () {}); playFrom(pausedAt); }
+    }
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { // jump ±5 s (for reviewing)
+      var t2 = Math.max(0, Math.min(DUR, now() + (e.key === 'ArrowRight' ? 5 : -5))), mm = $('music');
+      mm.currentTime = t2; if (paused) { pausedAt = t2; frame(t2); } else playFrom(t2);
+    }
     else if (e.key === 'm' || e.key === 'M') { muted = !muted; if (master) master.gain.value = muted ? 0 : .9; }
     else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(function () {}); }
   });
