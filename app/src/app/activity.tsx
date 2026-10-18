@@ -16,13 +16,13 @@ import { moneyMoved, useStore } from '@/lib/store';
 import type { ActivityItem } from '@/lib/types';
 
 type Filter = 'all' | 'received' | 'given' | 'repayments' | 'waiting';
-const FILTERS: [Filter, string][] = [['all', 'All'], ['received', 'Received'], ['given', 'Given'], ['repayments', 'Repaid'], ['waiting', 'Waiting']];
+const FILTERS: [Filter, string][] = [['all', 'All'], ['received', 'Received'], ['given', 'Sent'], ['repayments', 'Repaid'], ['waiting', 'Waiting']];
 const IN_FILTER: Record<Filter, ActivityItem['kind'][]> = {
-  all: ['received', 'provided', 'repaid_by_me', 'repaid_to_me', 'waiting', 'pending_my_ok', 'problem'],
-  received: ['received'],
-  given: ['provided'],
+  all: ['received', 'provided', 'repaid_by_me', 'repaid_to_me', 'waiting', 'pending_my_ok', 'problem', 'sent', 'got', 'asked', 'asked_you'],
+  received: ['received', 'got'],
+  given: ['provided', 'sent'],
   repayments: ['repaid_by_me', 'repaid_to_me'],
-  waiting: ['waiting', 'pending_my_ok', 'problem'],
+  waiting: ['waiting', 'pending_my_ok', 'problem', 'asked', 'asked_you'],
 };
 const LOOK: Record<ActivityItem['kind'], [string, string]> = {
   received: ['shield', C.green],
@@ -32,6 +32,10 @@ const LOOK: Record<ActivityItem['kind'], [string, string]> = {
   waiting: ['transfer', C.amber],
   pending_my_ok: ['transfer', C.amber],
   problem: ['close', C.text2],
+  sent: ['send', '#7cb8ff'],
+  got: ['send', C.green],
+  asked: ['transfer', C.amber],
+  asked_you: ['transfer', C.amber],
 };
 
 export default function ActivityScreen() {

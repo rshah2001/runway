@@ -146,11 +146,87 @@ def item(b: dict, viewer: str, *, my_limit: float | None, my_floor: float) -> Ac
     )
 
 
-def feed(viewer: str, bridges: list[dict], limits: dict[str, float], my_floor: float) -> list[ActivityItem]:
-    """Newest first. `limits`: the viewer's current limit per person they support."""
+def _bridge_items(b: dict, viewer: str, *, my_limit: float | None, my_floor: float) -> list[ActivityItem]:
+    """A bridge is a story in two parts: the help (when it was sent) and, later, the repayment. Both stay
+    in the timeline — the original help never disappears once it's paid back."""
+    if b["status"] != "repaid":
+        return [item(b, viewer, my_limit=my_limit, my_floor=my_floor)]
+    sent = item({**b, "status": "active", "repaid_at": None}, viewer, my_limit=my_limit, my_floor=my_floor)
+    sent = sent.model_copy(update={"id": f"{b['id']}:out", "status": "Paid back"})
+    back = item(b, viewer, my_limit=my_limit, my_floor=my_floor).model_copy(update={"id": f"{b['id']}:back"})
+    return [sent, back]
+
+
+def people_items(viewer: str, payments: list[dict], requests: list[dict]) -> list[ActivityItem]:
+    """Money sent and asked for between people in your circles — amounts and notes only."""
+    out = []
+    for p in payments:
+        mine = p["from_slug"] == viewer
+        them = p["to_name"] if mine else p["from_name"]
+        out.append(
+            ActivityItem(
+                id=p["id"],
+                date=_day(p["ts"]) or date.today(),
+                kind="sent" if mine else "got",
+                title=f"You sent {them} {_money(float(p['amount']))}"
+                if mine
+                else f"{them} sent you {_money(float(p['amount']))}",
+                amount=float(p["amount"]),
+                status=p["memo"],
+                why=(
+                    f"A real transfer from your checking to {them}'s. They see the amount and your note — nothing else."
+                    if mine
+                    else f"{them} sent this to you. Only the amount and their note are shared."
+                ),
+                reference=p.get("transfer_id") if mine else p.get("deposit_id"),
+            )
+        )
+    for r in requests:
+        if r["status"] == "paid":
+            continue  # the payment itself is already in the timeline
+        asked_by_me = r["from_slug"] == viewer
+        them = r["to_name"] if asked_by_me else r["from_name"]
+        word = {
+            "open": "Waiting",
+            "settling": "Paying…",
+            "declined": "Declined",
+            "cancelled": "Cancelled",
+            "failed": "Being checked",
+        }
+        out.append(
+            ActivityItem(
+                id=r["id"],
+                date=_day(r["created_at"]) or date.today(),
+                kind="asked" if asked_by_me else "asked_you",
+                title=f"You asked {them} for {_money(float(r['amount']))}"
+                if asked_by_me
+                else f"{them} asked you for {_money(float(r['amount']))}",
+                amount=float(r["amount"]),
+                status=f"{word.get(r['status'], r['status'])} · {r['memo']}",
+                why=(
+                    "Nothing moves until they pay it from their own account. They see only the amount and your note."
+                    if asked_by_me
+                    else "Pay or decline it in Circles. Paying moves money from your own account."
+                ),
+            )
+        )
+    return out
+
+
+def feed(
+    viewer: str,
+    bridges: list[dict],
+    limits: dict[str, float],
+    my_floor: float,
+    payments: list[dict] = (),
+    requests: list[dict] = (),
+) -> list[ActivityItem]:
+    """Everything that involves `viewer`, newest first. `limits`: their current limit per person they support."""
     items = [
-        item(b, viewer, my_limit=limits.get(b["borrower_slug"]), my_floor=my_floor)
+        i
         for b in bridges
         if viewer in (b["borrower_slug"], b["lender_slug"])
+        for i in _bridge_items(b, viewer, my_limit=limits.get(b["borrower_slug"]), my_floor=my_floor)
     ]
+    items += people_items(viewer, list(payments), list(requests))
     return sorted(items, key=lambda i: (i.date, i.id), reverse=True)

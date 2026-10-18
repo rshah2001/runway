@@ -39,6 +39,23 @@ let state: State = { approvedAmount: 0, celebrate: false, chatOpen: false, appro
 const listeners = new Set<() => void>();
 
 /** Money moved (or a money setting changed): every screen re-fetches what it shows. */
+/**
+ * Keep every open account current: another person paying you, approving, or the background safety-net pass
+ * all change what you should see. Refreshes every `everyMs` while the page is visible, and at once when you
+ * come back to it. Each screen re-fetches in place (useLoad keeps the old data until the new arrives).
+ * Returns a stop function.
+ */
+export function startAutoRefresh(everyMs = 15000): () => void {
+  const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+  const timer = setInterval(() => visible() && moneyMoved(), everyMs);
+  const onShow = () => visible() && moneyMoved();
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onShow);
+  return () => {
+    clearInterval(timer);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onShow);
+  };
+}
+
 export function moneyMoved() {
   setStore({ dataVersion: state.dataVersion + 1 });
 }

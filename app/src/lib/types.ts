@@ -261,7 +261,8 @@ export type SupportSummary = {
 export type ActivityItem = {
   id: string;
   date: string;
-  kind: 'received' | 'provided' | 'repaid_by_me' | 'repaid_to_me' | 'waiting' | 'pending_my_ok' | 'problem';
+  kind: 'received' | 'provided' | 'repaid_by_me' | 'repaid_to_me' | 'waiting' | 'pending_my_ok' | 'problem'
+    | 'sent' | 'got' | 'asked' | 'asked_you'; // sent/got/asked: money between people in your circles
   title: string;
   amount: number;
   status: string;

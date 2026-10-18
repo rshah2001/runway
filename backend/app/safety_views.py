@@ -322,11 +322,15 @@ def activity_for(viewer: str) -> list:
         ]
         unique = list({r["id"]: r for r in rows}.values())
         return activity.feed(viewer, unique, {lim.borrower: lim.limit for lim in s.limits_i_set}, floor)
+    from app import people_pay
     from app.db import pool, safety_repo
 
     with pool.connection() as conn:
         limits = {r["borrower_slug"]: float(r["limit_amount"]) for r in safety_repo.limits(conn, lender=viewer)}
-        return activity.feed(viewer, safety_repo.bridges_for(conn, viewer), limits, floor)
+        bridges = safety_repo.bridges_for(conn, viewer)
+        mine = people_pay.mine(conn, viewer)
+    requests = [*mine["asked_me"], *mine["i_asked"]]
+    return activity.feed(viewer, bridges, limits, floor, mine["payments"], requests)
 
 
 def circles_for(viewer: str) -> list:
