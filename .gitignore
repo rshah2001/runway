@@ -21,3 +21,4 @@ out/
 
 # helper agents work in their own copies here
 .claude/worktrees/
+marketing/*.mp4
