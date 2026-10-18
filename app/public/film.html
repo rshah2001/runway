@@ -182,10 +182,28 @@
   <div class="rig"><div class="win" id="wAct"><img src="film/activity.png" alt="" /><div class="hl" id="hAct"></div></div></div>
   <div class="cap" id="c6d" style="top:310px">Verified through Nessie.<small>Real sandbox transfers between Runway customers — each one journaled before it’s sent.</small><div class="row"><span class="lc"><span style="color:#004977;font-weight:700;letter-spacing:-.01em">Capital One<em>Nessie API</em></span></span></div></div>
 
-  <!-- scene 7 · privacy and trust -->
+  <!-- scene 7 · privacy and trust — opens on the Auth0 lock: the shield grows a shackle and clicks shut -->
+  <div id="lock" style="position:absolute;inset:0;opacity:0;pointer-events:none">
+    <svg id="ring" viewBox="0 0 800 800" width="800" height="800" style="position:absolute;left:810px;top:140px;opacity:0;transform-origin:400px 400px" aria-hidden="true">
+      <defs>
+        <linearGradient id="irid" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7cb8ff"/><stop offset=".35" stop-color="#b48cff"/><stop offset=".6" stop-color="#ff7ac8"/><stop offset=".85" stop-color="#9ef0ff"/><stop offset="1" stop-color="#7cb8ff"/></linearGradient>
+        <filter id="iridBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="10"/></filter>
+      </defs>
+      <circle cx="400" cy="400" r="320" fill="none" stroke="url(#irid)" stroke-width="46" filter="url(#iridBlur)" opacity=".9"/>
+      <circle cx="400" cy="400" r="320" fill="none" stroke="url(#irid)" stroke-width="6" opacity=".7"/>
+    </svg>
+    <svg viewBox="0 0 1920 1080" style="position:absolute;inset:0" aria-label="Auth0 lock">
+      <rect id="lkPhone" x="1080" y="280" width="260" height="520" rx="46" fill="none" stroke="#fff" stroke-width="5" opacity=".9"/>
+      <rect id="lkNotch" x="1180" y="300" width="60" height="12" rx="6" fill="#fff" opacity="0"/>
+      <g id="lkShackle" transform="translate(0,0)"><path id="lkShackleP" d="M1180 528 V500 A30 30 0 0 1 1240 500 V528" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round"/></g>
+      <g id="lkShield" opacity="0" transform="translate(1150 520) scale(5)"><path fill="#fff" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></g>
+    </svg>
+  </div>
+  <div class="cap" id="c7lock" style="top:360px">Private by design.<small>Every sign-in and every approval goes through Auth0. Nothing moves without you.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
+
   <div class="rig"><div class="win" id="wPriv"><img src="film/ask-privacy.png" alt="" /><div class="hl" id="hGuard"></div></div></div>
   <div class="rig"><div class="win" id="wSee"><img src="film/cover.png" alt="" /></div></div>
-  <div class="cap" id="c7a" style="top:330px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say. Every sign-in and approval goes through Auth0.</small><div class="row"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
+  <div class="cap" id="c7a" style="top:330px">Help without surveillance.<small>Ask about someone else’s money and Runway won’t say.</small><div class="row" style="display:none"><span class="lc"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="#000" d="M21.98 7.448L19.62 0H4.347L2.02 7.448c-1.352 4.312.03 9.206 3.815 12.015L12.007 24l6.157-4.552c3.755-2.81 5.182-7.688 3.815-12.015l-6.16 4.58 2.343 7.45-6.157-4.597-6.158 4.58 2.358-7.433-6.188-4.55 7.63-.045L12.008 0l2.356 7.404 7.615.044z"/></svg><span>auth0</span></span></div></div>
   <div class="cap" id="c7b" style="top:360px">Trust without exposure.<small>Supporters see what they covered and when it’s back. Never your balance, spending or reasons.</small></div>
 
   <!-- scene 8 · repayment -->
@@ -385,20 +403,35 @@
     box($('hAct'), 300, 248, 840, 156, pulse(t, 78.6, 84.2));
     title($('c6d'), t, 77.4, 78.6, 84.0, 84.8);
 
-    // 7 · privacy and trust
+    // 7 · privacy and trust — the Auth0 lock (like a leaf turning into a lock), then the footage
+    var L0 = 85.0, lockOn = out(seg(t, L0, L0 + .4)) * (1 - ease(seg(t, 89.7, 90.3)));
+    $('lock').style.opacity = lockOn;
+    draw($('lkPhone'), ease(seg(t, L0, L0 + .9)));
+    $('lkNotch').setAttribute('opacity', out(seg(t, L0 + .7, L0 + 1)));
+    var sh = out(seg(t, L0 + .9, L0 + 1.5)); $('lkShield').setAttribute('opacity', sh);
+    $('lkShield').setAttribute('transform', 'translate(' + (1150 + 6 * (1 - sh)) + ' ' + (520 + 6 * (1 - sh)) + ') scale(' + (5 - .5 * (1 - sh)) + ')');
+    // the shackle grows out of the top of the shield, open (raised), then drops shut with a click at 87.9
+    draw($('lkShackleP'), ease(seg(t, L0 + 1.5, L0 + 2.3)));
+    var CLICK = 87.9, raised = t < CLICK ? 26 : 0, bounce = t >= CLICK ? Math.sin(Math.min(1, (t - CLICK) / .18) * Math.PI) * -5 : 0;
+    var drop = t < CLICK - .12 ? 1 : t < CLICK ? (CLICK - t) / .12 : 0;
+    $('lkShackle').setAttribute('transform', 'translate(0 ' + (-raised * drop + bounce) + ')');
+    $('lkShackleP').setAttribute('opacity', t > L0 + 1.45 ? 1 : 0);
+    var ring = out(seg(t, CLICK + .05, CLICK + 1.1));
+    $('ring').style.opacity = ring * .95; $('ring').style.transform = 'scale(' + (.62 + .38 * ring) + ') rotate(' + ((t - CLICK) * 18) + 'deg)';
+    title($('c7lock'), t, L0 + .6, L0 + 1.6, 89.6, 90.2);
     shot($('wPriv'), track(t, [
-      [85.0, { x: 1190, y: 520, s: .8, rx: 12, ry: 14, o: 0, fx: 1260 }],
-      [86.4, { x: 1190, y: 520, s: 1.1, rx: 0, ry: 5, o: 1, fx: 1260 }],
-      [90.6, { x: 1250, y: 650, s: 1.6, rx: 0, ry: 3, o: 1, fx: 1260 }],
-      [91.4, { x: 1250, y: 650, s: 1.7, rx: -4, ry: -8, o: 0, fx: 1260 }]]));
+      [90.0, { x: 1190, y: 520, s: .8, rx: 12, ry: 14, o: 0, fx: 1260 }],
+      [91.2, { x: 1190, y: 560, s: 1.2, rx: 0, ry: 5, o: 1, fx: 1260 }],
+      [93.2, { x: 1250, y: 650, s: 1.6, rx: 0, ry: 3, o: 1, fx: 1260 }],
+      [93.9, { x: 1250, y: 650, s: 1.7, rx: -4, ry: -8, o: 0, fx: 1260 }]]));
     $('hGuard').style.opacity = 0;
     shot($('wSee'), track(t, [
-      [91.2, { x: 440, y: 700, s: .9, rx: 10, ry: 14, o: 0, fx: 1300 }],
-      [92.6, { x: 440, y: 700, s: 1.35, rx: 0, ry: 4, o: 1, fx: 1300 }],
+      [93.7, { x: 440, y: 700, s: .9, rx: 10, ry: 14, o: 0, fx: 1300 }],
+      [94.7, { x: 440, y: 700, s: 1.35, rx: 0, ry: 4, o: 1, fx: 1300 }],
       [96.2, { x: 440, y: 710, s: 1.5, rx: 0, ry: 2, o: 1, fx: 1300 }],
       [97.0, { x: 440, y: 710, s: 1.6, rx: 0, ry: 0, o: 0, fx: 1300 }]]));
-    title($('c7a'), t, 86.0, 87.2, 90.6, 91.2);
-    title($('c7b'), t, 91.6, 92.8, 96.2, 96.9);
+    title($('c7a'), t, 90.4, 91.4, 93.3, 93.9);
+    title($('c7b'), t, 94.0, 95.0, 96.2, 96.9);
 
     // 8 · repayment — the dip becomes a recovery
     var r8 = pulse(t, 97, 104.4);
@@ -462,6 +495,13 @@
     tone(at, 1318.5, .55, 'sine', .16); tone(at + .1, 1661.2, .55, 'sine', .13); tone(at + .2, 1975.5, .9, 'sine', .11);
     tone(at, 2637, .25, 'sine', .03);
   }
+  function click(at) {
+    var n = ac.createBufferSource(), b = ac.createBuffer(1, ac.sampleRate * .05, ac.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 6);
+    var hp = ac.createBiquadFilter(), g = ac.createGain(); hp.type = 'highpass'; hp.frequency.value = 2500; g.gain.value = .55;
+    n.buffer = b; n.connect(hp); hp.connect(g); g.connect(master); n.start(at);
+    tone(at, 140, .16, 'sine', .35, 60);
+  }
   function score(t0) {
     drone(t0 + .2, 10.4, 55, .05);                       // tension under the problem
     // (the notification chime is scheduled in playFrom, so it sounds with the music too)
@@ -482,7 +522,7 @@
   }
   function playFrom(t0) {
     start = performance.now() - t0 * 1000; cancelAnimationFrame(raf);
-    try { audio(); if (ac.state === 'suspended') ac.resume(); if (t0 < 5 && !muted) chime(ac.currentTime + (5.02 - t0)); } catch (e) {}
+    try { audio(); if (ac.state === 'suspended') ac.resume(); if (t0 < 5 && !muted) chime(ac.currentTime + (5.02 - t0)); if (t0 < 87.9 && !muted) click(ac.currentTime + (87.9 - t0)); } catch (e) {}
     (function loop() {
       var t = now(), m = $('music');
       m.volume = muted ? 0 : Math.max(0, 1 - Math.max(0, t - 120.4) / 3); // fade out over the last seconds
