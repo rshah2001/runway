@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS circle_members (
     PRIMARY KEY (circle_id, slug)
 );
 CREATE INDEX IF NOT EXISTS circle_members_slug ON circle_members (slug, state);
+-- invite links: an unguessable token a member shares; opening it (signed in) joins the circle. Expires,
+-- can be turned off, and never lets back in someone the creator removed.
+CREATE TABLE IF NOT EXISTS circle_invites (
+    token       text PRIMARY KEY,
+    circle_id   text NOT NULL REFERENCES circles (id) ON DELETE CASCADE,
+    created_by  text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    expires_at  timestamptz NOT NULL,
+    revoked     boolean NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS circle_invites_circle ON circle_invites (circle_id);
 """
 
 
@@ -126,6 +137,51 @@ def mine(conn: psycopg.Connection, viewer: str) -> list[Row]:
             (c["id"], list(VISIBLE)),
         ).fetchall()
     return circles
+
+
+LINK_DAYS = 7
+
+
+def make_link(conn: psycopg.Connection, actor: str, circle_id: str) -> Row:
+    """A fresh invite link for this circle (only its active members can make one)."""
+    if _state(conn, circle_id, actor) != "active":
+        raise CircleRefused("Only people in this circle can share an invite link.")
+    token = secrets.token_urlsafe(18)  # ~144 bits: not guessable, not enumerable
+    return conn.execute(
+        """INSERT INTO circle_invites (token, circle_id, created_by, expires_at)
+           VALUES (%s, %s, %s, now() + make_interval(days => %s)) RETURNING token, expires_at""",
+        (token, circle_id, actor, LINK_DAYS),
+    ).fetchone()
+
+
+def link_info(conn: psycopg.Connection, token: str) -> Row | None:
+    """What an invite link points at, if it's still valid: the circle's name and who made it — nothing else."""
+    return conn.execute(
+        """SELECT i.circle_id, c.name, p.first_name AS made_by, i.expires_at FROM circle_invites i
+           JOIN circles c ON c.id = i.circle_id JOIN personas p ON p.slug = c.created_by
+           WHERE i.token = %s AND NOT i.revoked AND i.expires_at > now()""",
+        (token,),
+    ).fetchone()
+
+
+def join_by_link(conn: psycopg.Connection, actor: str, token: str) -> str:
+    """Join the circle a valid link points at. Someone the creator removed can't come back this way."""
+    info = link_info(conn, token)
+    if info is None:
+        raise CircleRefused("This invite link has expired or been turned off. Ask for a new one.")
+    current = _state(conn, info["circle_id"], actor)
+    if current == "removed":
+        raise CircleRefused("Ask the person who made this circle to invite you again.")
+    if current != "active":
+        _set(conn, info["circle_id"], actor, "active")
+    return info["circle_id"]
+
+
+def turn_off_links(conn: psycopg.Connection, actor: str, circle_id: str) -> None:
+    """The creator turns off every invite link for their circle."""
+    if not _is_creator(conn, circle_id, actor):
+        raise CircleRefused("Only the person who made this circle can turn off its links.")
+    conn.execute("UPDATE circle_invites SET revoked = true WHERE circle_id = %s", (circle_id,))
 
 
 # the demo's circles: (id, name, creator, active members, invited members)

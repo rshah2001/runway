@@ -89,3 +89,43 @@ def test_a_creator_who_left_cannot_remove_people(monkeypatch) -> None:
     m.install(monkeypatch)
     with pytest.raises(circles.CircleRefused):
         circles.remove(m, "sam", "c", "maya")
+
+
+class Links(Members):
+    """Members plus one invite link that's valid unless `expired`."""
+
+    def __init__(self, states, *, expired: bool = False):
+        super().__init__(states)
+        self.expired = expired
+
+    def install(self, monkeypatch) -> None:
+        super().install(monkeypatch)
+        info = None if self.expired else {"circle_id": "c", "name": "Family", "made_by": "Sam"}
+        monkeypatch.setattr(circles, "link_info", lambda conn, token: info)
+
+
+def test_an_invite_link_joins_you_to_the_circle(monkeypatch) -> None:
+    m = Links({"sam": "active"})
+    m.install(monkeypatch)
+    assert circles.join_by_link(m, "alex", "tok") == "c" and m.states["alex"] == "active"
+
+
+def test_an_expired_or_turned_off_link_joins_nobody(monkeypatch) -> None:
+    m = Links({"sam": "active"}, expired=True)
+    m.install(monkeypatch)
+    with pytest.raises(circles.CircleRefused):
+        circles.join_by_link(m, "alex", "tok")
+
+
+def test_someone_the_creator_removed_cannot_come_back_through_a_link(monkeypatch) -> None:
+    m = Links({"sam": "active", "jordan": "removed"})
+    m.install(monkeypatch)
+    with pytest.raises(circles.CircleRefused):
+        circles.join_by_link(m, "jordan", "tok")
+
+
+def test_only_members_can_make_a_link(monkeypatch) -> None:
+    m = Members({"sam": "active"})
+    m.install(monkeypatch)
+    with pytest.raises(circles.CircleRefused):
+        circles.make_link(m, "jordan", "c")

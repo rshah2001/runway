@@ -5,7 +5,7 @@
 // /p2p — nobody's balance, income or spending is ever in those responses; this screen only picks words.
 // Also here: asking your circle before a dip, paying support back early, sending money, the demo reset.
 import { Fragment, type ReactNode, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CircleLegend, CircleMap, type CirclePerson } from '@/components/rw/circle-map';
 import { Icon } from '@/components/rw/icons';
@@ -25,6 +25,7 @@ import type {
   SafetyEvent,
   SafetyLimit,
   SafetyNetSummary,
+  CircleView,
   PeopleSummary,
   SupportAgreement,
   SupportSummary,
@@ -44,6 +45,7 @@ export default function CirclesScreen() {
   const sup = useLoad(() => api.support(), version);
   const p2p = useLoad(() => api.p2p(), version);
   const ppl = useLoad(() => api.people(), version);
+  const cir = useLoad(() => api.circles(), version);
   const fc = useLoad(() => api.forecast(30), version);
   const me = useLoad(() => api.me(), version);
   const [consent, setConsent] = useState<SupportAgreement | null>(null);
@@ -77,6 +79,7 @@ export default function CirclesScreen() {
           <PeopleISupport d={d} sup={sup.data} onAgree={setConsent} onSaved={reload} />
 
           <OwesYou p2p={p2p.data} onAsked={reload} />
+          <MyCirclesManager list={cir.data} ppl={ppl.data} onDone={reload} />
           <AskedYou ppl={ppl.data} onDone={reload} />
           <SendOrRequest ppl={ppl.data} onDone={reload} />
           <YouAsked ppl={ppl.data} />
@@ -641,6 +644,144 @@ function YouAsked({ ppl }: { ppl: PeopleSummary | null }) {
   );
 }
 
+/**
+ * Named circles: who's in each one, and how to change that — share an invite link, add someone you're
+ * already connected to, accept or decline an invitation, leave, and (for the person who made it) remove
+ * people or turn its links off. A circle is only people: it never shows or grants anyone's money.
+ */
+function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; ppl: PeopleSummary | null; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+  if (!list) return null;
+  async function create() {
+    if (!name.trim()) return;
+    try {
+      await api.createCircle(name.trim());
+      setName('');
+      onDone();
+    } catch (e) {
+      setNote(reason(e));
+    }
+  }
+  return (
+    <>
+      <SectionLabel>My circles</SectionLabel>
+      {list.map((c) => <CircleCard key={c.id} c={c} ppl={ppl} onDone={onDone} />)}
+      <View style={[s.ask, { borderColor: '#2f363c', marginTop: list.length ? 10 : 0 }]}>
+        <Text style={s.switchTitle}>Start a circle</Text>
+        <View style={[s.owe, { marginTop: 10 }]}>
+          <TextInput value={name} onChangeText={setName} placeholder="Roommates, Family, Trip crew…" placeholderTextColor={C.text3}
+            maxLength={40} style={[s.custom, { flex: 1 }]} accessibilityLabel="Circle name" onSubmitEditing={create} />
+          <PressableScale onPress={create} accessibilityRole="button" style={s.askBtn}>
+            <Text style={s.askBtnText}>Create</Text>
+          </PressableScale>
+        </View>
+        {note && <Text style={s.askBody}>{note}</Text>}
+      </View>
+    </>
+  );
+}
+
+function CircleCard({ c, ppl, onDone }: { c: CircleView; ppl: PeopleSummary | null; onDone: () => void }) {
+  const session = useSession();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const me = session.mode === 'signed-in' ? session.persona : ppl?.persona;
+  const inCircle = new Set(c.members.map((m) => m.slug));
+  const canAdd = (ppl?.people ?? []).filter((p) => !inCircle.has(p.slug));
+
+  async function act(action: 'invite' | 'remove' | 'accept' | 'decline' | 'leave', slug?: string, done?: string) {
+    setMsg(null);
+    try {
+      await api.circleAction(c.id, action, slug);
+      if (done) setMsg(done);
+      onDone();
+    } catch (e) {
+      setMsg(reason(e));
+    }
+  }
+
+  async function share() {
+    setMsg(null);
+    try {
+      const { token } = await api.circleLink(c.id);
+      const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://sixsevenbucksleft.vip';
+      const url = `${origin}/join/${token}`;
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        setMsg(`Link copied — it works for 7 days: ${url}`);
+      } else {
+        await Share.share({ message: `Join my "${c.name}" circle on Runway: ${url}` });
+      }
+    } catch (e) {
+      setMsg(reason(e, 'Couldn’t make a link right now.'));
+    }
+  }
+
+  if (c.my_state === 'invited') {
+    const by = c.members.find((m) => m.state === 'active')?.name ?? 'Someone';
+    return (
+      <View style={[s.ask, { marginBottom: 10 }]}>
+        <Text style={s.askTitle}>{by} invited you to {c.name}</Text>
+        <Text style={s.askBody}>A circle shares names only — never anyone’s money.</Text>
+        <View style={s.askBtns}>
+          <PressableScale onPress={() => act('decline')} accessibilityRole="button" style={[s.btn, s.no]}>
+            <Text style={[s.btnText, { color: C.text2 }]}>Decline</Text>
+          </PressableScale>
+          <PressableScale onPress={() => act('accept')} accessibilityRole="button" style={[s.btn, s.yes]}>
+            <Text style={[s.btnText, { color: '#111' }]}>Join</Text>
+          </PressableScale>
+        </View>
+        {msg && <Text style={s.askBody}>{msg}</Text>}
+      </View>
+    );
+  }
+
+  return (
+    <View style={[s.mapCard, { marginTop: 0, marginBottom: 10 }]}>
+      <View style={s.mapHead}>
+        <Text style={s.askTitle}>{c.name}</Text>
+        <Text style={s.fineText}>{c.made_by_me ? 'You made this' : `${c.members.filter((m) => m.state === 'active').length} people`}</Text>
+      </View>
+      <View style={{ marginTop: 8 }}>
+        {c.members.map((m) => (
+          <View key={m.slug} style={s.memberRow}>
+            <Avatar name={m.name} />
+            <Text style={[s.switchTitle, { flex: 1 }]}>{m.slug === me ? `${m.name} (you)` : m.name}</Text>
+            {m.state === 'invited' && <Text style={s.fineText}>Invited</Text>}
+            {c.made_by_me && m.slug !== me && (
+              <TwoTap label="Remove" confirm={`Remove ${m.name}?`} light={false} onPress={() => act('remove', m.slug, `${m.name} was removed.`)} />
+            )}
+          </View>
+        ))}
+      </View>
+      <View style={[s.chips, { marginTop: 12 }]}>
+        <PressableScale onPress={share} accessibilityRole="button" style={s.askBtn}>
+          <Text style={s.askBtnText}>Share invite link</Text>
+        </PressableScale>
+        {canAdd.length > 0 && (
+          <PressableScale onPress={() => setAdding(!adding)} accessibilityRole="button" style={[s.askBtn, s.ghostBtn]}>
+            <Text style={[s.askBtnText, { color: C.text }]}>{adding ? 'Done' : 'Add someone'}</Text>
+          </PressableScale>
+        )}
+        {c.made_by_me ? (
+          <TwoTap label="Turn off links" confirm="Turn off every link?" light={false} onPress={async () => {
+            try { await api.circleLinksOff(c.id); setMsg('Old links no longer work.'); onDone(); } catch (e) { setMsg(reason(e)); }
+          }} />
+        ) : (
+          <TwoTap label="Leave" confirm={`Leave ${c.name}?`} light={false} onPress={() => act('leave')} />
+        )}
+      </View>
+      {adding && (
+        <View style={[s.chips, { marginTop: 10 }]}>
+          {canAdd.map((p) => <Pick key={p.slug} on={false} label={`+ ${p.name}`} onPress={() => act('invite', p.slug, `Invited ${p.name}. They’ll see it in their Circles.`)} />)}
+        </View>
+      )}
+      {msg && <Text style={s.fineText} selectable>{msg}</Text>}
+    </View>
+  );
+}
+
 function Pick({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} style={[s.pick, on && s.pickOn]}>
@@ -940,6 +1081,7 @@ const s = StyleSheet.create({
   fineText: { fontFamily: F.body, fontSize: 13, lineHeight: 18, color: C.text2, marginTop: 8 },
   custom: { height: 36, minWidth: 90, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   sheet: { padding: 22, paddingBottom: 26 },
   mapCard: { marginTop: 18, borderRadius: 24, backgroundColor: C.card, padding: 16, paddingBottom: 14 },
   mapHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },

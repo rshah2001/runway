@@ -299,3 +299,7 @@ export type PersonRequest = {
 };
 export type PersonPayment = { id: string; from_slug: string; from_name: string; to_slug: string; to_name: string; amount: number; memo: string; date: string };
 export type PeopleSummary = { persona: string; people: Person[]; asked_me: PersonRequest[]; i_asked: PersonRequest[]; payments: PersonPayment[] };
+
+// ---------- circle invite links ----------
+export type CircleLink = { token: string; expires: string }; // the link is <site>/join/<token>
+export type JoinPreview = { circle_id: string; name: string; made_by: string; already_in: boolean };

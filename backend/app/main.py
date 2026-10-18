@@ -33,9 +33,11 @@ from app.schemas import (
     Bridge,
     ChatRequest,
     ChatResponse,
+    CircleLink,
     CirclePerson,
     CircleView,
     Forecast,
+    JoinPreview,
     Me,
     NewCircle,
     P2PPayment,
@@ -546,6 +548,67 @@ def people_request_answer(request_id: str, action: str, req: CirclePerson, user:
         people_pay.finish(conn, request_id, "paid", row["id"])
         conn.commit()
     return safety_views.people_for(me)
+
+
+# ---------- circle invite links ----------
+TOKEN = r"^[A-Za-z0-9_-]{20,40}$"
+
+
+@app.post("/circle-links/{circle_id}", response_model=CircleLink)
+def circle_link(circle_id: str, req: CirclePerson, user: OptionalUser) -> CircleLink:
+    """A shareable invite link for a circle you're in (expires in 7 days)."""
+    me = _own_settings(user, req.persona)
+    if not re.fullmatch(r"circle-[a-z0-9-]{1,40}", circle_id):
+        raise HTTPException(404, "Unknown circle")
+    if not get_settings().live:
+        raise HTTPException(503, "Invite links need the live database.")
+    from app import circles
+    from app.db import pool
+
+    with pool.connection() as conn:
+        try:
+            row = circles.make_link(conn, me, circle_id)
+        except circles.CircleRefused as e:
+            raise HTTPException(403, str(e)) from None
+        conn.commit()
+    return CircleLink(token=row["token"], expires=row["expires_at"])
+
+
+@app.post("/circle-links/{circle_id}/off", response_model=list[CircleView])
+def circle_links_off(circle_id: str, req: CirclePerson, user: OptionalUser) -> list[CircleView]:
+    """The creator turns off every invite link for their circle."""
+    if not re.fullmatch(r"circle-[a-z0-9-]{1,40}", circle_id):
+        raise HTTPException(404, "Unknown circle")
+    return _circle_act(user, req.persona, lambda c, conn, me: c.turn_off_links(conn, me, circle_id))
+
+
+@app.get("/join/{token}", response_model=JoinPreview)
+def join_preview(token: str, user: OptionalUser, persona: str = PERSONA) -> JoinPreview:
+    """What an invite link points at — the circle's name and who made it. Sign in first."""
+    if user is None and auth_config() is not None:
+        raise HTTPException(401, "Sign in to see this invitation.", headers={"WWW-Authenticate": "Bearer"})
+    if not re.fullmatch(TOKEN, token) or not get_settings().live:
+        raise HTTPException(404, "This invite link isn't valid.")
+    me = persona_for(user, persona)
+    from app import circles
+    from app.db import pool
+
+    with pool.connection() as conn:
+        info = circles.link_info(conn, token)
+        if info is None:
+            raise HTTPException(404, "This invite link has expired or been turned off. Ask for a new one.")
+        state = circles._state(conn, info["circle_id"], me)
+    return JoinPreview(
+        circle_id=info["circle_id"], name=info["name"], made_by=info["made_by"], already_in=state == "active"
+    )
+
+
+@app.post("/join/{token}", response_model=list[CircleView])
+def join_circle(token: str, req: CirclePerson, user: OptionalUser) -> list[CircleView]:
+    """Join the circle an invite link points at. Joining grants nothing financial."""
+    if not re.fullmatch(TOKEN, token):
+        raise HTTPException(404, "This invite link isn't valid.")
+    return _circle_act(user, req.persona, lambda c, conn, me: c.join_by_link(conn, me, token))
 
 
 @app.get("/forecast/scenarios", response_model=Scenarios)
