@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import { type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
-import Svg, { Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Line } from 'react-native-svg';
 
 import { PressableScale } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
@@ -38,6 +38,14 @@ const TINTS = ['#2d6f86', '#6b6aa8', '#8f6aa8', '#8a6b45', '#2f7a68', '#7a4f5f',
 const SETTLE = { duration: 450, easing: Easing.bezier(0.32, 0.72, 0, 1) } as const;
 const NODE = 30; // radius of a person
 const CENTER = 50;
+const LABEL = 24; // the name under a person
+const PAD = 18; // breathing room above and below the group
+const MIN_RING = CENTER + NODE + LABEL + 26; // room between you and a person for a name and an amount
+const NAME_W = 110;
+const AMOUNT_W = 64;
+
+/** Green: this person can cover you · blue: you can cover them · grey: stopped. */
+const lineColor = (p: CirclePerson) => (p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff');
 
 
 export function CircleMap({ me, status, tone, people, selected, onSelect }: {
@@ -49,15 +57,20 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
   onSelect: (key: string | null) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const size = Math.min(width, 460);
-  const height = Math.max(300, size * 0.86);
+  // People sit evenly around you, as far out as the card's width allows (never so close that a name
+  // or an amount runs into you). Then the whole group, not you, is centred in the card: with three
+  // people (top, lower left, lower right) centring on you would leave the group high and a gap below.
+  const angles = people.map((_, i) => -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(people.length, 1));
+  const widest = Math.max(0.5, ...angles.map((a) => Math.abs(Math.cos(a))));
+  const ring = Math.max(MIN_RING, Math.min(150, (width / 2 - NODE - 10) / widest));
+  const raw = people.map((p, i) => ({ p, dx: ring * Math.cos(angles[i]), dy: ring * Math.sin(angles[i]) }));
+  // a person above you has their name above them, so the line to you never runs through it
+  const top = Math.min(-CENTER, ...raw.map((r) => r.dy - NODE - (r.dy < -1 ? LABEL : 0)));
+  const bottom = Math.max(CENTER, ...raw.map((r) => r.dy + NODE + (r.dy < -1 ? 0 : LABEL)));
+  const height = bottom - top + PAD * 2;
   const cx = width / 2;
-  const cy = height / 2;
-  const ring = Math.min(size / 2 - NODE - 14, height / 2 - NODE - 10);
-  const spots = people.map((p, i) => {
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(people.length, 1);
-    return { p, x: cx + ring * Math.cos(a), y: cy + ring * Math.sin(a) };
-  });
+  const cy = PAD - top;
+  const spots = raw.map(({ p, dx, dy }) => ({ p, x: cx + dx, y: cy + dy }));
 
   return (
     <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={[s.wrap, { height }]}>
@@ -65,25 +78,26 @@ export function CircleMap({ me, status, tone, people, selected, onSelect }: {
         <>
           <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
             {spots.map(({ p, x, y }) => {
-              const color = p.status === 'off' ? C.text3 : p.role === 'supporter' ? C.green : '#7cb8ff';
-              const mx = (cx + x) / 2;
-              const my = (cy + y) / 2;
-              return [
-                <Line key={`l-${p.key}`} x1={cx} y1={cy} x2={x} y2={y} stroke={color}
+              const color = lineColor(p);
+              // each line runs from the edge of your circle to the edge of theirs, never underneath either
+              const len = Math.hypot(x - cx, y - cy) || 1, ux = (x - cx) / len, uy = (y - cy) / len;
+              return (
+                <Line key={`l-${p.key}`} x1={cx + ux * CENTER} y1={cy + uy * CENTER} x2={x - ux * NODE} y2={y - uy * NODE} stroke={color}
                   strokeOpacity={p.status === 'off' ? 0.35 : selected && selected !== p.key ? 0.35 : 0.85}
-                  strokeWidth={p.status === 'active' ? 2 : 1.5} strokeDasharray={p.status === 'active' ? undefined : '5 6'} />,
-                p.out ? (
-                  <SvgText key={`t-${p.key}`} x={mx + (x >= cx ? 10 : -10)} y={my + 4} fill={color} fontSize={13} fontWeight="700"
-                    textAnchor={x >= cx ? 'start' : 'end'}>
-                    {money(p.out, 0)}
-                  </SvgText>
-                ) : null,
-              ];
+                  strokeWidth={p.status === 'active' ? 2 : 1.5} strokeDasharray={p.status === 'active' ? undefined : '5 6'} />
+              );
             })}
           </Svg>
+          {/* money out right now: a small pill sitting on the middle of its line */}
+          {spots.map(({ p, x, y }) => p.out ? (
+            <View key={`t-${p.key}`} pointerEvents="none"
+              style={[s.abs, s.amount, { left: (cx + x) / 2 - AMOUNT_W / 2, top: (cy + y) / 2 - 11, borderColor: lineColor(p) }]}>
+              <Text style={[s.amountText, { color: lineColor(p) }]}>{money(p.out, 0)}</Text>
+            </View>
+          ) : null)}
           <Centre x={cx} y={cy} name={me} status={status} tone={tone} onPress={() => onSelect(null)} />
           {spots.map(({ p, x, y }, i) => (
-            <Node key={p.key} p={p} x={x} y={y} index={i} on={selected === p.key}
+            <Node key={p.key} p={p} x={x} y={y} above={y < cy - 1} index={i} on={selected === p.key}
               dim={!!selected && selected !== p.key} onPress={() => onSelect(selected === p.key ? null : p.key)} />
           ))}
         </>
@@ -104,8 +118,8 @@ function Centre({ x, y, name, status, tone, onPress }: { x: number; y: number; n
   );
 }
 
-function Node({ p, x, y, index, on, dim, onPress }: {
-  p: CirclePerson; x: number; y: number; index: number; on: boolean; dim: boolean; onPress: () => void;
+function Node({ p, x, y, above, index, on, dim, onPress }: {
+  p: CirclePerson; x: number; y: number; above: boolean; index: number; on: boolean; dim: boolean; onPress: () => void;
 }) {
   const reduced = useReducedMotion();
   const t = useSharedValue(reduced ? 1 : 0); // 0 hidden … 1 in place
@@ -122,13 +136,18 @@ function Node({ p, x, y, index, on, dim, onPress }: {
   const style = useAnimatedStyle(() => ({ transform: [{ scale: (0.82 + 0.18 * t.get()) * grow.get() }] }));
   const role = p.role === 'supporter' ? 'can cover you' : 'you can cover them';
   return (
-    <View style={[s.abs, { left: x - NODE, top: y - NODE, opacity: dim ? 0.55 : 1 }]}>
+    <View style={[s.abs, { left: x - NAME_W / 2, top: y - NODE - (above ? LABEL : 0), width: NAME_W, alignItems: 'center', opacity: dim ? 0.55 : 1 }]}>
+      {above && <Text style={[s.nodeName, s.nameAbove, on && { color: C.text }]} numberOfLines={1}>{p.name}</Text>}
       <Animated.View style={style}>
         <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }}
           accessibilityLabel={`${p.name}, ${role}, ${p.status === 'active' ? 'agreed' : p.status === 'waiting' ? 'waiting for a yes' : 'stopped'}`}
-          style={[s.node, { backgroundColor: TINTS[index % TINTS.length] }, on && s.nodeOn, p.status === 'off' && { opacity: 0.6 }]}>
-          <Text style={s.nodeName} numberOfLines={1}>{p.name}</Text>
+          style={[s.node, { borderColor: lineColor(p), borderStyle: p.status === 'waiting' ? 'dashed' : 'solid' }, on && s.nodeOn,
+            p.status === 'off' && { opacity: 0.6 }]}>
+          {/* a solid disc first, so no line ever shows through; the person's tint sits on top of it */}
+          <View style={[StyleSheet.absoluteFill, s.tint, { backgroundColor: `${TINTS[index % TINTS.length]}55` }]} />
+          <Text style={s.nodeInitial}>{p.name[0]}</Text>
         </PressableScale>
+        {!above && <Text style={[s.nodeName, on && { color: C.text }]} numberOfLines={1}>{p.name}</Text>}
       </Animated.View>
     </View>
   );
@@ -154,7 +173,7 @@ function Key({ color, label, dashed }: { color: string; label: string; dashed?: 
 }
 
 const s = StyleSheet.create({
-  wrap: { width: '100%', marginTop: 4 },
+  wrap: { width: '100%', marginTop: 4 }, // height is set from the group's own size
   abs: { position: 'absolute' },
   centre: {
     width: CENTER * 2, height: CENTER * 2, borderRadius: CENTER, borderWidth: 3, backgroundColor: C.card2,
@@ -162,9 +181,15 @@ const s = StyleSheet.create({
   },
   centreName: { fontFamily: F.bodySemi, fontSize: 20, letterSpacing: -0.3, color: C.text },
   centreStatus: { fontFamily: F.bodySemi, fontSize: 13, marginTop: 2 },
-  node: { width: NODE * 2, height: NODE * 2, borderRadius: NODE, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  nodeOn: { borderWidth: 2, borderColor: '#fff' },
-  nodeName: { fontFamily: F.bodySemi, fontSize: 13, color: '#fff' },
+  node: { width: NODE * 2, height: NODE * 2, borderRadius: NODE, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.card2, overflow: 'hidden' },
+  tint: { borderRadius: NODE },
+  nameAbove: { marginTop: 0, marginBottom: 5 },
+  nodeOn: { borderWidth: 3.5 },
+  nodeInitial: { fontFamily: F.bodySemi, fontSize: 22, color: C.text },
+  nodeName: { fontFamily: F.bodySemi, fontSize: 13, color: C.text2, marginTop: 5, textAlign: 'center' },
+  amount: { width: AMOUNT_W, height: 22, borderRadius: 11, borderWidth: 1, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  amountText: { fontFamily: F.condBold, fontSize: 13, letterSpacing: 0.3 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14, marginTop: 6 },
   key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   swatch: { width: 18, height: 0, borderTopWidth: 2 },

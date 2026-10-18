@@ -46,7 +46,7 @@ export default function ActivityScreen() {
   const items = (feed.data ?? []).filter((x) => IN_FILTER[filter].includes(x.kind));
 
   return (
-    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data}>
+    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data} maxWidth={820}>
       <TopBar />
       <PageTitle title="Activity" sub="Support you received, gave and paid back — and why each one happened." />
       <View style={s.chips}>

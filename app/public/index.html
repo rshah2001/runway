@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#14181c" />
+    <meta name="theme-color" content="#0f1215" />
     <meta name="color-scheme" content="dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
@@ -24,7 +24,7 @@
       html,
       body {
         height: 100%;
-        background: #14181c;
+        background: #0f1215;
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
       }
@@ -38,6 +38,19 @@
         flex: 1;
       }
     </style>
+    <!-- Desktop scale: the screens are sized for phones, so in a wide window the whole page (menus and
+         sheets too) is enlarged evenly: 1.1x at 1440px wide, up to 1.25x. Phones and narrow windows stay
+         at 1x. Runs before the app paints; src/lib/zoom.ts reads it back where screen positions matter. -->
+    <script>
+      (function () {
+        function fit() {
+          var k = window.innerWidth >= 1300 ? Math.min(1.25, window.innerWidth / 1300) : 1;
+          document.body.style.zoom = String(k);
+        }
+        document.addEventListener('DOMContentLoaded', fit);
+        window.addEventListener('resize', fit);
+      })();
+    </script>
   </head>
 
   <body>

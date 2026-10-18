@@ -130,15 +130,17 @@ export function Btn({ label, ghost, disabled, onPress, style }: { label: string;
  * Scrollable page: charcoal gradient, safe-area top padding on phones, centred max-width column on
  * desktop. `header` sits above the scroll on the website's wide layout only if provided.
  */
-export function Page({ children, onRefresh, refreshing = false, scroll = true, backdrop }: PropsWithChildren<{
+export function Page({ children, onRefresh, refreshing = false, scroll = true, backdrop, maxWidth = MAX_WIDTH }: PropsWithChildren<{
   onRefresh?: () => void; refreshing?: boolean; scroll?: boolean;
+  /** a narrower column for a page that is one list (Activity), so amounts stay near their names */
+  maxWidth?: number;
   /** drawn over the gradient, behind the content, full width (e.g. Today's glows) */
   backdrop?: ReactNode;
 }>) {
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const top = Platform.OS === 'web' ? (wide ? 24 : 12) : insets.top + 8;
-  const inner = <View style={[s.inner, { paddingTop: top, paddingHorizontal: wide ? 32 : 18 }]}>{children}</View>;
+  const inner = <View style={[s.inner, { maxWidth, paddingTop: top, paddingHorizontal: wide ? 32 : 18 }]}>{children}</View>;
   return (
     <View style={s.page}>
       <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100" pointerEvents="none">

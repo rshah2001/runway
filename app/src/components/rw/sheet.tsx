@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { C } from '@/constants/runway';
+import { zoom } from '@/lib/zoom';
 
 import { useWide } from './ui';
 
@@ -26,7 +27,7 @@ export function Sheet({ open, onClose, label, style, children }: PropsWithChildr
   const reduced = useReducedMotion();
   const wide = useWide();
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const height = useWindowDimensions().height / zoom(); // layout px on the scaled desktop site
   const p = useSharedValue(0); // 0 closed … 1 open
   const [mounted, setMounted] = useState(open);
 
