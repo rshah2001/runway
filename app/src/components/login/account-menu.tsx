@@ -6,7 +6,7 @@
  * $1,000), so each person sets their own; nobody can set it for someone else.
  * "Alerts only" swaps Today's numbers for one calm sentence that speaks up only before a dip (for
  * people who avoid looking at their balance — see components/today/quiet-today.tsx).
- * "Appearance" picks Light, Dark, or Auto (follow the device), on the website (lib/theme.ts).
+ * "Appearance" picks Light, Dark, or Auto (follow the device) — see lib/theme.ts.
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
  */
 import { type ComponentRef, type ElementRef, useEffect, useRef, useState } from 'react';
@@ -140,7 +140,7 @@ export function AccountMenu() {
                 </View>
               </Pressable>
             )}
-            {Platform.OS === 'web' && <AppearancePicker />}
+            <AppearancePicker />
             <Pressable onPress={signOut} disabled={leaving} accessibilityRole="menuitem"
               style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: C.hover }]}>
               <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">

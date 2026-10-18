@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { readChoice, resolve } from '@/lib/theme-choice';
+
 /**
  * Runway design tokens: the WHOOP-inspired charcoal look (dark) and a calm paper-white twin (light).
  * One colour per meaning: red = below the floor, green = covered, amber = caution, blue = savings.
@@ -62,14 +64,17 @@ export type Palette = typeof DARK;
 export type Scheme = 'dark' | 'light';
 export const PALETTES: Record<Scheme, Palette> = { dark: DARK, light: LIGHT };
 
+/** The look the phone apps opened in (styles there are fixed when the app loads; see lib/theme.ts). */
+export const LAUNCH_SCHEME: Scheme = Platform.OS === 'web' ? 'dark' : resolve(readChoice());
+
 /**
  * The colours every style uses. On the website each one is a CSS variable (`var(--rw-bg)`), so the
  * whole site switches theme at once, styles and SVG included, without re-rendering anything
- * (lib/theme.ts writes the variables). The phone apps stay on the charcoal look for now.
+ * (lib/theme.ts writes the variables). The phone apps use the palette they launched in.
  */
 export const C: Palette = Platform.OS === 'web'
   ? (Object.fromEntries(Object.keys(DARK).map((k) => [k, `var(--rw-${k})`])) as Palette)
-  : DARK;
+  : PALETTES[LAUNCH_SCHEME];
 
 /**
  * A see-through version of a colour (`hex` is the alpha byte, as in `#ff6b5e22`). A theme colour is a

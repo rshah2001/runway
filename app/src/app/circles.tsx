@@ -55,6 +55,12 @@ export default function CirclesScreen() {
   const wide = useWide();
 
   const d = sn.data;
+  const sendAndHistory = d && (
+    <>
+      <SendOrRequest ppl={ppl.data} onDone={reload} />
+      <Recent events={d.events} payments={[...(p2p.data?.payments ?? []), ...peoplePayments(ppl.data)]} />
+    </>
+  );
   return (
     <View style={{ flex: 1 }}>
     <Page onRefresh={reload} refreshing={sn.loading && !!d}>
@@ -68,6 +74,8 @@ export default function CirclesScreen() {
           )}
           {me.data?.family_cover !== false && <HelpCard d={d} floor={fc.data?.safe_floor} onDone={reload} />}
           {wide && !!sup.data?.supporters.length && <WhatTheySee on={me.data?.family_cover} onChanged={reload} />}
+          {/* desktop: money in and out sits under the map, so the two columns end at about the same height */}
+          {wide && sendAndHistory}
         </>} right={<>
           {d.approvals_waiting.length > 0 && (
             <>
@@ -81,12 +89,10 @@ export default function CirclesScreen() {
           <PeopleISupport d={d} sup={sup.data} onAgree={setConsent} onSaved={reload} />
 
           <OwesYou p2p={p2p.data} onAsked={reload} />
-          <MyCirclesManager list={cir.data} ppl={ppl.data} onDone={reload} />
           <AskedYou ppl={ppl.data} onDone={reload} />
-          <SendOrRequest ppl={ppl.data} onDone={reload} />
           <YouAsked ppl={ppl.data} />
-
-          <Recent events={d.events} payments={[...(p2p.data?.payments ?? []), ...peoplePayments(ppl.data)]} />
+          <MyCirclesManager list={cir.data} ppl={ppl.data} onDone={reload} />
+          {!wide && sendAndHistory}
         </>} />
       )}
       {d && d.borrowed.some((b) => b.status === 'active' || b.status === 'repay_failed') && <DemoPayday onDone={reload} />}
@@ -566,7 +572,7 @@ function SendOrRequest({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () 
   return (
     <>
       <SectionLabel>Send or request</SectionLabel>
-      <View style={[s.ask, { borderColor: C.line2 }]}>
+      <View style={[s.ask, { borderColor: C.line }]}>
         <View style={s.chips}>
           {(['send', 'ask'] as const).map((m) => (
             <Pick key={m} on={mode === m} label={m === 'send' ? 'Send' : 'Request'} onPress={() => { setMode(m); setMsg(null); }} />
@@ -680,7 +686,7 @@ function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; pp
     <>
       <SectionLabel>My circles</SectionLabel>
       {list.map((c) => <CircleCard key={c.id} c={c} ppl={ppl} onDone={onDone} />)}
-      <View style={[s.ask, { borderColor: C.line2, marginTop: list.length ? 10 : 0 }]}>
+      <View style={[s.ask, { borderColor: C.line, marginTop: list.length ? 10 : 0 }]}>
         <Text style={s.switchTitle}>Start a circle</Text>
         <View style={[s.owe, { marginTop: 10 }]}>
           <TextInput value={name} onChangeText={setName} placeholder="Roommates, Family, Trip crew…" placeholderTextColor={C.text3}
