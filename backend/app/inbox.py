@@ -55,7 +55,9 @@ def add(conn: psycopg.Connection, slug: str, kind: str, circle_id: str, actor: s
 
 
 def sent_recently(conn: psycopg.Connection, actor: str) -> int:
-    """Invitations `actor` sent in the last hour (the anti-spam cap in circles.invite)."""
+    """Invitations `actor` sent in the last hour (the anti-spam cap in circles.invite). Takes a per-person
+    lock for the rest of the transaction, so two invitations sent at once can't both slip under the cap."""
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext('invite:' || %s))", (actor,))
     row = conn.execute(
         "SELECT count(*) AS n FROM inbox WHERE actor = %s AND kind = 'circle_invite' "
         "AND created_at > now() - interval '1 hour'",
