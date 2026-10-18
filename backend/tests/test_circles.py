@@ -19,18 +19,28 @@ class Members:
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(circles, "_state", lambda conn, cid, slug: self.states.get(slug))
+        self.invited_by: dict[str, str] = {}
+        self.notes: list[tuple[str, str, str]] = []  # (for whom, kind, by whom)
+
+        def _set(conn, cid, slug, state, invited_by=None):
+            self.states[slug] = state
+            if invited_by:
+                self.invited_by[slug] = invited_by
+
+        monkeypatch.setattr(circles, "_set", _set)
         monkeypatch.setattr(
-            circles, "_set", lambda conn, cid, slug, state, invited_by=None: self.states.__setitem__(slug, state)
+            circles.inbox, "add", lambda conn, slug, kind, cid, actor: self.notes.append((slug, kind, actor))
         )
 
     def execute(self, sql, params=None):  # remove() reads created_by; leave()/remove() revoke links
         creator = self.creator
         if "circle_invites" in sql:
             self.revoked = getattr(self, "revoked", []) + [params]
+        inviter = self.invited_by.get(params[1]) if params and len(params) > 1 else None
 
         class R:
             def fetchone(self):
-                return {"created_by": creator}
+                return {"created_by": creator, "invited_by": inviter}
 
         return R()
 
@@ -139,3 +149,26 @@ def test_leaving_or_being_removed_turns_off_your_links(monkeypatch) -> None:
     circles.leave(m, "maya", "c")
     circles.remove(m, "sam", "c", "jordan")
     assert m.revoked == [("c", "maya"), ("c", "jordan")]
+
+
+def test_being_added_notifies_you_and_your_answer_notifies_them(monkeypatch) -> None:
+    m = Members({"sam": "active", "maya": "active"})
+    m.install(monkeypatch)
+    circles.invite(m, "maya", "c", "emma")
+    circles.answer(m, "emma", "c", accept=True)
+    assert m.notes == [("emma", "circle_invite", "maya"), ("maya", "circle_joined", "emma")]
+
+
+def test_a_no_is_also_told_back(monkeypatch) -> None:
+    m = Members({"sam": "active"})
+    m.install(monkeypatch)
+    circles.invite(m, "sam", "c", "jordan")
+    circles.answer(m, "jordan", "c", accept=False)
+    assert m.notes[-1] == ("sam", "circle_declined", "jordan")
+
+
+def test_joining_by_link_tells_the_creator(monkeypatch) -> None:
+    m = Links({"sam": "active"})
+    m.install(monkeypatch)
+    circles.join_by_link(m, "alex", "tok")
+    assert m.notes == [("sam", "circle_joined", "alex")]

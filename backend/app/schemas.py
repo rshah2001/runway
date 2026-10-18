@@ -437,6 +437,23 @@ class PersonMoney(BaseModel):
     client_key: str | None = Field(None, pattern=r"^[A-Za-z0-9-]{8,64}$")  # send only: one per tap
 
 
+class InboxItem(BaseModel):
+    """A circle notification: names and the circle only — never money."""
+
+    id: str
+    kind: Literal["circle_invite", "circle_joined", "circle_declined"]
+    circle_id: str
+    circle: str
+    actor_name: str
+    text: str  # "Sam added you to Family"
+    created: datetime
+
+
+class DirectoryPerson(BaseModel):
+    slug: str
+    name: str  # first name only
+
+
 class CircleLink(BaseModel):
     token: str  # the app builds the link: <site>/join/<token>
     expires: datetime

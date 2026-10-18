@@ -303,3 +303,15 @@ export type PeopleSummary = { persona: string; people: Person[]; asked_me: Perso
 // ---------- circle invite links ----------
 export type CircleLink = { token: string; expires: string }; // the link is <site>/join/<token>
 export type JoinPreview = { circle_id: string; name: string; made_by: string; already_in: boolean };
+
+// ---------- circle notifications (names and the circle only — never money) ----------
+export type InboxItem = {
+  id: string;
+  kind: 'circle_invite' | 'circle_joined' | 'circle_declined';
+  circle_id: string;
+  circle: string;
+  actor_name: string;
+  text: string; // "Sam added you to Family"
+  created: string;
+};
+export type DirectoryPerson = { slug: string; name: string }; // people you can add to a circle

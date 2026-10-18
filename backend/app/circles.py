@@ -14,6 +14,8 @@ from typing import Any
 
 import psycopg
 
+from app import inbox
+
 Row = dict[str, Any]
 STATES = ("invited", "active", "declined", "left", "removed")
 VISIBLE = ("invited", "active")  # members listed to other members
@@ -97,12 +99,18 @@ def invite(conn: psycopg.Connection, actor: str, circle_id: str, slug: str) -> N
     if current in ("removed", "declined") and not _is_creator(conn, circle_id, actor):
         raise CircleRefused("Only the person who made this circle can invite them again.")
     _set(conn, circle_id, slug, "invited", invited_by=actor)
+    inbox.add(conn, slug, "circle_invite", circle_id, actor)  # shows up for them — no link needed
 
 
 def answer(conn: psycopg.Connection, actor: str, circle_id: str, accept: bool) -> None:
     if _state(conn, circle_id, actor) != "invited":
         raise CircleRefused("There's no invitation to answer.")
     _set(conn, circle_id, actor, "active" if accept else "declined")
+    row = conn.execute(
+        "SELECT invited_by FROM circle_members WHERE circle_id = %s AND slug = %s", (circle_id, actor)
+    ).fetchone()
+    if row and row["invited_by"]:  # and the person who added them hears the answer
+        inbox.add(conn, row["invited_by"], "circle_joined" if accept else "circle_declined", circle_id, actor)
 
 
 def _revoke_links_by(conn: psycopg.Connection, circle_id: str, slug: str) -> None:
@@ -182,6 +190,9 @@ def join_by_link(conn: psycopg.Connection, actor: str, token: str) -> str:
         raise CircleRefused("Ask the person who made this circle to invite you again.")
     if current != "active":
         _set(conn, info["circle_id"], actor, "active")
+        creator = conn.execute("SELECT created_by FROM circles WHERE id = %s", (info["circle_id"],)).fetchone()
+        if creator:
+            inbox.add(conn, creator["created_by"], "circle_joined", info["circle_id"], actor)
     return info["circle_id"]
 
 
@@ -211,3 +222,4 @@ def setup_demo(conn: psycopg.Connection, *, force: bool = False) -> None:
             _set(conn, circle_id, slug, "active", invited_by=creator)
         for slug in invited:
             _set(conn, circle_id, slug, "invited", invited_by=creator)
+            inbox.add(conn, slug, "circle_invite", circle_id, creator)  # the demo opens on a fresh invitation

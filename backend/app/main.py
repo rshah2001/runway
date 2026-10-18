@@ -36,7 +36,9 @@ from app.schemas import (
     CircleLink,
     CirclePerson,
     CircleView,
+    DirectoryPerson,
     Forecast,
+    InboxItem,
     JoinPreview,
     Me,
     NewCircle,
@@ -413,7 +415,59 @@ def _circle_act(user: User | None, persona: str, act) -> list[CircleView]:
         except circles.CircleRefused as e:
             raise HTTPException(403, str(e)) from None
         conn.commit()
+    from app import inbox
+
+    inbox.push_new()  # phone push for any notification that change created (background, best effort)
     return safety_views.circles_for(actor)
+
+
+# ---------- circle notifications (app/inbox.py) ----------
+@app.get("/inbox", response_model=list[InboxItem])
+def inbox_list(user: OptionalUser, persona: str = PERSONA) -> list[InboxItem]:
+    """Your unseen circle notifications: invitations to answer, and answers to yours."""
+    me = persona_for(user, persona)
+    if not get_settings().live:
+        return []
+    from app import inbox
+    from app.db import pool
+
+    with pool.connection() as conn:
+        rows = inbox.mine(conn, me)
+    return [
+        InboxItem(
+            id=r["id"],
+            kind=r["kind"],
+            circle_id=r["circle_id"],
+            circle=r["circle"],
+            actor_name=r["actor_name"],
+            text=inbox.text(r["kind"], r["actor_name"], r["circle"]),
+            created=r["created_at"],
+        )
+        for r in rows
+    ]
+
+
+@app.post("/inbox/{note_id}/seen", response_model=list[InboxItem])
+def inbox_seen(note_id: str, req: CirclePerson, user: OptionalUser) -> list[InboxItem]:
+    me = _own_settings(user, req.persona)
+    if not re.fullmatch(r"note-[0-9a-f]{12}", note_id):
+        raise HTTPException(404, "Unknown notification")
+    if get_settings().live:
+        from app import inbox
+        from app.db import pool
+
+        with pool.connection() as conn:
+            inbox.seen(conn, me, note_id)
+            conn.commit()
+    return inbox_list(user, me)
+
+
+@app.get("/directory", response_model=list[DirectoryPerson])
+def directory(user: OptionalUser, persona: str = PERSONA) -> list[DirectoryPerson]:
+    """People on Runway you can add to a circle — first names only. Adding is only an invitation:
+    nothing happens until they say yes, and a circle never grants access to money."""
+    me = persona_for(user, persona)
+    return [DirectoryPerson(slug=p.slug, name=p.first_name) for p in data.personas() if p.slug != me]
 
 
 @app.post("/circles", response_model=list[CircleView])
