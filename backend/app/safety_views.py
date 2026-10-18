@@ -368,6 +368,59 @@ def circles_for(viewer: str) -> list:
         ]
 
 
+def people_for(viewer: str):
+    """Who `viewer` can send to or ask, plus requests and payments both ways — live or demo."""
+    from app.schemas import PeopleSummary, Person, PersonPayment, PersonRequest
+
+    if not get_settings().live:
+        from app.circles import DEMO
+        from seed.personas import PERSONAS, SAFETY_LIMITS
+
+        names = {p.slug: p.first_name for p in PERSONAS}
+        how: dict[str, set[str]] = {}
+        for _, cname, creator, active, _ in DEMO:
+            members = {creator, *active}
+            if viewer in members:
+                for s in members - {viewer}:
+                    how.setdefault(s, set()).add(cname)
+        for s, r, _ in SAFETY_LIMITS:
+            if viewer in (s, r):
+                how.setdefault(r if s == viewer else s, set()).add("Safety net")
+        people = [Person(slug=s, name=names[s], how=", ".join(sorted(h))) for s, h in sorted(how.items())]
+        return PeopleSummary(persona=viewer, people=people, asked_me=[], i_asked=[], payments=[])
+    from app import people_pay
+    from app.db import pool
+
+    def req(r: dict) -> PersonRequest:
+        return PersonRequest(
+            **{k: r[k] for k in ("id", "from_slug", "from_name", "to_slug", "to_name", "memo", "status")},
+            amount=float(r["amount"]),
+            created=_day(r["created_at"]) or date.today(),
+        )
+
+    with pool.connection() as conn:
+        mine = people_pay.mine(conn, viewer)
+        return PeopleSummary(
+            persona=viewer,
+            people=[Person(**p) for p in people_pay.people(conn, viewer)],
+            asked_me=[req(r) for r in mine["asked_me"]],
+            i_asked=[req(r) for r in mine["i_asked"]],
+            payments=[
+                PersonPayment(
+                    id=p["id"],
+                    from_slug=p["from_slug"],
+                    from_name=p["from_name"],
+                    to_slug=p["to_slug"],
+                    to_name=p["to_name"],
+                    amount=float(p["amount"]),
+                    memo=p["memo"],
+                    date=_day(p["ts"]) or date.today(),
+                )
+                for p in mine["payments"]
+            ],
+        )
+
+
 def support_for(viewer: str) -> SupportSummary:
     """`viewer`'s own agreements, live or demo — the one place the API and the assistant both read."""
     if not get_settings().live:
