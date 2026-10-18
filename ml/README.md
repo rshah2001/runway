@@ -91,15 +91,82 @@ So the forecast keeps the flat average, now with evidence from four populations 
 assumption. That's also why the shipped piece (section 1) calibrates the person's own pattern rather
 than replacing it.
 
+## 3. Shipped: reading how formally someone writes (for Ask Runway's tone)
+
+Ask Runway starts from a voice for the person's age (Gen Z under 30, direct 30–49, courteous 50+), but age
+is a guess about style, and the person's own message is evidence. A 60-year-old who types *"lol am i good
+this month"* shouldn't get a bank letter; a 20-year-old who writes *"Could you please tell me…"* shouldn't
+get slang. So a small model reads the message's formality, and Gemini is told the result as a fact, the
+same way it's given every number by a tool.
+
+**Data.** [Pavlick & Tetreault (2016)](https://huggingface.co/datasets/osyvokon/pavlick-formality-scores):
+11,274 sentences from Yahoo Answers, blogs, emails and news, each rated by people from −3 (very casual) to +3
+(very formal). CC BY 3.0. 9,274 train, 2,000 test, never trained on.
+
+**What we didn't do, and why.** We didn't predict *age* from writing (the Blog Authorship Corpus has age
+labels): we already know the user's age, guessing it from text is profiling, and how a 20-year-old blogged in
+2004 says nothing about how they want to be spoken to. Formality is the one thing we need, and it's rated.
+
+| Model (2,000 held-out sentences) | Rank correlation with people's ratings | Band accuracy | Casual read as formal, or back | Chat questions on the right side |
+|---|---|---|---|---|
+| Hand-written rules, no learning | 0.52 | 42% | 4.4% | 20/20 |
+| Word 1–2-grams + ridge | 0.71 | 58% | 3.2% | 16/20 |
+| Character 2–4-grams + ridge | **0.74** | 60% | 2.4% | 17/20 |
+| Words + characters + ridge | 0.74 | 61% | 3.2% | 16/20 |
+| **Shipped: characters + 25% chat cues** | **0.73** | 60% | 2.7% | **19/20** |
+
+Per domain (shipped): emails 0.76, forum answers 0.67, blogs 0.63, news 0.43. News is hardest: nearly all of
+it is formal, so there's little range to rank.
+
+**The trap we found.** Every chat question the trained models got wrong was a *polite question* ("Could you
+tell me whether I can afford…") read as casual. In the training data, questions come almost entirely from a
+casual forum, so the model learned "question = casual". Two fixes:
+- **A small blend with hand-written chat cues** ("lol", "pls", a lowercase start; "please", "would"), which
+  the 2016 data barely contains: the held-out correlation stays at 0.73, and chat goes from 17/20 to 19/20.
+  The 25% weight was chosen on those 20 chat questions (all the chat text we have), so treat 19/20 as a
+  sanity check, not a measurement.
+- **Chat thresholds.** Short questions score lower than the sentences the model learned from: a plain
+  *"What is my balance?"* sits near −0.8 on the raters' scale. Ask Runway acts only on clear signals:
+  **casual below −1.5, formal above −0.2**; anything in between is *neutral* and the tone stays with age.
+  Set on the 20 questions above, then checked **once** on 30 new ones written afterwards (10 casual, 10
+  plain, 10 formal): **30/30, no casual↔formal flips**. We wrote and labelled both sets ourselves, so this
+  says the thresholds are sensible, not that they're precise.
+
+**Shipping it like the range calibration.** No ML libraries in the server: the vocabulary, idf weights and
+ridge coefficients go to `backend/app/agent/formality_model.json` (192 KB), and `app/agent/formality.py`
+re-scores in plain Python. The experiment asserts it matches scikit-learn on all 2,000 test sentences
+(largest difference 8×10⁻⁶). A message takes well under a millisecond, so Ask Runway gets no slower.
+
+**Does it change what Gemini says?** On live Gemini, the same messages with the model's reading vs. with
+every message read as neutral (age only), scored by the tone eval's plain rules:
+
+| Writer | How they wrote | Age only (no model) | With the formality model |
+|---|---|---|---|
+| Sam, 60 (courteous voice) | casually ("lol am i good this month") | 0/12 | **9/12** |
+| Maya, 20 (Gen Z voice) | formally ("Could you kindly list my subscriptions?") | 3/12 | **10/12** |
+| **Both** | | **3/24 (13%)** | **19/24 (79%)** |
+
+Four runs of three questions each, live Gemini, Oct 18. A reply passes if it reads the way they wrote:
+contractions and none of the stiff phrases for Sam; no Gen Z words or emoji for Maya. The misses were a
+reply that still opened "You are…" and one that said "Heads up" (which the tone eval counts as a Gen Z word).
+
+**How it's used, and why that way.** Age always picks the voice first: it's the one thing known before
+anyone writes. A clearly casual or formal message then moves the voice **one step** along Gen Z → direct →
+courteous (`voice.adjusted`); a plain message leaves it where age put it. The first version only told Gemini
+"lean more relaxed", and that lost to the courteous voice's own rules: 1/3 in a re-run. A firm one-step
+switch is predictable and testable, and a 60-year-old who writes "lol" gets the direct voice, not a
+teenager's.
+
 ## Files
 
 | File | |
 |---|---|
-| `download.py` | fetches the three datasets (checksum-verified where the source publishes one) |
+| `download.py` | fetches the datasets (checksum-verified where the source publishes one) |
 | `samples.py` | loaders, the everyday-spending definition per dataset, the scale-free features |
 | `calibrate_band.py` | fits and scores the conformal widening, writes `band_calibration.json` |
 | `spend_model_experiment.py` | the LightGBM spending model and every comparison above |
-| `results_band.csv`, `results_spend_model.csv` | the full result tables |
+| `formality_experiment.py` | trains and scores the formality reader, writes `formality_model.json`, checks the backend matches |
+| `results_band.csv`, `results_spend_model.csv`, `results_formality.csv` | the full result tables |
 
 ¹ Firat, Vytla, Vasudeva, Jiang, Laramee. *MoneyVis: Open Bank Transaction Data for Visualization and
 Beyond.* EuroVis 2023 Short Papers. https://doi.org/10.2312/evs.20231052

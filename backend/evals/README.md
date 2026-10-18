@@ -34,16 +34,18 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 
 | Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
 |---|---|---|---|---|---|
-| Gemini — Maya (genz voice) | 28 | 100% | 93% | 100% | 0 |
+| Gemini — Maya (genz voice) | 28 | 100% | 100% | 100% | 0 |
 | Gemini — Jordan (direct voice) | 17 | 100% | 100% | 100% | 0 |
 | Gemini — Sam (classic voice) | 18 | 100% | 100% | 100% | 0 |
-| **Gemini (`gemini-3.8-flash`, low thinking) — all** | 63 | **100%** | **97%** | **100%** | 0 |
+| **Gemini (`gemini-3.8-flash`, low thinking) — all** | 63 | **100%** | **100%** | **100%** | 0 |
 | Rule-based router (offline baseline) | 63 | 100% | 100% | 100% | — |
 
-Re-run on 2026-10-18 with the five new action questions (part repayment, sending, a circle, and two with
-the AI-actions switch off): all five passed. The two misses were Maya affordability questions with a correct
-"no" worded "You're gonna dip below your floor if you buy it…", which the first-sentence grader doesn't read
-as a no; the table keeps the score. The 58-question run before it is described next.
+Latest run on 2026-10-18, after the formality model started moving the voice: 63/63. Gemini varies a little
+from run to run, so for scale: the two runs before it, on the same 63 questions, scored 97% and 98%. Their
+misses were correct "no" answers worded in ways the first-sentence grader doesn't read ("You're gonna dip
+below your floor if you buy it…", or a reply that shows the dip without saying no). All five action questions
+(part repayment, sending, a circle, and two with the AI-actions switch off) passed in every run. The
+58-question run before them is described next.
 
 Re-run on the night of 2026-10-17 on all 58 questions (now including the peer-to-peer and support cases),
 live key, zero API errors, so no answer came from the fallback. Both misses were "what can I cut back on?"
@@ -230,6 +232,21 @@ What changed alongside, each found by these runs:
   saying "holding off on dining ($66.43)…" — likely the two "what can I cut back on?" misses in the run above.
 - **Gen Z voice:** contractions in list answers too ("you've got three subs…"), the "subscriptions" reply that
   read formal in the tone re-run above.
+
+### Writing against their age
+
+The voice starts from age, and the formality model (`app/agent/formality.py`, trained in
+`ml/formality_experiment.py`) moves it one step when a message clearly reads casual or formal. The tone eval
+runs those cases twice, with the model's reading and with every message read as neutral (age only):
+
+| Writer | How they wrote | Age only | With the formality model |
+|---|---|---|---|
+| Sam, 60 | casually | 0/12 | **9/12** |
+| Maya, 20 | formally | 3/12 | **10/12** |
+
+Four runs, live Gemini, Oct 18; the regular voice table above stayed at 17/18 in the same runs. The direct
+voice now uses contractions ("like a friend who's good with money"), which is what made a casual 60-year-old's
+reply read relaxed once the voice moved a step.
 
 ## Privacy eval
 

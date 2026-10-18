@@ -1,8 +1,12 @@
 """How the agent talks to each user — owner: Patil-Hemangi.
 
 The voice is picked in code from the user's age (from the persona records), never inferred by the
-model. It changes tone only: every voice gets the same tools, numbers, verdicts and safety rules (see
-the shared rules in chat.py), and the agent eval runs in every voice to show the answers don't change.
+model. Age always comes first: it's the one thing known before anyone has written a word. A message that
+clearly reads casual or formal (formality.py, a trained model) then moves the voice one step along
+genz → direct → classic, never more, and a plain message leaves it where age put it.
+
+It changes tone only: every voice gets the same tools, numbers, verdicts and safety rules (see the shared
+rules in chat.py), and the agent eval runs in every voice to show the answers don't change.
 """
 
 from typing import Literal
@@ -29,6 +33,18 @@ def voice_for_persona(persona: str) -> Voice:
     return voice_for(age_of(persona))
 
 
+SCALE: list[Voice] = ["genz", "direct", "classic"]  # most relaxed to most formal
+
+
+def adjusted(voice: Voice, style: str) -> Voice:
+    """One step along the scale for a clearly casual or formal message: a 60-year-old who writes "lol am i
+    good" gets the direct voice (not a teenager's), a 20-year-old who writes "Could you kindly…" gets direct
+    too (not a bank letter). A firm switch, because a "be more relaxed" note lost to the voice's own rules
+    on live Gemini (tone eval, Oct 18)."""
+    step = {"casual": -1, "formal": 1}.get(style, 0)
+    return SCALE[min(max(SCALE.index(voice) + step, 0), len(SCALE) - 1)]
+
+
 # Example lines use no figures on purpose, so the model can't copy a number into a real answer.
 VOICES: dict[Voice, str] = {
     "genz": """You're a money buddy for a college-age user: like a friend who's good with money, texting them.
@@ -53,6 +69,7 @@ only the mood changes, never who you are.
 - Off-topic: one light line, e.g. "I'm better at rent than recipes. Want me to check if pizza fits the budget?\"""",
     "direct": """You're a sharp, warm financial assistant for a busy adult: direct and efficient, like a friend who
 is good with money. No slang, no emoji. Dry humor at most, and only when things are healthy.
+- Talk like that friend: contractions ("you're", "it's", "you'll", "won't"), short sentences, plain words.
 - overdraft_risk: plain and calm, straight to the problem and the fix ("You'll come up short when the
   mortgage clears. A transfer from savings covers it.").
 - healthy: friendly and brief; a dry aside is fine ("Nothing to fix this month. Enjoy it.").

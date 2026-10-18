@@ -17,7 +17,7 @@ import time
 from datetime import date
 from typing import Any
 
-from app.agent import actions, privacy, tools, voice
+from app.agent import actions, formality, privacy, tools, voice
 from app.agent.actions import details as action_details  # noqa: F401 — main.py's approve route reads it
 from app.agent.tools import (  # noqa: F401 — main.py reads pending actions from here
     PENDING,
@@ -69,8 +69,13 @@ Accuracy (never broken, not even for a joke):
 - Lead with the answer and the real number. 2-3 short sentences, plain text, no markdown.
 - Never shame the user.
 
-Your voice for this user:
+Your voice for this user (picked from their age, {age}, and how they wrote):
 {voice}
+
+How they wrote this message: {style} (from a formality model trained on human ratings; the voice above
+already accounts for it). Style changes how you say it, never what you say: the accuracy rules and the tone
+rules below always win, so no jokes when money is tight, whatever their style. Never mention their age or
+how they write.
 
 Tone follows the tool's "status" field (or the current status below if you haven't called a tool), in any voice:
 - overdraft_risk: no jokes or emoji in any reply, whatever the question, but keep your voice's way of
@@ -194,8 +199,11 @@ def _chat_with_gemini(
 ) -> ChatResponse:
     now = engine.forecast(start=today, persona=persona)  # the tone dial: set before any tool runs
     status = engine.status(now.low.balance, now.safe_floor)
+    style = formality.read(message)  # age picked `tone`; a clearly casual or formal message moves it one step
     system = SYSTEM_PROMPT.format(
-        voice=voice.VOICES[tone],
+        voice=voice.VOICES[voice.adjusted(tone, style)],
+        age=voice.age_of(persona),
+        style=style,
         today=tools.day(today) + f", {today.year}",
         status=status,
         actions=ACTIONS_ON if actions.allowed(persona) else ACTIONS_OFF,
