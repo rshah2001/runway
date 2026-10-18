@@ -26,6 +26,7 @@ const AUDIENCE = process.env.EXPO_PUBLIC_AUTH0_AUDIENCE ?? '';
 const ISSUER = `https://${DOMAIN}`;
 const SCOPES = ['openid', 'profile', 'email', 'offline_access']; // offline_access → a refresh token
 const STORE_KEY = 'runway.auth';
+export const AFTER_KEY = 'runway.after-sign-in'; // a page to return to after Auth0 (invite links only)
 const REFRESH_MARGIN_SECONDS = 60; // refresh a little early so a request never carries an expired token
 
 export const isAuthConfigured = Boolean(DOMAIN && CLIENT_ID && AUDIENCE);
@@ -73,6 +74,9 @@ export async function login(): Promise<boolean> {
     const url = await request.makeAuthUrlAsync(config);
     // the PKCE verifier proves the returning code is ours; `state` ties the return to this request
     window.sessionStorage.setItem(PKCE_KEY, JSON.stringify({ state: request.state, verifier: request.codeVerifier }));
+    // come back to where you were (an invite link like /join/…), not just the home screen
+    const here = window.location.pathname;
+    if (/^\/join\/[A-Za-z0-9_-]{20,40}$/.test(here)) window.sessionStorage.setItem(AFTER_KEY, here);
     window.location.assign(url);
     return new Promise<boolean>(() => {}); // the page is leaving for Auth0
   }

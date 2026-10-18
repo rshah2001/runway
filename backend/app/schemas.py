@@ -437,6 +437,20 @@ class PersonMoney(BaseModel):
     client_key: str | None = Field(None, pattern=r"^[A-Za-z0-9-]{8,64}$")  # send only: one per tap
 
 
+class CircleLink(BaseModel):
+    token: str  # the app builds the link: <site>/join/<token>
+    expires: datetime
+
+
+class JoinPreview(BaseModel):
+    """What an invite link shows before you join: the circle's name and who made it — nothing else."""
+
+    circle_id: str
+    name: str
+    made_by: str
+    already_in: bool
+
+
 class ScenarioPoint(BaseModel):
     date: date
     balance: float

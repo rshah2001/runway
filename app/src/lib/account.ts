@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { httpStatus } from '../hooks/use-load';
-import { completeWebSignIn, forgetSession, isSignedIn, login, logout } from './auth';
+import { AFTER_KEY, completeWebSignIn, forgetSession, isSignedIn, login, logout } from './auth';
 import { setSession } from './session';
 
 export type Profile = { persona: string; name: string };
@@ -26,7 +26,9 @@ export async function bootSession(): Promise<void> {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && /[?&](code|error)=/.test(window.location.search)) {
     setTimeout(() => {
       try {
-        router.replace('/');
+        const after = window.sessionStorage.getItem(AFTER_KEY);
+        window.sessionStorage.removeItem(AFTER_KEY);
+        router.replace((after && /^\/join\/[A-Za-z0-9_-]{20,40}$/.test(after) ? after : '/') as never);
       } catch {
         // router not mounted yet: the address keeps a used, one-time code — harmless
       }

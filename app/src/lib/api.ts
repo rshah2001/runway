@@ -1,5 +1,7 @@
 import type {
   ActivityItem,
+  CircleLink,
+  JoinPreview,
   PeopleSummary,
   Bridge,
   CircleView,
@@ -98,6 +100,14 @@ export const api = {
     request<CircleView[]>('/circles', { method: 'POST', body: JSON.stringify({ persona, name }) }),
   circleAction: (id: string, action: 'invite' | 'remove' | 'accept' | 'decline' | 'leave', slug?: string, persona = currentPersona()) =>
     request<CircleView[]>(`/circles/${id}/${action}`, { method: 'POST', body: JSON.stringify({ persona, slug }) }),
+  // invite links: share <site>/join/<token>; joining grants nothing financial
+  circleLink: (id: string, persona = currentPersona()) =>
+    request<CircleLink>(`/circle-links/${id}`, { method: 'POST', body: JSON.stringify({ persona }) }),
+  circleLinksOff: (id: string, persona = currentPersona()) =>
+    request<CircleView[]>(`/circle-links/${id}/off`, { method: 'POST', body: JSON.stringify({ persona }) }),
+  joinPreview: (token: string, persona = currentPersona()) => request<JoinPreview>(`/join/${token}?persona=${persona}`),
+  joinCircle: (token: string, persona = currentPersona()) =>
+    request<CircleView[]>(`/join/${token}`, { method: 'POST', body: JSON.stringify({ persona }) }),
   // Time Machine: your own forecast with no help / one supporter / your circle / unsafe help (blocked)
   scenarios: (persona = currentPersona()) => request<Scenarios>(`/forecast/scenarios?persona=${persona}`),
   supportRevoke: (supporter: string, recipient: string, persona = currentPersona()) =>
