@@ -46,7 +46,7 @@ export default function ActivityScreen() {
   const items = (feed.data ?? []).filter((x) => IN_FILTER[filter].includes(x.kind));
 
   return (
-    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data} maxWidth={820}>
+    <Page onRefresh={moneyMoved} refreshing={feed.loading && !!feed.data} maxWidth={680}>
       <TopBar />
       <PageTitle title="Activity" sub="Support you received, gave and paid back — and why each one happened." />
       <View style={s.chips}>
@@ -87,8 +87,9 @@ export default function ActivityScreen() {
 }
 
 const s = StyleSheet.create({
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: C.line2, justifyContent: 'center' },
+  // filled, borderless pills on the page (like the cards below them), with room above and below
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 18, marginBottom: 16 },
+  chip: { height: 34, paddingHorizontal: 12, borderRadius: 999, backgroundColor: C.card, justifyContent: 'center' },
   chipOn: { backgroundColor: C.primary, borderColor: C.primary },
   chipText: { fontFamily: F.bodySemi, fontSize: 13, color: C.text },
   empty: { fontFamily: F.body, fontSize: 14, color: C.text2, padding: 16 },
