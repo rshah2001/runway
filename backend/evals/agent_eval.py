@@ -1,9 +1,10 @@
 """Agent eval: does the agent pick the right tool, give the right answer, and quote only real numbers?
 
-55 questions across the three seeded personas, with ground truth from the deterministic tools:
+58 questions across the three seeded personas, with ground truth from the deterministic tools:
 30 "can I afford $X on day Y?" (10 per persona, in five phrasings; 15 safe and 15 not), plus fix-it,
 subscription, forecast, peer-to-peer (who owes me, split / request, unknown contact) and family safety
-net questions (explained, never acted on), weekly briefs, and needs-vs-could-wait suggestions.
+net questions (explained, never acted on), weekly briefs, needs-vs-could-wait suggestions, and the
+supporter's own side: why didn't I get help, will helping affect my bills, pause my support.
 Each question is asked as its persona, so Gemini answers in that persona's voice (Maya genz, Jordan
 direct, Sam classic). Three metrics per question:
   * tool    — the expected tool was called
@@ -171,7 +172,18 @@ def build_cases() -> list[Case]:
         tips = tools.budget_suggestions(persona=persona, today=TODAY)
         top = tips["could_wait_until_payday"][0]["what"]
         cases.append(Case(persona, msg, "budget_suggestions", _names_without_acting(top), tips))
+    # the supporter's own side: history with reasons, safe room, and a pause that waits for approval
+    history = tools.my_support_history(persona="maya", today=TODAY)
+    named = next(n for n in ("Sam", "Jordan", "Emma", "Alex") if n in history["activity"][0]["what"])
+    cases.append(Case("maya", "Why didn't I get help?", "my_support_history", _names_without_acting(named), history))
+    room = tools.room_to_help("Maya", persona="sam", today=TODAY)
+    cases.append(Case("sam", "Will helping Maya affect my bills?", "room_to_help", _quotes(room["safe_to_help"]), room))
+    cases.append(Case("sam", "Pause my support for Maya", "propose_pause_support", _pause_proposed, {}))
     return cases
+
+
+def _pause_proposed(r: ChatResponse) -> bool:
+    return bool(r.pending_action and r.pending_action.kind == "pause_support")
 
 
 def _names_without_acting(who: str) -> Callable[[ChatResponse], bool]:

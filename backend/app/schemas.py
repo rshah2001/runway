@@ -92,7 +92,8 @@ class Recurring(BaseModel):
 
 class PendingAction(BaseModel):
     id: str
-    kind: Literal["transfer", "reschedule_bill", "p2p_request"]  # p2p_request: ask a contact to pay you back
+    # p2p_request: ask a contact to pay you back · pause_support: stop covering someone (the supporter approves)
+    kind: Literal["transfer", "reschedule_bill", "p2p_request", "pause_support"]
     description: str
     amount: float | None = None
     status: Literal["awaiting_approval", "approved", "declined", "executed", "failed"] = "awaiting_approval"

@@ -24,7 +24,12 @@ PRIVATE = re.compile(
 )
 # the user's own relationship with that person: allowed (what's between you two is yours to see)
 OWN_RELATIONSHIP = re.compile(
-    r"\b(pay(?:s|ing)? me back|paid me back|owe[sd]? me|i lent|lent (?:to )?\w+|cover(?:ed|ing)? me)\b", re.IGNORECASE
+    r"\b(pay(?:s|ing)? me back|paid me back|owe[sd]? me|i lent|lent (?:to )?\w+|cover(?:ed|ing)? me|"
+    # the user's OWN money, even when another person is named: "will helping Maya affect MY bills?",
+    # "can I afford to help Jordan?". "Her bills" / "Maya's balance" are untouched and still refused.
+    r"my (?:own )?(?:bills?|balance|checking|savings|account|money|rent|spending|budget|cushion|paycheck|payday)|"
+    r"(?:can|could|should) i (?:still )?afford)\b",
+    re.IGNORECASE,
 )
 
 

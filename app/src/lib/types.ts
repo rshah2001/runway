@@ -69,7 +69,7 @@ export type Recurring = {
 
 export type PendingAction = {
   id: string;
-  kind: 'transfer' | 'reschedule_bill' | 'p2p_request'; // p2p_request: ask a contact to pay you back
+  kind: 'transfer' | 'reschedule_bill' | 'p2p_request' | 'pause_support'; // p2p_request: ask a contact to pay you back
   description: string;
   amount: number | null;
   status: 'awaiting_approval' | 'approved' | 'declined' | 'executed' | 'failed'; // failed = check with the bank, never retry
