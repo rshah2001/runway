@@ -536,11 +536,8 @@ def budget_suggestions(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
     payday, learned = _until_payday(sched, today)
     days = (payday - today).days
     f = engine.forecast(days=max(days - 1, 0), start=today, schedule=sched)
-    bills = [
-        {"what": e.label, "amount": money(-e.amount), "day": day(e.date)}
-        for e in f.events
-        if e.amount < 0 and e.kind in ("bill", "card_payment")
-    ]
+    bill_events = [e for e in f.events if e.amount < 0 and e.kind in ("bill", "card_payment")]
+    bills = [{"what": e.label, "amount": money(-e.amount), "day": day(e.date)} for e in bill_events]
     renewing = [s for s in detect_recurring(data.history, today) if s.next_date < payday]
     usual_needs = _usual_until(data, NEED_CATEGORIES, today, days)
     usual_wants = _usual_until(data, WAIT_CATEGORIES, today, days)
@@ -560,6 +557,9 @@ def budget_suggestions(*, persona: str = engine.DEFAULT_PERSONA, today: date | N
         "needs": {
             "bills_before_payday": bills,
             "usual_essentials": [{"what": c, "amount": money(a)} for c, a in usual_needs],
+            # totals ready-made: with less thinking the model was tempted to add these up itself
+            "usual_essentials_total": money(sum(a for _, a in usual_needs)),
+            "all_needs_total": money(sum(-e.amount for e in bill_events) + sum(a for _, a in usual_needs)),
         },
         "could_wait_until_payday": could_wait,
         "could_keep_in_your_pocket": money(total),

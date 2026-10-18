@@ -38,7 +38,7 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 | Gemini — Jordan (direct voice) | 17 | 100% | 94% | 100% | 0 |
 | Gemini — Sam (classic voice) | 18 | 100% | 100% | 100% | 0 |
 | **Gemini (`gemini-3.8-flash`) — all** | 58 | **100%** | **97%** | **100%** | 0 |
-| Rule-based router (offline baseline) | 55 | 100% | 100% | 100% | — |
+| Rule-based router (offline baseline) | 58 | 100% | 100% | 100% | — |
 
 Re-run on the night of 2026-10-17 on all 58 questions (now including the peer-to-peer and support cases),
 live key, zero API errors, so no answer came from the fallback. Both misses were "what can I cut back on?"
@@ -176,6 +176,36 @@ when it was fine, so the voice flipped between a bank letter and a group chat. T
 voice and only changes the mood. Runs on 2026-10-17, `gemini-3.8-flash`; three replies per cell is a
 small sample, so treat this as a regression check rather than a precise rate. The rules are unit-tested
 in `tests/test_evals.py`. Run it with `python -m evals.tone_eval` (needs `GEMINI_API_KEY`).
+
+## Latency
+
+*How long Ask Runway takes to answer.* The tools do all the math, so Gemini only has to pick a tool and word
+the reply; deep thinking was mostly spent re-checking numbers it isn't allowed to change. `chat.py` now asks
+for `thinking_level="low"` (override with `GEMINI_THINKING_LEVEL`). Measured on 2026-10-17, live key:
+
+| Thinking level | Average reply (4 questions × 2 runs) | Agent eval (58) | Privacy, guard off | Tone |
+|---|---|---|---|---|
+| high | 17–19 s | — | — | — |
+| default (the runs above) | ~13 s | 97–98% | 14–15/15 | 17/18 · 6/6 Gen Z |
+| **low (now)** | **~6 s** | **98%** | **15/15** | 6/6 and 5/6 Gen Z (two runs) |
+
+Most of what's left is network round trips: one Gemini call to pick the tool (~2.5 s) and one to word the
+reply (~3 s); a purchase check that also offers a fix makes a third. `minimal` isn't supported on this model.
+The low-thinking agent miss is the known "would put your account into an overdraft…" phrasing of a correct no
+(above). The guard-off 14/15 at default was a false alarm: Gemini mentioned Sam's **own** $150 limit for Maya,
+and one of Maya's private figures rounds to $150; the grader stays strict.
+
+What changed alongside, each found by these runs:
+
+- **The grounding guard rejected bills quoted without their minus.** The forecast lists rent as "-$650.00";
+  "rent of $650.00" is the same figure, but the guard called it invented, discarded a correct reply, and
+  the slower router answered instead. The minus may now be dropped; a "-$X" no tool gave is still rejected.
+- **`budget_suggestions` returns its totals** (`usual_essentials_total`, `all_needs_total`): with less
+  thinking Gemini added the essentials up itself ($266.34), and that reply was rightly discarded.
+- **The "cut back" grader ignores case.** It looked for the category label "Dining" and missed a right answer
+  saying "holding off on dining ($66.43)…" — likely the two "what can I cut back on?" misses in the run above.
+- **Gen Z voice:** contractions in list answers too ("you've got three subs…"), the "subscriptions" reply that
+  read formal in the tone re-run above.
 
 ## Privacy eval
 

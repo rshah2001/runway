@@ -30,6 +30,9 @@ from app.schemas import ChatResponse, PendingAction
 log = logging.getLogger(__name__)  # .env is loaded by app.config
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+# the tools already did the math, so the model only picks a tool and words the answer: "low" thinking
+# cut a reply from ~13s to ~5s with the same eval scores (evals/README.md, Latency)
+THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
 MAX_MESSAGE_CHARS = 500  # a chat question is short; this caps cost and prompt-injection surface
 MAX_TOOL_ROUNDS = 4
 RETRY_DELAY_S = 1.0
@@ -43,6 +46,9 @@ class Ungrounded(RuntimeError):
 def grounded(reply: str, message: str, outputs: object) -> bool:
     """Every $ figure in the reply appears in a tool output or in the user's own message."""
     allowed = set(MONEY.findall(str(outputs))) | set(MONEY.findall(message))
+    # a bill comes out of a tool as "-$650.00" and reads naturally as "rent of $650.00": same figure.
+    # Only the minus may be dropped; a "-$X" the tools never gave is still rejected
+    allowed |= {m.removeprefix("-") for m in allowed}
     allowed |= {m.removesuffix(".00") for m in allowed}  # "$50" is the same figure as "$50.00"
     return all(m in allowed or m.removesuffix(".00") in allowed for m in MONEY.findall(reply))
 
@@ -168,7 +174,12 @@ def _chat_with_gemini(
     now = engine.forecast(start=today, persona=persona)  # the tone dial: set before any tool runs
     status = engine.status(now.low.balance, now.safe_floor)
     system = SYSTEM_PROMPT.format(voice=voice.VOICES[tone], today=tools.day(today) + f", {today.year}", status=status)
-    request = {"model": MODEL, "tools": tools.DECLARATIONS, "system_instruction": system}
+    request = {
+        "model": MODEL,
+        "tools": tools.DECLARATIONS,
+        "system_instruction": system,
+        "generation_config": {"thinking_level": THINKING_LEVEL},
+    }
     tool_calls: list[str] = []
     outputs: list[dict[str, Any]] = []
     try:

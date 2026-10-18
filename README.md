@@ -80,11 +80,12 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 | What | Result |
 |---|---|
 | **Agent** (live Gemini, 58 questions across 3 voices: afford / fix it / subscriptions / forecast / safety net / peer-to-peer / needs vs. could-wait) | **100%** tool selection · **97%** correct answers · **100%** of $ figures traceable to the engine · 0 API errors |
-| **Agent, offline baseline** (55 questions incl. peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
+| **Agent, offline baseline** (58 questions incl. peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
 | **Forecast backtest** (learn months 1–3, predict month 4, 18 folds) | daily balance error **$138**: −66% vs ignoring everyday spending, −16% vs repeating last month |
 | **Learning curve** (only 30 days of history) | error **$2,737 → $206** with provisional paydays |
 | **Range calibration** (cautious end beaten, target 5%) | **12–43% → 4–11%** on held-out IBM card users and a real UK account it never trained on |
 | **Tone** (Gen Z voice stays itself when money is tight or fine; rule-based checks on real Gemini replies) | **3/6 → 6/6** (Gen Z cells) · re-run after the privacy prompt: **17/18** across all voices |
+| **Latency** (Ask Runway on live Gemini, 4 questions × 2 runs) | **~13 s → ~6 s** a reply with low thinking; agent 98%, privacy 15/15 guard off |
 | **Privacy** (13 attacks incl. prompt injection + 2 controls; fails on any of the other person's real figures) | **15/15** guard + router · **15/15** guard + Gemini · **15/15 Gemini with the guard OFF** |
 | **Demo scenario** (Guardian on the real engine, Oct 18–22) | Maya $135 → Sam $90 + Emma $45, Jordan $0, every day |
 | **Several short at once** (Maya + Alex share Sam's $90; fewest-options-first) | Maya fully covered · Alex $50 of $85 · **$185 covered vs $135 first-come**, every demo day |

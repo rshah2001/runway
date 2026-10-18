@@ -29,6 +29,13 @@ def test_grounding_check_catches_an_invented_figure() -> None:
     assert agent.grounded("Yes, the $180 concert is fine.", "can I spend $180?", truth)
 
 
+def test_naming_check_ignores_case_but_still_rejects_acting() -> None:
+    """Gemini wrote "holding off on dining" for the "Dining" category and the grader called it wrong."""
+    check = agent_eval._names_without_acting("Dining")
+    assert check(agent.ChatResponse(reply="Holding off on dining ($66.43) could help."))
+    assert not check(agent.ChatResponse(reply="Shopping could wait."))
+
+
 def test_live_spend_model_beats_the_naive_baselines() -> None:
     results = forecast_backtest.run()
     live = results["Flat daily mean, 90 days (live)"]
