@@ -115,5 +115,8 @@ def _circle(action: PendingAction, me: str, details: dict) -> None:
         except circles.CircleRefused as e:
             raise ActionRefused(str(e)) from None
         conn.commit()
+    from app import inbox
+
+    inbox.push_new()  # the phone push for any invitation or answer this created, as the Circles buttons do
     if action.kind == "circle_link":  # the card shows the link once it exists
         action.description = f"Invite link (works for 7 days): {SITE}/join/{result['token']}"
