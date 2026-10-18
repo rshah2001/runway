@@ -728,18 +728,42 @@ def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
 
 
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
-APPROVABLE_KINDS = ("transfer", "p2p_request")
+APPROVABLE_KINDS = ("transfer", "p2p_request", "pause_support")
 
 
 def _execute(action_id: str, action: PendingAction) -> None:
     """Carry out an approved action through the same data function its own route uses."""
     # the persona the agent proposed this for — never the default (that would move Maya's money for Jordan)
     persona = agent.persona_of(action_id)
+    if action.kind == "pause_support":
+        details = agent.pause_details(action_id)
+        if details is None or details[0] != persona:  # only ever the supporter's own support
+            raise data.PersonaNotFound(persona)
+        _pause_support(*details)
+        return
     if action.kind == "p2p_request":
         contact_id, memo = agent.p2p_details(action_id) or ("", "")
         data.p2p_request(persona, contact_id, action.amount or 0, memo)  # as POST /p2p/requests: nothing moves
         return
     data.move_savings_to_checking(action.amount or 0, action.description, persona)
+
+
+def _pause_support(supporter: str, recipient: str) -> None:
+    """An approved "pause my support for X" from the chat: keep the supporter's limit, switch it off —
+    exactly what the Circles stepper does at $0, under the same locks. Nothing moves."""
+    if not _live_writes():
+        return  # demo mode: the approval is the whole story
+    from app import agreements
+    from app.db import pool, safety_repo
+
+    with pool.connection() as conn:
+        safety_repo.lock_people(conn, supporter, recipient)
+        current = next(iter(safety_repo.limits(conn, lender=supporter, borrower=recipient)), None)
+        amount = float(current["limit_amount"]) if current else 0.0
+        safety_repo.set_limit(conn, supporter, recipient, amount, False)
+        agreements.limit_changed(conn, supporter, recipient, amount, False)
+        safety_repo.add_event(conn, supporter, "support_paused", "You paused your support. Turn it back on in Circles.")
+        conn.commit()
 
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
@@ -752,8 +776,9 @@ def approve(action_id: str, user: OptionalUser) -> PendingAction:
             raise HTTPException(404, "No such pending action")
         if action.status != "awaiting_approval":
             raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
-        if action.kind not in APPROVABLE_KINDS or not action.amount or action.amount <= 0:
-            raise HTTPException(422, "Only positive transfers and requests can be approved right now")
+        no_amount_needed = action.kind == "pause_support"  # a pause moves no money
+        if action.kind not in APPROVABLE_KINDS or (not no_amount_needed and (not action.amount or action.amount <= 0)):
+            raise HTTPException(422, "This action can't be approved")
         action.status = "approved"  # claimed: a concurrent approve now gets 409
     try:
         _execute(action_id, action)
