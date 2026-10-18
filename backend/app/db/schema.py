@@ -307,6 +307,7 @@ WHERE status = 'pending_approval' AND agreement_version IS NULL;
 """
 
 from app.circles import SCHEMA as CIRCLES  # noqa: E402 (named circles live with their rules)
+from app.inbox import SCHEMA as INBOX  # noqa: E402 (after circles: it references them)
 from app.people_pay import SCHEMA as PEOPLE_PAY  # noqa: E402
 
 HYPERTABLE = """
@@ -438,6 +439,7 @@ def apply(conn: psycopg.Connection) -> None:
             AGREEMENTS,
             CIRCLES,
             PEOPLE_PAY,
+            INBOX,
             ALERTS,
             HYPERTABLE,
             DAILY_SPEND,

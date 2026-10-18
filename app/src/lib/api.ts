@@ -1,6 +1,8 @@
 import type {
   ActivityItem,
   CircleLink,
+  DirectoryPerson,
+  InboxItem,
   JoinPreview,
   PeopleSummary,
   Bridge,
@@ -100,6 +102,11 @@ export const api = {
     request<CircleView[]>('/circles', { method: 'POST', body: JSON.stringify({ persona, name }) }),
   circleAction: (id: string, action: 'invite' | 'remove' | 'accept' | 'decline' | 'leave', slug?: string, persona = currentPersona()) =>
     request<CircleView[]>(`/circles/${id}/${action}`, { method: 'POST', body: JSON.stringify({ persona, slug }) }),
+  // circle notifications: pop-ups for being added, and the answer coming back
+  inbox: (persona = currentPersona()) => request<InboxItem[]>(`/inbox?persona=${persona}`),
+  inboxSeen: (id: string, persona = currentPersona()) =>
+    request<InboxItem[]>(`/inbox/${id}/seen`, { method: 'POST', body: JSON.stringify({ persona }) }),
+  directory: (persona = currentPersona()) => request<DirectoryPerson[]>(`/directory?persona=${persona}`),
   // invite links: share <site>/join/<token>; joining grants nothing financial
   circleLink: (id: string, persona = currentPersona()) =>
     request<CircleLink>(`/circle-links/${id}`, { method: 'POST', body: JSON.stringify({ persona }) }),

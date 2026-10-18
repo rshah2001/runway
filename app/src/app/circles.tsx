@@ -26,6 +26,7 @@ import type {
   SafetyLimit,
   SafetyNetSummary,
   CircleView,
+  DirectoryPerson,
   PeopleSummary,
   SupportAgreement,
   SupportSummary,
@@ -780,6 +781,7 @@ function YouAsked({ ppl }: { ppl: PeopleSummary | null }) {
  * people or turn its links off. A circle is only people: it never shows or grants anyone's money.
  */
 function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; ppl: PeopleSummary | null; onDone: () => void }) {
+  const dir = useLoad(() => api.directory(), '');
   const [name, setName] = useState('');
   const [note, setNote] = useState<string | null>(null);
   if (!list) return null;
@@ -796,7 +798,7 @@ function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; pp
   return (
     <>
       <SectionLabel>My circles</SectionLabel>
-      {list.map((c) => <CircleCard key={c.id} c={c} ppl={ppl} onDone={onDone} />)}
+      {list.map((c) => <CircleCard key={c.id} c={c} ppl={ppl} everyone={dir.data ?? []} onDone={onDone} />)}
       <View style={[s.ask, { borderColor: '#2f363c', marginTop: list.length ? 10 : 0 }]}>
         <Text style={s.switchTitle}>Start a circle</Text>
         <View style={[s.owe, { marginTop: 10 }]}>
@@ -812,13 +814,14 @@ function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; pp
   );
 }
 
-function CircleCard({ c, ppl, onDone }: { c: CircleView; ppl: PeopleSummary | null; onDone: () => void }) {
+function CircleCard({ c, ppl, everyone, onDone }: { c: CircleView; ppl: PeopleSummary | null; everyone: DirectoryPerson[]; onDone: () => void }) {
   const session = useSession();
   const [msg, setMsg] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const me = session.mode === 'signed-in' ? session.persona : ppl?.persona;
   const inCircle = new Set(c.members.map((m) => m.slug));
-  const canAdd = (ppl?.people ?? []).filter((p) => !inCircle.has(p.slug));
+  // anyone on Runway: adding is only an invitation — it pops up for them, and nothing happens until they say yes
+  const canAdd = everyone.filter((p) => !inCircle.has(p.slug));
 
   async function act(action: 'invite' | 'remove' | 'accept' | 'decline' | 'leave', slug?: string, done?: string) {
     setMsg(null);
@@ -904,7 +907,7 @@ function CircleCard({ c, ppl, onDone }: { c: CircleView; ppl: PeopleSummary | nu
       </View>
       {adding && (
         <View style={[s.chips, { marginTop: 10 }]}>
-          {canAdd.map((p) => <Pick key={p.slug} on={false} label={`+ ${p.name}`} onPress={() => act('invite', p.slug, `Invited ${p.name}. They’ll see it in their Circles.`)} />)}
+          {canAdd.map((p) => <Pick key={p.slug} on={false} label={`+ ${p.name}`} onPress={() => act('invite', p.slug, `Added ${p.name} — it pops up for them to accept. You’ll hear when they answer.`)} />)}
         </View>
       )}
       {msg && <Text style={s.fineText} selectable>{msg}</Text>}
