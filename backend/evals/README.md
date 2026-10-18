@@ -34,14 +34,16 @@ The peer-to-peer cases (`who_owes_me` and `request_money`):
 
 | Agent | Questions | Tool selection | Answer accuracy | Grounded figures | API errors |
 |---|---|---|---|---|---|
-| Gemini — Maya (genz voice) | 16 | 100% | 100% | 100% | 0 |
-| Gemini — Jordan (direct voice) | 13 | 100% | 92% | 100% | 0 |
-| Gemini — Sam (classic voice) | 13 | 100% | 92% | 100% | 0 |
-| **Gemini (`gemini-3.8-flash`, free tier) — all** | 42 | **100%** | **95%** | **100%** | 0 |
+| Gemini — Maya (genz voice) | 23 | 100% | 96% | 100% | 0 |
+| Gemini — Jordan (direct voice) | 17 | 100% | 94% | 100% | 0 |
+| Gemini — Sam (classic voice) | 18 | 100% | 100% | 100% | 0 |
+| **Gemini (`gemini-3.8-flash`) — all** | 58 | **100%** | **97%** | **100%** | 0 |
 | Rule-based router (offline baseline) | 55 | 100% | 100% | 100% | — |
 
-The Gemini rows are from the 42 questions before the peer-to-peer cases were added; they haven't
-been rerun on those 6 yet. Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
+Re-run on the night of 2026-10-17 on all 58 questions (now including the peer-to-peer and support cases),
+live key, zero API errors, so no answer came from the fallback. Both misses were "what can I cut back on?"
+questions: the advice was right, but the replies didn't use the words the checker looks for. We kept the checker
+as it is. The earlier 42-question run (95%) is described below. Gemini run on 2026-10-17 after the round-2 changes (readiness, range and confidence in every tool
 result), with runtime grounding enforced. Both misses were "can I afford it?" questions whose right
 answer was no. Sam's reply was a correct no worded "I would advise against purchasing…", which the
 grader didn't know; "advise against" is now a grader test. Jordan's question passed when rerun, so
