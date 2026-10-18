@@ -23,8 +23,10 @@ class Members:
             circles, "_set", lambda conn, cid, slug, state, invited_by=None: self.states.__setitem__(slug, state)
         )
 
-    def execute(self, sql, params=None):  # only remove() reads created_by
+    def execute(self, sql, params=None):  # remove() reads created_by; leave()/remove() revoke links
         creator = self.creator
+        if "circle_invites" in sql:
+            self.revoked = getattr(self, "revoked", []) + [params]
 
         class R:
             def fetchone(self):
@@ -129,3 +131,11 @@ def test_only_members_can_make_a_link(monkeypatch) -> None:
     m.install(monkeypatch)
     with pytest.raises(circles.CircleRefused):
         circles.make_link(m, "jordan", "c")
+
+
+def test_leaving_or_being_removed_turns_off_your_links(monkeypatch) -> None:
+    m = Members({"sam": "active", "maya": "active", "jordan": "active"})
+    m.install(monkeypatch)
+    circles.leave(m, "maya", "c")
+    circles.remove(m, "sam", "c", "jordan")
+    assert m.revoked == [("c", "maya"), ("c", "jordan")]
