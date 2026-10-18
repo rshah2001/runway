@@ -123,8 +123,7 @@ def repay_part(
     ).fetchone()
     if left is None:
         return None
-    n = conn.execute("SELECT count(*) AS n FROM bridges WHERE part_of = %s", (bridge_id,)).fetchone()["n"]
-    part_id = f"{bridge_id}-p{n + 1}"
+    part_id = f"{bridge_id}-p{part_count(conn, bridge_id) + 1}"
     conn.execute(
         """INSERT INTO bridges (id, borrower_slug, lender_slug, amount, reason, status, mode, shortfall_date,
                                 due_date, created_at, funded_at, repaid_at, approval_channel, borrower_floor,
@@ -136,6 +135,11 @@ def repay_part(
         {"part": part_id, "amt": amount, "t": t_id, "d": d_id, "id": bridge_id},
     )
     return bridge(conn, part_id)
+
+
+def part_count(conn: psycopg.Connection, bridge_id: str) -> int:
+    """How many part payments of this bridge have been recorded (rows with part_of = it)."""
+    return conn.execute("SELECT count(*) AS n FROM bridges WHERE part_of = %s", (bridge_id,)).fetchone()["n"]
 
 
 def insert_bridge(conn: psycopg.Connection, b: Row) -> None:

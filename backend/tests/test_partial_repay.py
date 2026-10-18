@@ -32,6 +32,7 @@ def parts(wire, monkeypatch: pytest.MonkeyPatch):  # noqa: F811 — the imported
     def install(store: PartStore, nessie: Nessie) -> None:
         wire(store, nessie)
         monkeypatch.setattr(safety_net.safety_repo, "repay_part", store.repay_part)
+        monkeypatch.setattr(safety_net.safety_repo, "part_count", lambda conn, bridge_id: len(store.parts))
 
     return install
 
@@ -114,3 +115,15 @@ def test_repay_now_says_how_much_could_go_back_without_going_under_the_cushion(b
     with pytest.raises(safety_net.RepayRefused, match="You could pay \\$65 now"):
         safety_net.repay_now("bridge-1", D(100))
     assert store.bridge["amount"] == D(100) and store.journal == {}  # nothing claimed, nothing journalled
+
+
+def test_a_full_repayment_that_landed_is_never_paid_again_even_if_the_bridge_reopened(parts) -> None:
+    """More successful attempts than recorded parts: a whole repayment already went through."""
+    store, nessie = PartStore("active"), Nessie()
+    parts(store, nessie)
+    store.journal["repay:bridge-1:1"] = dict(
+        key="repay:bridge-1:1", kind="repay", ref="bridge-1", amount=100.0, state="succeeded"
+    )
+    sends = len(nessie.sent)
+    assert safety_net._pay_back(store.bridge, early=True, amount=D(40)) is None
+    assert len(nessie.sent) == sends  # nothing sent

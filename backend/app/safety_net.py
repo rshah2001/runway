@@ -691,8 +691,13 @@ def _pay_back(b: dict, *, early: bool, amount: Decimal | None = None) -> dict | 
             conn.rollback()
             return None
         attempts = journal_repo.for_ref(conn, b["id"], "repay")
-        # an earlier part payment that succeeded is settled; anything still open may have landed
-        if any(a["state"] not in ("not_made", "succeeded") for a in attempts):
+        # anything still open may have landed. A succeeded attempt is fine only as an earlier part payment,
+        # and every one of those left a part row: more successes than parts means a full repayment already
+        # landed on a bridge that's somehow still open, so never pay again
+        landed = sum(a["state"] == "succeeded" for a in attempts)
+        if any(a["state"] not in ("not_made", "succeeded") for a in attempts) or (
+            landed and landed > safety_repo.part_count(conn, b["id"])
+        ):
             conn.rollback()  # an earlier attempt may have landed: reconcile it, never pay again
             log.error("repayment of %s has an unsettled earlier attempt; not sending", b["id"])
             return None
