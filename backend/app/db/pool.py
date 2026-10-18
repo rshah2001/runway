@@ -17,8 +17,11 @@ def _get_pool() -> ConnectionPool:
     if _pool is None:
         _pool = ConnectionPool(
             get_settings().database_url,
-            min_size=1,
-            max_size=5,
+            # several open screens each load 3-6 endpoints at once, plus the background safety-net pass:
+            # 5 connections ran out (PoolTimeout) and requests then waited 30 s and failed
+            min_size=2,
+            max_size=15,
+            timeout=8,  # if it's ever exhausted again, fail fast instead of hanging a screen for 30 s
             kwargs={"row_factory": dict_row, "connect_timeout": 10},
             open=True,
         )
