@@ -40,9 +40,10 @@
   svg#curve { position: absolute; inset: 0; overflow: visible; }
   .panel { position: absolute; border-radius: 36px; opacity: 0; border: 1px solid rgba(255,255,255,.14);
     background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.02)); backdrop-filter: blur(10px); }
-  .mark { position: absolute; left: 0; width: 100%; top: 400px; display: flex; justify-content: center; align-items: center; gap: 34px; opacity: 0; }
-  .mark .word { font-family: 'Barlow Condensed'; font-weight: 600; font-size: 150px; letter-spacing: .32em; margin-right: -.32em; }
-  .tag { top: 640px; font-size: 58px; font-weight: 500; color: #e9edf0; }
+  .mark { position: absolute; left: 0; width: 100%; top: 190px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 40px; opacity: 0; }
+  .badge { border-radius: 40px; overflow: hidden; box-shadow: 0 40px 120px rgba(105,32,85,.45), 0 0 0 1px rgba(255,255,255,.14); line-height: 0; }
+  .mark .word { font-family: 'Barlow Condensed'; font-weight: 600; font-size: 120px; letter-spacing: .32em; margin-right: -.32em; }
+  .tag { top: 760px; font-size: 58px; font-weight: 500; color: #e9edf0; }
   .hud { position: fixed; right: 16px; bottom: 12px; font-size: 13px; color: #555; z-index: 9; font-family: 'Barlow'; }
   .start { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; background: #000; cursor: pointer; }
   .start div { text-align: center; color: #8a939b; font-size: 18px; line-height: 1.8; }
@@ -88,7 +89,20 @@
   </svg>
 
   <div class="mark" id="mark">
-    <svg width="120" height="78" viewBox="0 0 34 22" aria-hidden="true"><path id="swoosh" d="M2 20 C 12 18, 22 12, 32 2" stroke="#ff6b5e" stroke-width="3.4" fill="none" stroke-linecap="round" /></svg>
+    <div class="badge">
+      <svg viewBox="0 0 340 160" width="476" height="224" aria-label="Runway logo">
+        <defs>
+          <linearGradient id="Lbg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#12366d"/><stop offset=".5" stop-color="#20112e"/><stop offset="1" stop-color="#692055"/></linearGradient>
+          <linearGradient id="Lline"><stop stop-color="#fff"/><stop offset=".54" stop-color="#fb625b"/><stop offset=".75" stop-color="#fb625b"/><stop offset=".76" stop-color="#42e1a1"/></linearGradient>
+          <filter id="Lglow"><feGaussianBlur stdDeviation="4"/></filter>
+        </defs>
+        <rect width="340" height="160" fill="url(#Lbg)"/>
+        <path id="logoGlow" d="M15 50 C75 48 67 86 135 82 S180 142 223 130 S238 53 276 56 S320 66 338 40" fill="none" stroke="#bd91ed" opacity=".4" stroke-width="11" filter="url(#Lglow)"/>
+        <path id="logoLine" d="M15 50 C75 48 67 86 135 82 S180 142 223 130 S238 53 276 56 S320 66 338 40" fill="none" stroke="url(#Lline)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M0 118 H340" stroke="#d3badf" stroke-width="1" stroke-dasharray="3 5" opacity=".3"/>
+        <circle id="logoDot" cx="217" cy="131" r="5" fill="#fc615c" opacity="0"/>
+      </svg>
+    </div>
     <div class="word" id="word">RUNWAY</div>
   </div>
   <div class="line tag" id="tag">See the dip before it happens.</div>
@@ -160,12 +174,14 @@
       el.style.transform = 'translate(' + ((k % 2 ? -1 : 1) * 260 * (pv - .5)) + 'px,' + (-120 * (pv - .5)) + 'px) scale(' + (.85 + .3 * pv) + ')';
     });
 
-    // the wordmark: the swoosh draws, the letters settle from wide tracking
+    // the logo: the badge arrives and its curve draws itself (white → coral → green), then the wordmark settles
     var m = out(seg(t, 13.4, 15));
     $('mark').style.opacity = m; $('mark').style.filter = 'blur(' + (1 - m) * 16 + 'px)';
     $('mark').style.transform = 'scale(' + (1.12 - .12 * m) + ')';
     $('word').style.letterSpacing = (0.32 + 0.5 * (1 - m)) + 'em';
-    draw($('swoosh'), out(seg(t, 13.6, 14.8)));
+    var lp = ease(seg(t, 13.6, 15.2));
+    draw($('logoLine'), lp); draw($('logoGlow'), lp);
+    $('logoDot').setAttribute('opacity', out(seg(t, 14.4, 14.8)));
     title($('tag'), t, 15.6, 16.8, 99, 100);
 
     // dust
