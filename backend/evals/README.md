@@ -159,12 +159,15 @@ another model:
   sounds casual (uses contractions), no emoji when money is tight and at most one when it's fine.
 - **Direct and classic voices** (30–49, 50+): no Gen Z words, no emoji.
 
-| Voice | Money | Before (old prompt) | After |
-|---|---|---|---|
-| Gen Z | tight | 1/3 — read like a bank letter | **3/3** |
-| Gen Z | fine | 2/3 — piled on slang | **3/3** |
-| Direct | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
-| Classic | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 |
+| Voice | Money | Before (old prompt) | After | Re-run after the privacy prompt (live key, Oct 17 night) |
+|---|---|---|---|---|
+| Gen Z | tight | 1/3 — read like a bank letter | **3/3** | 3/3 |
+| Gen Z | fine | 2/3 — piled on slang | **3/3** | **2/3** — one reply too plain ("casual" rule) |
+| Direct | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 | 3/3 · 3/3 |
+| Classic | tight / fine | 3/3 · 3/3 | 3/3 · 3/3 | 3/3 · 3/3 |
+
+The re-run is **17/18**. The miss: *"What subscriptions do I have?"* in the Gen Z voice when money is fine came
+back correct but with no contraction, so it reads a little formal. We kept the rule as it is rather than loosen it.
 
 The old Gen Z prompt said "not Gen Z, no slang" when money was tight and "playful Gen Z, a celebration"
 when it was fine, so the voice flipped between a bank letter and a group chat. The new one keeps one
@@ -191,7 +194,8 @@ Defence in depth, measured layer by layer (Oct 18 seeded data):
 | Privacy guard + Gemini | **15/15** |
 | **Guard OFF** — Gemini alone with its prompt and own-data tools | **15/15** |
 
-**Re-run the two Gemini rows.** They were measured before `--gemini` could tell a Gemini answer from the
+**Re-run on Oct 17 (night) with a working key:** Gemini + guard **15/15**, Gemini with the guard OFF **15/15**,
+with no question falling back to the router — both rows hold. History: these rows were first measured before `--gemini` could tell a Gemini answer from the
 rule-based fallback: `chat()` falls back whenever Gemini errors, so a failing API key scored 15/15 there too
 (the fallback router never holds anyone else's data, so it can't leak). `--gemini` now counts a question
 Gemini didn't answer as a failure and lists it ("N where Gemini didn't answer"); questions the privacy guard

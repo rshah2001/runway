@@ -226,7 +226,9 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
    (`app/src/components/login/account-menu.tsx`): "Hide my balance" is **on-device only** (store it locally,
    blur/replace amounts on your own screens) and must say so; "Discreet notifications" is a real setting:
    `api.setPreferences({ discreet_notifications })`, read from `api.me().discreet_notifications` (default on).
-4. **My Circles cards** (API is live): `api.circles()` → `[{ id, name, made_by_me, my_state: 'invited'|'active',
+4. ~~**My Circles cards**~~ — **done by Claude** (Circles → My circles: cards, invite links, add / remove /
+   leave / accept / decline, Start a circle). Restyle it if you like (`MyCirclesManager`/`CircleCard` in
+   `app/circles.tsx`), but keep the behaviour. Original brief, for reference — (API is live): `api.circles()` → `[{ id, name, made_by_me, my_state: 'invited'|'active',
    members: [{ slug, name, state }] }]`; `api.createCircle(name)`; `api.circleAction(id, 'invite'|'remove'|
    'accept'|'decline'|'leave', slug?)`. Show a card per circle (name, member avatars, "Invited" state with
    Accept/Decline). Only active members invite; only the creator removes. Membership never shows money —
@@ -263,3 +265,8 @@ the backend money path (`safety_net.py`, `guardian.py`, `agreements.py`, `db/`, 
 4. ✅ Demo 6: "Payday arrives / is late" (Circles, demo accounts) — real paycheck deposit → real safe-repayment check
 5. ✅ A `support_decisions` record of every decision and its reasons (audit only)
 6. ✅ Alex + simultaneous shortfalls (network-wide split, fewest-options-first). Priya / Leo: not added (time)
+7. ✅ Send / request between connected people (Circles → Send or request; Requests for you; You asked)
+8. ✅ Activity timeline (help stays after repayment; sends and requests) + auto-refresh every 30 s
+9. ✅ Manage circles: My circles screen + invite links (`/join/<token>`, 7 days, creator turns off; removed people can't return)
+10. ✅ DB pool fix (5 → 15, fail fast) — the cause of 500s and the agent falling back to rules
+11. ✅ Gemini evals re-run on the live key: privacy 15/15 (guard on and off), tone 17/18
