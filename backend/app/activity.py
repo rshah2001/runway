@@ -149,11 +149,20 @@ def item(b: dict, viewer: str, *, my_limit: float | None, my_floor: float) -> Ac
 def _bridge_items(b: dict, viewer: str, *, my_limit: float | None, my_floor: float) -> list[ActivityItem]:
     """A bridge is a story in two parts: the help (when it was sent) and, later, the repayment. Both stay
     in the timeline — the original help never disappears once it's paid back."""
+    if b.get("part_of"):  # a part payment: only the repayment; the help itself is on the bridge it came from
+        back = item(b, viewer, my_limit=my_limit, my_floor=my_floor)
+        return [back.model_copy(update={"id": f"{b['id']}:back", "why": "Paid back early, in part, by choice."})]
     if b["status"] != "repaid":
-        return [item(b, viewer, my_limit=my_limit, my_floor=my_floor)]
+        open_item = item(b, viewer, my_limit=my_limit, my_floor=my_floor)
+        if b.get("still_out") is not None:  # part of it is already back
+            open_item = open_item.model_copy(
+                update={"status": f"{_money(b['still_out'])} still out · {open_item.status}"}
+            )
+        return [open_item]
     sent = item({**b, "status": "active", "repaid_at": None}, viewer, my_limit=my_limit, my_floor=my_floor)
     sent = sent.model_copy(update={"id": f"{b['id']}:out", "status": "Paid back"})
-    back = item(b, viewer, my_limit=my_limit, my_floor=my_floor).model_copy(update={"id": f"{b['id']}:back"})
+    last = {**b, "amount": b["still_out"]} if b.get("still_out") is not None else b  # after earlier parts
+    back = item(last, viewer, my_limit=my_limit, my_floor=my_floor).model_copy(update={"id": f"{b['id']}:back"})
     return [sent, back]
 
 
@@ -222,11 +231,22 @@ def feed(
     requests: list[dict] = (),
 ) -> list[ActivityItem]:
     """Everything that involves `viewer`, newest first. `limits`: their current limit per person they support."""
+    paid_parts: dict[str, float] = {}  # the help was the open amount plus every part already paid back
+    for b in bridges:
+        if b.get("part_of"):
+            paid_parts[b["part_of"]] = paid_parts.get(b["part_of"], 0.0) + float(b["amount"])
     items = [
         i
         for b in bridges
         if viewer in (b["borrower_slug"], b["lender_slug"])
-        for i in _bridge_items(b, viewer, my_limit=limits.get(b["borrower_slug"]), my_floor=my_floor)
+        for i in _bridge_items(
+            {**b, "amount": float(b["amount"]) + paid_parts[b["id"]], "still_out": float(b["amount"])}
+            if b["id"] in paid_parts
+            else b,
+            viewer,
+            my_limit=limits.get(b["borrower_slug"]),
+            my_floor=my_floor,
+        )
     ]
     items += people_items(viewer, list(payments), list(requests))
     return sorted(items, key=lambda i: (i.date, i.id), reverse=True)

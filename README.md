@@ -79,8 +79,8 @@ Full method and tables: [`backend/evals/README.md`](backend/evals/README.md) · 
 
 | What | Result |
 |---|---|
-| **Agent** (live Gemini, 58 questions across 3 voices: afford / fix it / subscriptions / forecast / safety net / peer-to-peer / needs vs. could-wait) | **100%** tool selection · **97%** correct answers · **100%** of $ figures traceable to the engine · 0 API errors |
-| **Agent, offline baseline** (58 questions incl. peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
+| **Agent** (live Gemini, 63 questions across 3 voices: afford / fix it / subscriptions / forecast / safety net / peer-to-peer / needs vs. could-wait / part repayments, circles and the AI-actions switch) | **100%** tool selection · **97%** correct answers · **100%** of $ figures traceable to the engine · 0 API errors |
+| **Agent, offline baseline** (63 questions incl. part repayments, circles, the AI-actions switch, peer-to-peer, safety net, weekly brief, needs vs. could-wait) | 100% / 100% / 100% |
 | **Forecast backtest** (learn months 1–3, predict month 4, 18 folds) | daily balance error **$138**: −66% vs ignoring everyday spending, −16% vs repeating last month |
 | **Learning curve** (only 30 days of history) | error **$2,737 → $206** with provisional paydays |
 | **Range calibration** (cautious end beaten, target 5%) | **12–43% → 4–11%** on held-out IBM card users and a real UK account it never trained on |

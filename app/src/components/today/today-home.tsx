@@ -285,7 +285,7 @@ export function Fix({ f, me, approved, compact }: { f: Forecast; me: Me | null; 
     setAsking(true);
     setFailed(false);
     try {
-      const r = await api.chat('Fix it');
+      const r = await api.fix();
       const a = r.pending_action;
       if (!a) {
         setFailed(true);

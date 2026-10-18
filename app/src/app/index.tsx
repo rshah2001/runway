@@ -231,7 +231,7 @@ function RunwayCard({ f, takeoffKey }: { f: Forecast; takeoffKey: number }) {
     setAsking(true);
     setAskError(false);
     try {
-      const r = await api.chat('Fix it');
+      const r = await api.fix();
       setProposal(r.pending_action);
       if (!r.pending_action) setAskError(true);
     } catch {

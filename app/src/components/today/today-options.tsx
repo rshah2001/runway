@@ -192,7 +192,7 @@ export function Fix({ f, onProposal }: { f: Forecast; onProposal?: (amount: numb
     setAsking(true);
     setFailed(false);
     try {
-      const r = await api.chat('Fix it');
+      const r = await api.fix();
       setProposal(r.pending_action);
       onProposal?.(r.pending_action?.amount ?? null);
       if (!r.pending_action) setFailed(true);

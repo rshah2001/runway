@@ -17,7 +17,8 @@ import time
 from datetime import date
 from typing import Any
 
-from app.agent import privacy, tools, voice
+from app.agent import actions, privacy, tools, voice
+from app.agent.actions import details as action_details  # noqa: F401 — main.py's approve route reads it
 from app.agent.tools import (  # noqa: F401 — main.py reads pending actions from here
     PENDING,
     p2p_details,
@@ -109,6 +110,16 @@ Your own support (always from the user's own side):
 - "Pause my support for X": call propose_pause_support. Say plainly that nothing has changed until they
   approve, and that anything already out still comes back as agreed.
 
+Doing things for the user (moving money, sending, asking, paying back, circles, invites, links):
+- Actions are {actions} for this user.
+- Every action tool only proposes: say plainly that nothing has happened until they approve it. For a part
+  payment with pay_back, say how much stays out. Never say something happened before it's approved.
+- If a tool returns error "no_permission", tell them in your voice that you don't have permission to do that
+  for them, and give both ways forward from the tool: turn it on (turn_it_on) or do it themselves
+  (or_do_it_yourself). Don't argue or try another tool. You can't turn the setting on yourself.
+- Circles and people come from the tools: if a tool can't find a circle or a person, ask which one, using the
+  names it returned. Never invent a circle, a person or an amount.
+
 Weekly brief:
 - For "brief me" or "how's my week", call weekly_brief and write 3-4 short sentences, most important first:
   the week's low point and whether it's safe, what's coming (paycheck, bills, renewals), and spending vs the
@@ -154,6 +165,16 @@ def chat(
     return _chat_with_rules(message, today, persona)
 
 
+ACTIONS_ON = "ON (they let you set things up; each one still waits for their approval)"
+ACTIONS_OFF = "OFF (they haven't given you permission: any action tool will say so)"
+
+
+def fix(*, persona: str = engine.DEFAULT_PERSONA, today: date | None = None) -> ChatResponse:
+    """The Fix it button: the savings transfer that covers the dip, straight from the engine. The person
+    tapped it themselves, so it skips Gemini and the AI-actions switch; they still approve the card."""
+    return _route_fix(None, None, today or sources.local_today(), persona)
+
+
 def _names(persona: str) -> tuple[str, list[str]]:
     """(the user's first name, everyone's first names) — for the privacy guard."""
     from app import data  # local: data imports the agent's neighbours
@@ -173,7 +194,12 @@ def _chat_with_gemini(
 ) -> ChatResponse:
     now = engine.forecast(start=today, persona=persona)  # the tone dial: set before any tool runs
     status = engine.status(now.low.balance, now.safe_floor)
-    system = SYSTEM_PROMPT.format(voice=voice.VOICES[tone], today=tools.day(today) + f", {today.year}", status=status)
+    system = SYSTEM_PROMPT.format(
+        voice=voice.VOICES[tone],
+        today=tools.day(today) + f", {today.year}",
+        status=status,
+        actions=ACTIONS_ON if actions.allowed(persona) else ACTIONS_OFF,
+    )
     request = {
         "model": MODEL,
         "tools": tools.DECLARATIONS,
@@ -313,6 +339,8 @@ def _p2p_memo(text: str, split: bool) -> str | None:
 
 def _route_p2p_request(text: str, amount: float | None, today: date, persona: str) -> ChatResponse:
     """'Split dinner $60 with Alex' / 'ask Alex for $45': propose one request, never send it."""
+    if not actions.allowed(persona):
+        return _not_allowed("request_money")
     names = _names_in(text)
     split = "split" in text
     ways = WAYS.search(text)
@@ -396,7 +424,19 @@ def _route_room(text: str, today: date, persona: str) -> ChatResponse:
     return ChatResponse(reply=reply, tool_calls=["room_to_help"])
 
 
+def _not_allowed(tool: str) -> ChatResponse:
+    """The router's answer when the user hasn't let Ask Runway set things up."""
+    r = actions.no_permission(tool)
+    reply = (
+        f"I don't have permission to do that for you. You can turn it on in {r['turn_it_on']}, "
+        f"or do it yourself in {r['or_do_it_yourself']}."
+    )
+    return ChatResponse(reply=reply, tool_calls=[tool])
+
+
 def _route_pause(text: str, today: date, persona: str) -> ChatResponse:
+    if not actions.allowed(persona):
+        return _not_allowed("propose_pause_support")
     r = tools.propose_pause_support(_supported_name(text, persona), persona=persona, today=today)
     if not r["supports_them"]:
         who = " and ".join(r["people_you_support"]) or "nobody yet"
@@ -487,6 +527,15 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
         return ChatResponse(reply="I can't approve or decline that from here. Open the Family screen to decide.")
     if PAUSE.search(text):
         return _route_pause(text, today, persona)
+    # "pay Sam back $40" is an action; "when do I pay Sam back?" is a question for the reads below
+    if not QUESTION.match(text) and (tool := _other_action(text)) is not None:
+        # Gemini sets these up; the router only knows whether it may, and where to do it by hand
+        if not actions.allowed(persona):
+            return _not_allowed(tool)
+        if tool in ROUTED:
+            return ROUTED[tool](text, today, persona)
+        where = actions.DO_IT_YOURSELF[tool]
+        return ChatResponse(reply=f"I can't set that one up right now. You can do it in {where}.", tool_calls=[tool])
     if HISTORY.search(text):
         return _route_history(today, persona)
     if ROOM.search(text):
@@ -506,23 +555,119 @@ def _route(text: str, today: date, persona: str) -> ChatResponse:
         return _route_who_owes_me(today, persona)
 
     if re.search(r"\b(fix|cover|top up|move money|transfer)\b", text):
-        r = tools.propose_transfer(amount, when, persona=persona, today=today)
-        if not r["needed"]:
-            reply = f"No fix needed — your lowest balance is {r['lowest_balance']} on {r['lowest_day']}."
-            return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
-        if not r["possible"]:
-            reply = f"You'd need {r['transfer_needed']}, but savings only has {r['savings_balance']}."
-            return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
-        reply = (
-            f"I can move {r['transfer']} from Savings to Checking, which keeps your lowest day "
-            f"({r['lowest_day']}) at {r['lowest_balance_after']}. Approve it?"
-        )
-        return ChatResponse(
-            reply=_with_confidence(reply, r),
-            tool_calls=["propose_transfer"],
-            pending_action=tools.PENDING[r["action_id"]],
-        )
+        if not actions.allowed(persona):
+            return _not_allowed("propose_transfer")
+        return _route_fix(amount, when, today, persona)
+    return _route_reads(text, amount, when, today, persona)
 
+
+# the other things Ask Runway can set up, in the words people use for them (checked in this order)
+OTHER_ACTIONS = [
+    ("pay_back", re.compile(r"\b(?:pay (?:\w+ )?back|repay)\b")),
+    ("resume_support", re.compile(r"\b(?:resume|turn (?:my )?support (?:for \w+ )?back on|restart my support)\b")),
+    ("share_circle_link", re.compile(r"\b(?:invite link|share (?:a |the )?link|link to join)\b")),
+    ("create_circle", re.compile(r"\b(?:create|make|start|new) (?:a |an )?(?:new )?circle\b")),
+    ("answer_circle_invite", re.compile(r"\b(?:accept|join) (?:the |my )?(?:invite|invitation)|\bjoin \w+ circle\b")),
+    ("invite_to_circle", re.compile(r"\b(?:invite|add) \w+ (?:to|into)\b")),
+    ("remove_from_circle", re.compile(r"\b(?:remove|kick) \w+ (?:from|out)\b")),
+    ("leave_circle", re.compile(r"\bleave (?:the |my )?[\w ]*circle\b")),
+    ("send_money", re.compile(r"\bsend (?:\$|\w+ \$|money)")),
+]
+
+
+QUESTION = re.compile(r"(?:when|what|how|why|who|did|do|does|is|are|was|will|can i see)\b")
+
+
+def _other_action(text: str) -> str | None:
+    return next((tool for tool, pattern in OTHER_ACTIONS if pattern.search(text)), None)
+
+
+def _first_name_in(text: str, names: list[str]) -> str:
+    return next((n for n in names if re.search(rf"\b{re.escape(n.lower())}\b", text)), "")
+
+
+def _route_pay_back(text: str, today: date, persona: str) -> ChatResponse:
+    """'Pay Sam back $40' (part) or 'pay Sam back' (all of it): one proposal, approved in the app."""
+    from app import safety_views
+
+    lenders = [b.lender_name for b in safety_views.summary(persona).borrowed]
+    r = actions.pay_back(_first_name_in(text, lenders), _amount_in(text), persona=persona, today=today)
+    if "nothing_out_from" in r:
+        owed = " and ".join(f"{x['amount']} to {x['to']}" for x in r["you_owe"]) or "nothing right now"
+        return ChatResponse(reply=f"Who should I pay back? You owe {owed}.", tool_calls=["pay_back"])
+    if "error" in r:
+        return ChatResponse(
+            reply=f"You have {r['out_now']} out from {r['owed_to']}. {r['error']}", tool_calls=["pay_back"]
+        )
+    if not r["goes_through_now"]:
+        reply = (
+            f"Paying {r['to']} back {r['asked_to_pay']} now would take you under the amount you keep; the most you "
+            f"could pay right now is {r['most_you_can_pay_now']}. What's out goes back on payday as usual."
+        )
+        return ChatResponse(reply=reply, tool_calls=["pay_back"])
+    reply = f"I can pay {r['to']} back {r['paying']} now"
+    reply += f"; {r['still_out_after']} stays out until payday." if r["still_out_after"] != "$0.00" else "."
+    reply += " Nothing moves until you approve it."
+    return ChatResponse(reply=reply, tool_calls=["pay_back"], pending_action=tools.PENDING[r["action_id"]])
+
+
+def _route_send(text: str, today: date, persona: str) -> ChatResponse:
+    """'Send Jordan $20 for gas': one proposal to someone in your circles."""
+    from app import safety_views
+
+    people = [p.name for p in safety_views.people_for(persona).people]
+    amount = _amount_in(text)
+    if amount is None:
+        return ChatResponse(reply="How much should I send?", tool_calls=["send_money"])
+    memo = FOR_WHAT.search(text)
+    r = actions.send_money(
+        _first_name_in(text, people), amount, memo.group(1) if memo else "", persona=persona, today=today
+    )
+    if "not_connected" in r:
+        who = ", ".join(r["people_you_can_send_to"]) or "nobody yet"
+        return ChatResponse(reply=f"Who should I send it to? You can send to {who}.", tool_calls=["send_money"])
+    reply = f"I can send {r['to']} {r['amount']} from your checking. Nothing moves until you approve it."
+    return ChatResponse(reply=reply, tool_calls=["send_money"], pending_action=tools.PENDING[r["action_id"]])
+
+
+CIRCLE_NAME = re.compile(r"circle (?:called|named) ['\"]?([a-z0-9][a-z0-9 '&-]{0,39}?)['\"]?[.!?]*$")
+
+
+def _route_create_circle(text: str, today: date, persona: str) -> ChatResponse:
+    """'Create a circle called Roommates'."""
+    m = CIRCLE_NAME.search(text)
+    if m is None:
+        return ChatResponse(reply="What should the circle be called?", tool_calls=["create_circle"])
+    r = actions.create_circle(m.group(1).strip().title(), persona=persona, today=today)
+    reply = f'I can create the circle "{r["circle"]}" with you in it. Nothing happens until you approve it.'
+    return ChatResponse(reply=reply, tool_calls=["create_circle"], pending_action=tools.PENDING[r["action_id"]])
+
+
+ROUTED = {"pay_back": _route_pay_back, "send_money": _route_send, "create_circle": _route_create_circle}
+
+
+def _route_fix(amount: float | None, when: str | None, today: date, persona: str) -> ChatResponse:
+    """Propose the savings transfer that covers the dip (or say none is needed)."""
+    r = tools.propose_transfer(amount, when, persona=persona, today=today)
+    if not r["needed"]:
+        reply = f"No fix needed — your lowest balance is {r['lowest_balance']} on {r['lowest_day']}."
+        return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
+    if not r["possible"]:
+        reply = f"You'd need {r['transfer_needed']}, but savings only has {r['savings_balance']}."
+        return ChatResponse(reply=_with_confidence(reply, r), tool_calls=["propose_transfer"])
+    reply = (
+        f"I can move {r['transfer']} from Savings to Checking, which keeps your lowest day "
+        f"({r['lowest_day']}) at {r['lowest_balance_after']}. Approve it?"
+    )
+    return ChatResponse(
+        reply=_with_confidence(reply, r),
+        tool_calls=["propose_transfer"],
+        pending_action=tools.PENDING[r["action_id"]],
+    )
+
+
+def _route_reads(text: str, amount: float | None, when: str | None, today: date, persona: str) -> ChatResponse:
+    """Questions that only read: a purchase check, subscriptions, or the forecast."""
     if amount is not None:
         r = tools.simulate_purchase(amount, when, persona=persona, today=today)
         if r["verdict"] == "safe":

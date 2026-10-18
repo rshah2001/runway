@@ -37,6 +37,7 @@ from app.schemas import (
     CirclePerson,
     CircleView,
     DirectoryPerson,
+    FixRequest,
     Forecast,
     InboxItem,
     JoinPreview,
@@ -53,6 +54,7 @@ from app.schemas import (
     PushStatus,
     PushSubscription,
     Recurring,
+    RepayBridge,
     SafetyDecision,
     SafetyLimit,
     SafetyNetSummary,
@@ -170,6 +172,7 @@ def me(user: OptionalUser, persona: str = PERSONA) -> Me:
             "alerts_only": prefs.setting(persona, "alerts_only"),
             "family_cover": prefs.setting(persona, "family_cover"),
             "discreet_notifications": prefs.setting(persona, "discreet_notifications"),
+            "ai_actions": prefs.setting(persona, "ai_actions"),
         }
     )
 
@@ -205,11 +208,11 @@ def set_safe_floor(req: SetSafeFloor, user: OptionalUser) -> Me:
 
 @app.put("/me/preferences", response_model=Me)
 def set_preferences(req: SetPreferences, user: OptionalUser) -> Me:
-    """Turn alerts-only or family cover on or off (only for yourself)."""
+    """Turn alerts-only, family cover, discreet notifications or AI actions on or off (only for yourself)."""
     from app import prefs
 
     persona = _own_settings(user, req.persona)
-    for name in ("alerts_only", "family_cover", "discreet_notifications"):
+    for name in ("alerts_only", "family_cover", "discreet_notifications", "ai_actions"):
         value = getattr(req, name)
         if value is not None:
             prefs.set_setting(persona, name, value)
@@ -862,15 +865,21 @@ def decline_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
 
 
 @app.post("/safety-net/bridges/{bridge_id}/repay", response_model=Bridge)
-def repay_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
-    """The borrower pays a bridge back early (a real Nessie move back to the lender). Only the
-    borrower can, and never if it would take them under the amount they keep."""
+def repay_bridge(bridge_id: str, user: OptionalUser, req: RepayBridge | None = None) -> Bridge:
+    """The borrower pays a bridge back early (a real Nessie move back to the lender): all of it, or
+    `amount` of it — the rest stays out and goes back on payday. Only the borrower can, and never if
+    it would take them under the amount they keep."""
+    amount = req.amount if req else None
     if not get_settings().live:
         b = next((x for x in safety_views.demo_summary("maya").borrowed if x.id == bridge_id), None)
         if b is None:
             raise HTTPException(409, "That bridge isn't waiting to be paid back.")
         authorize_money(user, b.borrower)
+        if amount is not None and amount < b.amount:
+            return b.model_copy(update={"amount": round(b.amount - amount, 2)})
         return b.model_copy(update={"status": "repaid"})
+    from decimal import Decimal
+
     from app import safety_net
     from app.db import pool, safety_repo
 
@@ -882,7 +891,8 @@ def repay_bridge(bridge_id: str, user: OptionalUser) -> Bridge:
     if not _live_writes():
         raise HTTPException(503, "Real transfers are switched off, so nothing can be paid back right now.")
     try:
-        return safety_views.bridge(safety_net.repay_now(bridge_id))
+        part = None if amount is None else Decimal(str(amount)).quantize(Decimal("0.01"))
+        return safety_views.bridge(safety_net.repay_now(bridge_id, part))
     except safety_net.RepayRefused as e:
         raise HTTPException(409, str(e)) from None
 
@@ -956,8 +966,32 @@ def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
     return agent.chat(req.message, persona=persona_for(user, req.persona))
 
 
+@app.post("/agent/fix", response_model=ChatResponse)
+def agent_fix(req: FixRequest, user: OptionalUser) -> ChatResponse:
+    """The Fix it button on Today: the transfer from savings that covers the dip, as an approval card.
+    It's the person's own tap, not a request to the AI, so it skips Gemini (instant, same numbers) and
+    the "Let Ask Runway set things up" switch. Nothing moves until they approve it."""
+    return agent.fix(persona=persona_for(user, req.persona))
+
+
 _approve_lock = threading.Lock()  # routes run in a thread pool: make check-and-claim atomic
-APPROVABLE_KINDS = ("transfer", "p2p_request", "pause_support")
+APPROVABLE_KINDS = (
+    "transfer",
+    "p2p_request",
+    "pause_support",
+    "resume_support",
+    "person_send",
+    "person_request",
+    "repay",
+    "circle_create",
+    "circle_invite",
+    "circle_remove",
+    "circle_leave",
+    "circle_accept",
+    "circle_decline",
+    "circle_link",
+)
+NO_AMOUNT_KINDS = {"pause_support", "resume_support"} | {k for k in APPROVABLE_KINDS if k.startswith("circle_")}
 
 
 def _execute(action_id: str, action: PendingAction) -> None:
@@ -970,6 +1004,15 @@ def _execute(action_id: str, action: PendingAction) -> None:
             raise data.PersonaNotFound(persona)
         _pause_support(*details)
         return
+    more = agent.action_details(action_id)  # everything else Ask Runway can set up (app/agent/actions.py)
+    if action.kind == "resume_support" and more:
+        _pause_support(persona, more["recipient"], on=True)
+        return
+    if more is not None:
+        from app.agent import execute
+
+        execute.run(action_id, action, persona, more)
+        return
     if action.kind == "p2p_request":
         contact_id, memo = agent.p2p_details(action_id) or ("", "")
         data.p2p_request(persona, contact_id, action.amount or 0, memo)  # as POST /p2p/requests: nothing moves
@@ -977,9 +1020,10 @@ def _execute(action_id: str, action: PendingAction) -> None:
     data.move_savings_to_checking(action.amount or 0, action.description, persona)
 
 
-def _pause_support(supporter: str, recipient: str) -> None:
+def _pause_support(supporter: str, recipient: str, *, on: bool = False) -> None:
     """An approved "pause my support for X" from the chat: keep the supporter's limit, switch it off —
-    exactly what the Circles stepper does at $0, under the same locks. Nothing moves."""
+    exactly what the Circles stepper does at $0, under the same locks. Nothing moves. `on=True` is the
+    approved "turn it back on", at the same limit."""
     if not _live_writes():
         return  # demo mode: the approval is the whole story
     from app import agreements
@@ -989,10 +1033,21 @@ def _pause_support(supporter: str, recipient: str) -> None:
         safety_repo.lock_people(conn, supporter, recipient)
         current = next(iter(safety_repo.limits(conn, lender=supporter, borrower=recipient)), None)
         amount = float(current["limit_amount"]) if current else 0.0
-        safety_repo.set_limit(conn, supporter, recipient, amount, False)
-        agreements.limit_changed(conn, supporter, recipient, amount, False)
-        safety_repo.add_event(conn, supporter, "support_paused", "You paused your support. Turn it back on in Circles.")
+        safety_repo.set_limit(conn, supporter, recipient, amount, on)
+        agreements.limit_changed(conn, supporter, recipient, amount, on)
+        if on:
+            safety_repo.add_event(conn, supporter, "support_resumed", "You turned your support back on.")
+        else:
+            safety_repo.add_event(
+                conn, supporter, "support_paused", "You paused your support. Turn it back on in Circles."
+            )
         conn.commit()
+
+
+def execute_refused() -> type[Exception]:
+    from app.agent.execute import ActionRefused
+
+    return ActionRefused
 
 
 @app.post("/actions/{action_id}/approve", response_model=PendingAction)
@@ -1005,7 +1060,7 @@ def approve(action_id: str, user: OptionalUser) -> PendingAction:
             raise HTTPException(404, "No such pending action")
         if action.status != "awaiting_approval":
             raise HTTPException(409, "Action already processed")  # one approval = one transfer, never a replay
-        no_amount_needed = action.kind == "pause_support"  # a pause moves no money
+        no_amount_needed = action.kind in NO_AMOUNT_KINDS  # a pause or a circle change moves no money
         if action.kind not in APPROVABLE_KINDS or (not no_amount_needed and (not action.amount or action.amount <= 0)):
             raise HTTPException(422, "This action can't be approved")
         action.status = "approved"  # claimed: a concurrent approve now gets 409
@@ -1014,6 +1069,9 @@ def approve(action_id: str, user: OptionalUser) -> PendingAction:
     except (data.PersonaNotFound, data.ContactNotFound) as e:
         action.status = "failed"  # the contact or persona is gone: retrying can't help
         raise HTTPException(404, "Unknown persona or contact") from e
+    except execute_refused() as e:
+        action.status = "awaiting_approval"  # nothing happened; it may work later (e.g. after payday)
+        raise HTTPException(422, str(e)) from e
     except data.TransferNotMade as e:
         action.status = "awaiting_approval"  # nothing moved, so a retry is safe
         log.warning("transfer not made: %s", e)

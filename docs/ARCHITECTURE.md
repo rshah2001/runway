@@ -38,8 +38,10 @@ Expo app — web/iOS/Android (Auth0) ──► FastAPI backend (on Vultr)
 | POST | `/p2p/requests` `{persona, contact_id, amount, memo}` | ask a contact for money (no money moves) |
 | POST | `/p2p/requests/{id}/settle` | the contact pays: real money in; atomic, can't be settled twice |
 | POST | `/agent/chat` `{message}` | `{reply, tool_calls, pending_action?}` |
-| POST | `/actions/{id}/approve` | executes the Nessie call, returns the new forecast |
-| PUT | `/me/preferences` `{alerts_only?, family_cover?}` | your own on/off settings: Today in calm "alerts only" view; family cover off (no relative's money moves to you) |
+| POST | `/agent/fix` `{persona}` | the Fix it button: the savings transfer that covers the dip, as an approval card (no AI, no AI permission needed) |
+| POST | `/actions/{id}/approve` | carries out what Ask Runway proposed (a transfer, a request, sending, paying back, a circle change), once |
+| POST | `/safety-net/bridges/{id}/repay` `{amount?}` | pay a bridge back early: all of it, or part (the rest goes back on payday) |
+| PUT | `/me/preferences` `{alerts_only?, family_cover?, ai_actions?}` | your own on/off settings: Today in calm "alerts only" view; family cover off (no relative's money moves to you); let Ask Runway set things up (each one still approved by you) |
 | GET | `/alerts/key` | the Web Push public key (`null` = phone alerts off on this server) |
 | PUT | `/me/push` `{endpoint, p256dh, auth}` | this browser gets your heads-ups (only browser push services accepted) |
 | POST | `/me/push/test` | sends you your current status now, to check alerts reach the phone |

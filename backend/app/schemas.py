@@ -25,6 +25,7 @@ class Me(BaseModel):
     alerts_only: bool = False  # Today shows one calm line and speaks up only before a dip
     family_cover: bool = True  # False: family limits never move money to this person
     discreet_notifications: bool = True  # lock-screen previews carry no amounts or names
+    ai_actions: bool = False  # Ask Runway may set things up (each one still waits for your approval)
 
 
 class ForecastPoint(BaseModel):
@@ -92,8 +93,26 @@ class Recurring(BaseModel):
 
 class PendingAction(BaseModel):
     id: str
-    # p2p_request: ask a contact to pay you back · pause_support: stop covering someone (the supporter approves)
-    kind: Literal["transfer", "reschedule_bill", "p2p_request", "pause_support"]
+    # p2p_request: ask a contact to pay you back · pause_support / resume_support: stop or restart covering
+    # someone · person_send / person_request: money with someone in your circles · repay: pay a supporter
+    # back, all or part · circle_*: manage circles (circle_link's description gets the link once approved)
+    kind: Literal[
+        "transfer",
+        "reschedule_bill",
+        "p2p_request",
+        "pause_support",
+        "resume_support",
+        "person_send",
+        "person_request",
+        "repay",
+        "circle_create",
+        "circle_invite",
+        "circle_remove",
+        "circle_leave",
+        "circle_accept",
+        "circle_decline",
+        "circle_link",
+    ]
     description: str
     amount: float | None = None
     status: Literal["awaiting_approval", "approved", "declined", "executed", "failed"] = "awaiting_approval"
@@ -292,6 +311,19 @@ class SetPreferences(BaseModel):
     alerts_only: bool | None = None
     family_cover: bool | None = None
     discreet_notifications: bool | None = None
+    ai_actions: bool | None = None
+
+
+class FixRequest(BaseModel):
+    """The Fix it button: whose dip to cover (ignored when signed in)."""
+
+    persona: str = Field("maya", pattern=PERSONA_SLUG)
+
+
+class RepayBridge(BaseModel):
+    """Pay a bridge back early: leave `amount` out to pay everything that's out, or give part of it."""
+
+    amount: float | None = Field(None, ge=1, le=5000)
 
 
 class PushSubscription(BaseModel):

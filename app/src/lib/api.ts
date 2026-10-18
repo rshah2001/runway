@@ -39,7 +39,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(await authHeader()), ...init?.headers },
   });
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    // a 4xx carries the server's plain reason ({"detail": …}); screens read it with reason()
+    const body = res.status < 500 ? await res.text().catch(() => '') : '';
+    throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}${body ? ` ${body}` : ''}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -49,7 +53,7 @@ export const api = {
   setSafeFloor: (amount: number, persona = currentPersona()) =>
     request<Me>('/me/safe-floor', { method: 'PUT', body: JSON.stringify({ persona, amount }) }),
   // alerts-only and family cover: on/off, only for yourself; a field left out stays as it is
-  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean; discreet_notifications?: boolean }, persona = currentPersona()) =>
+  setPreferences: (prefs: { alerts_only?: boolean; family_cover?: boolean; discreet_notifications?: boolean; ai_actions?: boolean }, persona = currentPersona()) =>
     request<Me>('/me/preferences', { method: 'PUT', body: JSON.stringify({ persona, ...prefs }) }),
   me: (persona = currentPersona()) => request<Me>(`/me?persona=${persona}`),
   // heads-up alerts to this phone (lib/push.ts): the server's public key, this browser's subscription, a test
@@ -125,8 +129,10 @@ export const api = {
     request<SafetyDecision[]>(`/safety-net/run${persona ? `?persona=${persona}` : ''}`, { method: 'POST' }),
   approveBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/approve`, { method: 'POST' }),
   declineBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/decline`, { method: 'POST' }),
-  // the borrower pays a bridge back early (409 with a plain reason if it isn't safe or isn't out)
-  repayBridge: (id: string) => request<Bridge>(`/safety-net/bridges/${id}/repay`, { method: 'POST' }),
+  // the borrower pays a bridge back early: all of it, or `amount` of it (409 with a plain reason if it isn't
+  // safe or isn't out); after a part payment the bridge comes back with what's still out
+  repayBridge: (id: string, amount?: number) =>
+    request<Bridge>(`/safety-net/bridges/${id}/repay`, { method: 'POST', ...(amount ? { body: JSON.stringify({ amount }) } : {}) }),
   // demo controls: signed-in demo accounts only (Maya, Jordan, Sam)
   demoReset: () => request<DemoStatus>('/demo/reset', { method: 'POST' }),
   demoStatus: () => request<DemoStatus>('/demo/status'),
@@ -137,6 +143,9 @@ export const api = {
   // the agent answers with this persona's numbers, in the voice for their age
   chat: (message: string, persona = currentPersona()) =>
     request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),
+  // the Fix it button: the savings transfer that covers the dip, without the AI (instant; no AI permission needed)
+  fix: (persona = currentPersona()) =>
+    request<ChatResponse>('/agent/fix', { method: 'POST', body: JSON.stringify({ persona }) }),
   approve: (actionId: string) => request<PendingAction>(`/actions/${actionId}/approve`, { method: 'POST' }),
 };
 

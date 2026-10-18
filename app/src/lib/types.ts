@@ -16,6 +16,7 @@ export type Me = {
   alerts_only?: boolean; // Today shows one calm line and speaks up only before a dip (older servers: absent)
   family_cover?: boolean;
   discreet_notifications?: boolean; // lock-screen previews carry no amounts or names // false: family limits never move money to this person
+  ai_actions?: boolean; // Ask Runway may set things up (each one still waits for approval); older servers: absent
 };
 
 export type ForecastPoint = {
@@ -69,7 +70,12 @@ export type Recurring = {
 
 export type PendingAction = {
   id: string;
-  kind: 'transfer' | 'reschedule_bill' | 'p2p_request' | 'pause_support'; // p2p_request: ask a contact to pay you back
+  // p2p_request: ask a contact to pay you back · person_*: money with someone in your circles · repay: pay a
+  // supporter back, all or part · circle_*: manage circles (circle_link's description has the link once approved)
+  kind:
+    | 'transfer' | 'reschedule_bill' | 'p2p_request' | 'pause_support' | 'resume_support'
+    | 'person_send' | 'person_request' | 'repay'
+    | 'circle_create' | 'circle_invite' | 'circle_remove' | 'circle_leave' | 'circle_accept' | 'circle_decline' | 'circle_link';
   description: string;
   amount: number | null;
   status: 'awaiting_approval' | 'approved' | 'declined' | 'executed' | 'failed'; // failed = check with the bank, never retry

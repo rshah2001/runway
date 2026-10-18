@@ -92,8 +92,23 @@ Built (`app/auth0_ciba.py`): over-limit approvals go to the supporter's phone wh
 `AUTH0_CIBA_CLIENT_SECRET` and `AUTH0_CIBA_USERS` are set and the supporter enrolled in Auth0 Guardian.
 Without them, approvals happen in the app.
 
+## Paying back part of it
+
+The person who was covered can pay back any amount from $1 up to what's out, any time before payday
+(Circles → Pay back, or "pay Sam back $40" to Ask Runway). Same rule as paying it all back: their checking
+must stay at or above what they keep, or it's refused with the most they could pay right now. The rest stays
+out and goes back on payday as usual.
+
+How it's stored, so every "what's still out" sum stays right without changing them: the open bridge's
+amount drops by the part paid, and the part becomes its own closed `repaid` row with `part_of` = the bridge.
+It goes through the same claim → journal → Nessie → settle path as a full repayment (`repay:<bridge>:<n>`
+keys); a part that certainly moved nothing leaves the bridge exactly as it was, and an unclear one is
+reconciled as a part, never as the whole bridge. The activity timeline shows the original help once, each
+part paid back, and what's still out.
+
 ## Limits (said out loud)
 
 A prototype on the Nessie sandbox: not production banking, no regulatory compliance, no guaranteed
-repayment, no credit underwriting. No partial repayment. A top-up after a partially funded decision waits
-for the next pass once the open bridges settle.
+repayment, no credit underwriting. Payday repays whatever is still out in full (no automatic part
+payments on payday). A top-up after a partially funded decision waits for the next pass once the open
+bridges settle.

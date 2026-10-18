@@ -678,23 +678,32 @@ def _repay_floor(conn, b: dict) -> Decimal:
     return now if then is None else min(now, Decimal(str(then)))
 
 
-def _pay_back(b: dict, *, early: bool) -> dict | None:
+def _pay_back(b: dict, *, early: bool, amount: Decimal | None = None) -> dict | None:
     """Move a bridge's money borrower → lender. Claims the bridge first (active / repay_failed →
     repaying) and journals the attempt in the same transaction, so on-time and early repayments can
-    never both happen. A retry is only ever made after an attempt that certainly moved nothing."""
+    never both happen. A retry is only ever made after an attempt that certainly moved nothing.
+    `amount` smaller than the bridge pays part of it: the rest stays out, in the status it had."""
+    part = amount is not None and Decimal(amount) < Decimal(b["amount"])
+    was = b["status"]  # where a part payment returns the bridge
     with pool.connection() as conn:
         claimed = safety_repo.transition(conn, b["id"], ("active", "repay_failed"), "repaying")
         if claimed is None:
             conn.rollback()
             return None
         attempts = journal_repo.for_ref(conn, b["id"], "repay")
-        if any(a["state"] != "not_made" for a in attempts):
+        # anything still open may have landed. A succeeded attempt is fine only as an earlier part payment,
+        # and every one of those left a part row: more successes than parts means a full repayment already
+        # landed on a bridge that's somehow still open, so never pay again
+        landed = sum(a["state"] == "succeeded" for a in attempts)
+        if any(a["state"] not in ("not_made", "succeeded") for a in attempts) or (
+            landed and landed > safety_repo.part_count(conn, b["id"])
+        ):
             conn.rollback()  # an earlier attempt may have landed: reconcile it, never pay again
             log.error("repayment of %s has an unsettled earlier attempt; not sending", b["id"])
             return None
         borrower, lender = repo.persona(conn, b["borrower_slug"]), repo.persona(conn, b["lender_slug"])
         key = f"repay:{b['id']}:{len(attempts) + 1}"
-        amount = float(b["amount"])
+        amount = float(amount if part else b["amount"])
         journal_repo.claim(conn, key, "repay", b["id"], borrower["checking_id"], lender["checking_id"], amount)
         conn.commit()
     try:
@@ -709,7 +718,8 @@ def _pay_back(b: dict, *, early: bool) -> dict | None:
     except TransferNotMade as e:
         with pool.connection() as conn:
             journal_repo.finish(conn, key, "not_made", error=str(e))
-            safety_repo.transition(conn, b["id"], ("repaying",), "repay_failed")  # safe to try again later
+            # safe to try again later; a part payment the person chose just didn't happen
+            safety_repo.transition(conn, b["id"], ("repaying",), was if part else "repay_failed")
             conn.commit()
         log.warning("repayment of %s not made: %s", b["id"], e)
         return None
@@ -723,9 +733,32 @@ def _pay_back(b: dict, *, early: bool) -> dict | None:
         return None
     with pool.connection() as conn:
         journal_repo.finish(conn, key, "succeeded", transfer_id=t_id, deposit_id=d_id)
-        row = _repaid(conn, b["id"], ("repaying",), t_id, d_id, early=early)
+        if part:
+            row = _partly_repaid(conn, b["id"], ("repaying",), was, Decimal(str(amount)), t_id, d_id)
+        else:
+            row = _repaid(conn, b["id"], ("repaying",), t_id, d_id, early=early)
         conn.commit()
     return row
+
+
+def _partly_repaid(
+    conn, bridge_id: str, frm: tuple[str, ...], back_to: str, amount: Decimal, t_id: str | None, d_id: str | None
+) -> dict | None:
+    """Record a part payment that landed: the part becomes a closed 'repaid' row, the rest stays out."""
+    part = safety_repo.repay_part(conn, bridge_id, frm, back_to, amount, t_id, d_id)
+    if part is None:
+        return None
+    rest = safety_repo.bridge(conn, bridge_id)
+    left = float(rest["amount"]) if rest else 0.0
+    _both(
+        conn,
+        part,
+        "repaid_part",
+        f"✅ You paid {part['lender_name']} back {_money(amount)}. {_money(left)} is still out — it goes back "
+        "on payday, or pay more any time.",
+        f"💸 {part['borrower_name']} paid you back {_money(amount)}. {_money(left)} is still out.",
+    )
+    return part
 
 
 def _repaid(conn, bridge_id: str, frm: tuple[str, ...], t_id: str, d_id: str, *, early: bool) -> dict | None:
@@ -776,6 +809,9 @@ def reconcile_pending() -> int:
             ):
                 if r["kind"] == "fund":
                     _funded(conn, r["ref"], ("funding", "reconcile"), t_id, d_id)
+                elif _was_part(conn, r):
+                    part = Decimal(str(r["amount"]))
+                    _partly_repaid(conn, r["ref"], ("repaying", "reconcile"), "active", part, t_id, d_id)
                 else:
                     _repaid(conn, r["ref"], ("repaying", "reconcile"), t_id, d_id, early=False)
                 settled += 1
@@ -787,6 +823,12 @@ def reconcile_pending() -> int:
                     _both(conn, b, "bridge_checking", CHECKING_WITH_BANK, CHECKING_WITH_BANK)
             conn.commit()
     return settled
+
+
+def _was_part(conn, journal_row: dict) -> bool:
+    """A repayment journalled for less than the bridge's amount was a part payment."""
+    b = safety_repo.bridge(conn, journal_row["ref"])
+    return b is not None and Decimal(str(journal_row["amount"])) < Decimal(b["amount"])
 
 
 def _repay_wait_reason(conn, b: dict, borrower: dict, keep: Decimal, today: date) -> str | None:
@@ -848,23 +890,38 @@ def repay_due(today: date | None = None, only: set[str] | None = None) -> list[d
     return done
 
 
-def repay_now(bridge_id: str) -> dict:
-    """The borrower pays a bridge back before payday. Refused (RepayRefused) if the bridge isn't out,
-    or if paying now would take the borrower under the floor — the dip the bridge was there to stop."""
+MIN_PART = Decimal("1.00")  # a part payment is at least a dollar: no penny transfers to the family
+
+
+def repay_now(bridge_id: str, amount: Decimal | None = None) -> dict:
+    """The borrower pays a bridge back before payday: all of it, or `amount` of it (a part payment;
+    the rest stays out and goes back on payday as usual). Refused (RepayRefused) if the bridge isn't
+    out, the amount isn't between $1 and what's out, or paying would take the borrower under the
+    floor — the dip the bridge was there to stop."""
     with pool.connection() as conn:
         b = safety_repo.bridge(conn, bridge_id)
         if b is None or b["status"] not in ("active", "repay_failed"):
             raise RepayRefused("That bridge isn't waiting to be paid back.")
+        out = Decimal(b["amount"])
+        pay = out if amount is None else Decimal(str(amount)).quantize(Decimal("0.01"))
+        if not MIN_PART <= pay <= out:
+            raise RepayRefused(f"You can pay back from {_money(MIN_PART)} up to the {_money(out)} that's out.")
         borrower = repo.persona(conn, b["borrower_slug"])
         keep = _repay_floor(conn, b)
-        if _checking_balance(conn, borrower) - Decimal(b["amount"]) < keep:
+        room = _checking_balance(conn, borrower) - keep
+        if room < pay:
+            can = room.quantize(Decimal("1"), rounding="ROUND_FLOOR") if room >= MIN_PART else Decimal(0)
             raise RepayRefused(
-                f"Paying back now would take you under {_money(keep)}, the amount you keep. "
-                f"It goes back automatically on payday, {_wmd(b['due_date'])}."
+                f"Paying {_money(pay)} now would take you under {_money(keep)}, the amount you keep. "
+                + (f"You could pay {_money(can)} now, or " if can else "")
+                + f"it goes back automatically on payday, {_wmd(b['due_date'])}."
             )
-    row = _pay_back(b, early=True)
+    row = _pay_back(b, early=True, amount=pay if pay < out else None)
     if row is None:
         raise RepayRefused("That didn't go through — we're checking with the bank. It's retried on payday.")
+    if pay < out:  # the screen shows what's still out, not the closed part
+        with pool.connection() as conn:
+            return safety_repo.bridge(conn, bridge_id) or row
     return row
 
 

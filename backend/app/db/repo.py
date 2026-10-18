@@ -300,7 +300,8 @@ def clear_safe_floors(conn: psycopg.Connection, slugs: list[str]) -> None:
     conn.execute("DELETE FROM money_preferences WHERE slug = ANY(%s)", (slugs,))
 
 
-SETTINGS = ("alerts_only", "family_cover", "discreet_notifications")  # on/off columns of money_preferences
+# on/off columns of money_preferences
+SETTINGS = ("alerts_only", "family_cover", "discreet_notifications", "ai_actions")
 
 
 def setting(conn: psycopg.Connection, slug: str, name: str) -> bool | None:

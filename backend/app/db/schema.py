@@ -139,6 +139,9 @@ ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS discreet_notifications bo
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS max_owed numeric(12, 2)
     CHECK (max_owed >= 0 AND max_owed <= 5000);
 ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS allow_multi boolean;
+-- may Ask Runway set things up for this person (money moves, circles, invites)? Each one still waits
+-- for their own approval. Off (the default) means it only answers questions
+ALTER TABLE money_preferences ADD COLUMN IF NOT EXISTS ai_actions boolean;
 """
 
 # Heads-up alerts (app/alerts.py): which browsers want a push, and which dips each person was told about
@@ -291,6 +294,9 @@ CREATE TABLE IF NOT EXISTS support_decisions (
 CREATE INDEX IF NOT EXISTS support_decisions_borrower ON support_decisions (borrower, created_at DESC);
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS agreement_version integer;
 ALTER TABLE bridges ADD COLUMN IF NOT EXISTS decision_id text;
+-- partial repayment: the part paid back is its own closed 'repaid' row pointing at the bridge it came
+-- from, and the open bridge's amount drops by that much, so every "what's still out" sum stays right
+ALTER TABLE bridges ADD COLUMN IF NOT EXISTS part_of text;
 
 -- legacy limits come in as agreements with no consent (idempotent; a revoked row is never re-created)
 WITH added AS (
