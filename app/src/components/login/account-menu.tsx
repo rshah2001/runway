@@ -6,14 +6,15 @@
  * $1,000), so each person sets their own; nobody can set it for someone else.
  * "Alerts only" swaps Today's numbers for one calm sentence that speaks up only before a dip (for
  * people who avoid looking at their balance — see components/today/quiet-today.tsx).
+ * "Appearance" picks Light, Dark, or Auto (follow the device), on the website (lib/theme.ts).
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
  */
 import { type ComponentRef, type ElementRef, useEffect, useRef, useState } from 'react';
 import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { Easing, FadeOut, Keyframe } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 import { Sheet } from '@/components/rw/sheet';
+import { MenuGrow } from '@/components/rw/menu-grow';
 import { PressableScale } from '@/components/rw/ui';
 import { C, F } from '@/constants/runway';
 import { leave } from '@/lib/account';
@@ -22,13 +23,9 @@ import { api } from '@/lib/api';
 import { money } from '@/lib/format';
 import { moneyMoved, setStore } from '@/lib/store';
 import { useSession } from '@/lib/session';
+import { type Appearance, setAppearance, useAppearance } from '@/lib/theme';
 import { zoom } from '@/lib/zoom';
 
-// grows from the button's top-right corner: scale 0.92 → 1 with a quick fade (Apple: anchor to the source)
-const GROW = new Keyframe({
-  0: { opacity: 0, transform: [{ scale: 0.92 }] },
-  100: { opacity: 1, transform: [{ scale: 1 }], easing: Easing.bezier(0.23, 1, 0.32, 1) },
-}).duration(220);
 
 export function AccountMenu() {
   const session = useSession();
@@ -105,7 +102,7 @@ export function AccountMenu() {
       <Modal transparent visible={!!at} onRequestClose={close} animationType="none">
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close menu" />
         {at && (
-          <Animated.View entering={GROW} exiting={FadeOut.duration(120)} style={[s.menu, { top: at.top, right: at.right }]} accessibilityRole="menu">
+          <MenuGrow style={[s.menu, { top: at.top, right: at.right }]}>
             <View style={s.who}>
               <Text style={s.whoName}>{name}</Text>
               <Text style={s.whoSub}>Signed in with Auth0</Text>
@@ -122,7 +119,7 @@ export function AccountMenu() {
             {(
               <Pressable onPress={() => { close(); setEditing(true); }} disabled={keep === null} accessibilityRole="menuitem"
                 accessibilityLabel={`Money I keep in checking: ${keep === null ? 'loading' : money(keep, 0)}. Change`}
-                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: C.hover }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.itemText, { color: C.text }]}>Money I keep</Text>
                   <Text style={s.whoSub}>Runway warns you before you go under it</Text>
@@ -133,7 +130,7 @@ export function AccountMenu() {
             {quiet !== null && (
               <Pressable onPress={toggleQuiet} disabled={savingQuiet} accessibilityRole="switch" accessibilityState={{ checked: quiet }}
                 accessibilityLabel="Alerts only: hide my numbers and only tell me before a dip"
-                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: C.hover }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.itemText, { color: C.text }]}>Alerts only</Text>
                   <Text style={s.whoSub}>Hide the numbers, tell me before a dip</Text>
@@ -143,14 +140,15 @@ export function AccountMenu() {
                 </View>
               </Pressable>
             )}
+            {Platform.OS === 'web' && <AppearancePicker />}
             <Pressable onPress={signOut} disabled={leaving} accessibilityRole="menuitem"
-              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: C.hover }]}>
               <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />
               </Svg>
               <Text style={s.itemText}>{leaving ? 'Signing out…' : 'Sign out'}</Text>
             </Pressable>
-          </Animated.View>
+          </MenuGrow>
         )}
       </Modal>
       {/* a sheet for the small task of changing it (the menu lives in the top bar, so it gets its own layer) */}
@@ -162,6 +160,36 @@ export function AccountMenu() {
         </Sheet>
       </Modal>
     </>
+  );
+}
+
+const LOOKS: { key: Appearance; label: string; icon: string }[] = [
+  { key: 'system', label: 'Auto', icon: 'M4 5h16v11H4zM9 20h6M12 16v4' },
+  { key: 'light', label: 'Light', icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4' },
+  { key: 'dark', label: 'Dark', icon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' },
+];
+
+/** Auto · Light · Dark. It changes the page at once (the menu included), so you see what you picked. */
+function AppearancePicker() {
+  const { choice } = useAppearance();
+  return (
+    <View style={s.look}>
+      <Text style={[s.itemText, { color: C.text }]}>Appearance</Text>
+      <View style={s.segs} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+        {LOOKS.map(({ key, label, icon }) => {
+          const on = choice === key;
+          return (
+            <Pressable key={key} onPress={() => setAppearance(key)} accessibilityRole="radio" accessibilityState={{ checked: on }}
+              accessibilityLabel={key === 'system' ? 'Auto: match this device' : label} style={[s.seg, on && s.segOn]}>
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={on ? C.text : C.text2} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d={icon} />
+              </Svg>
+              <Text style={[s.segText, on && { color: C.text }]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -206,13 +234,13 @@ function KeepEditor({ current, onSaved, onCancel }: { current: number; onSaved: 
           return (
             <PressableScale key={n} onPress={() => { setValue(String(n)); setTyping(false); setError(null); }} accessibilityRole="button"
               accessibilityState={{ selected: on }} style={[s.preset, on && s.presetOn]}>
-              <Text style={[s.presetText, on && { color: '#111' }]}>{money(n, 0)}</Text>
+              <Text style={[s.presetText, on && { color: C.onPrimary }]}>{money(n, 0)}</Text>
             </PressableScale>
           );
         })}
         <PressableScale onPress={() => { setTyping(true); setError(null); input.current?.focus(); }} accessibilityRole="button"
           accessibilityState={{ selected: custom }} accessibilityLabel="Custom amount" style={[s.preset, custom && s.presetOn]}>
-          <Text style={[s.presetText, custom && { color: '#111' }]}>Custom</Text>
+          <Text style={[s.presetText, custom && { color: C.onPrimary }]}>Custom</Text>
         </PressableScale>
       </View>
       <View style={[s.inputRow, custom && s.inputOn]}>
@@ -232,7 +260,7 @@ function KeepEditor({ current, onSaved, onCancel }: { current: number; onSaved: 
           <Text style={[s.presetText, { color: C.text2 }]}>Cancel</Text>
         </PressableScale>
         <PressableScale onPress={save} disabled={saving} accessibilityRole="button" style={[s.btn, s.btnSave, (saving || !valid) && { opacity: 0.6 }]}>
-          <Text style={[s.presetText, { color: '#111' }]}>{saving ? 'Saving…' : 'Save'}</Text>
+          <Text style={[s.presetText, { color: C.onPrimary }]}>{saving ? 'Saving…' : 'Save'}</Text>
         </PressableScale>
       </View>
     </View>
@@ -257,19 +285,24 @@ const s = StyleSheet.create({
   knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   knobOn: { transform: [{ translateX: 18 }] },
   itemText: { fontFamily: F.bodySemi, fontSize: 15, color: C.red },
+  look: { paddingHorizontal: 12, paddingTop: 11, paddingBottom: 12, borderTopWidth: 1, borderTopColor: C.line, gap: 9 },
+  segs: { flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: C.bg, gap: 3 },
+  seg: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, height: 32, borderRadius: 9 },
+  segOn: { backgroundColor: C.card, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
+  segText: { fontFamily: F.bodySemi, fontSize: 13, color: C.text2 },
   editor: { gap: 4 },
   sheetTitle: { fontFamily: F.bodySemi, fontSize: 20, color: C.text },
   sheetLead: { fontFamily: F.body, fontSize: 15, lineHeight: 21, color: C.text2, marginTop: 2 },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   preset: { height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: C.line, justifyContent: 'center' },
-  presetOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  presetOn: { backgroundColor: C.primary, borderColor: C.primary },
   presetText: { fontFamily: F.bodySemi, fontSize: 14, color: C.text },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, height: 42, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: C.line },
   dollar: { fontFamily: F.bodySemi, fontSize: 16, color: C.text2 },
-  inputOn: { borderColor: '#fff', borderWidth: 1.5 }, // Custom is the choice: the box is what Save uses
+  inputOn: { borderColor: C.text, borderWidth: 1.5 }, // Custom is the choice: the box is what Save uses
   input: { flex: 1, fontFamily: F.bodySemi, fontSize: 16, color: C.text, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as object,
   editorBtns: { flexDirection: 'row', gap: 8, marginTop: 12 },
   btn: { flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   btnGhost: { borderWidth: 1, borderColor: C.line },
-  btnSave: { backgroundColor: '#fff' },
+  btnSave: { backgroundColor: C.primary },
 });

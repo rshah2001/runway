@@ -8,14 +8,15 @@
 import { type ComponentRef, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Dimensions, type GestureResponderEvent, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing, FadeOut, Keyframe, type SharedValue, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSpring, withTiming,
+  Easing, type SharedValue, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSpring, withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { Amount, Avatar, Fine, List, Row, SectionLabel } from '@/components/rw/list';
+import { MenuGrow } from '@/components/rw/menu-grow';
 import { TopBar } from '@/components/rw/top-bar';
 import { LoadState, Page, PressableScale, useWide } from '@/components/rw/ui';
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { useStore } from '@/lib/store';
@@ -182,11 +183,6 @@ function Bar({ frac, color, order }: { frac: number; color: string; order: numbe
 
 /* ---------------- month menu ---------------- */
 
-// grows from the button (Apple: anchor a menu to what opened it)
-const GROW = new Keyframe({
-  0: { opacity: 0, transform: [{ scale: 0.92 }] },
-  100: { opacity: 1, transform: [{ scale: 1 }], easing: Easing.bezier(0.23, 1, 0.32, 1) },
-}).duration(220);
 
 /** "October ⌄" — a pill that opens the last six months, newest first; the year shows in grey. */
 function MonthMenu({ months, month, onChange, now }: { months: string[]; month: string; onChange: (m: string) => void; now: string }) {
@@ -204,7 +200,7 @@ function MonthMenu({ months, month, onChange, now }: { months: string[]; month: 
     <>
       <View ref={button} collapsable={false}>
         <PressableScale onPress={open} accessibilityRole="button" accessibilityLabel={`${monthName(month)}. Choose a month`}
-          accessibilityState={{ expanded: !!at }} style={[s.monthBtn, at && { backgroundColor: '#2e353b' }]}>
+          accessibilityState={{ expanded: !!at }} style={[s.monthBtn, at && { backgroundColor: C.line2 }]}>
           <Text style={s.monthText}>{monthName(month)}</Text>
           <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
             style={at ? { transform: [{ rotate: '180deg' }] } : undefined}>
@@ -215,16 +211,16 @@ function MonthMenu({ months, month, onChange, now }: { months: string[]; month: 
       <Modal transparent visible={!!at} onRequestClose={() => setAt(null)} animationType="none">
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setAt(null)} accessibilityLabel="Close menu" />
         {at && (
-          <Animated.View entering={GROW} exiting={FadeOut.duration(120)} style={[s.menu, { top: at.top, left: at.left }]} accessibilityRole="menu">
+          <MenuGrow style={[s.menu, { top: at.top, left: at.left }]}>
             <Text style={s.menuHead}>Month</Text>
             {[...months].reverse().map((m) => {
               const on = m === month;
               return (
                 <Pressable key={m} onPress={() => pick(m)} accessibilityRole="menuitem" accessibilityState={{ selected: on }}
-                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.menuItem, on && s.menuItemOn, !on && (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.04)' }]}>
+                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.menuItem, on && s.menuItemOn, !on && (pressed || hovered) && { backgroundColor: C.hover }]}>
                   <View style={[s.check, on && s.checkOn]}>
                     {on && (
-                      <Svg width={12} height={12} viewBox="0 0 20 20" fill="none" stroke="#0f1215" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                      <Svg width={12} height={12} viewBox="0 0 20 20" fill="none" stroke={C.bg} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
                         <Path d="M5 10.5l3.5 3.5L15 7" />
                       </Svg>
                     )}
@@ -234,7 +230,7 @@ function MonthMenu({ months, month, onChange, now }: { months: string[]; month: 
                 </Pressable>
               );
             })}
-          </Animated.View>
+          </MenuGrow>
         )}
       </Modal>
     </>
@@ -435,7 +431,7 @@ function Daily({ d, month, isNow }: { d: Spending; month: string; isNow: boolean
         {Array.from({ length: daysIn }, (_, i) => {
           const day = i + 1, v = byDay.get(day) ?? 0, future = day > lastDay, today = isNow && day === lastDay;
           const on = picked === day;
-          const color = future ? C.line : on || (today && !picked) ? '#fff' : C.slate;
+          const color = future ? C.line : on || (today && !picked) ? C.text : C.slate;
           const opacity = future ? 1 : on ? 1 : picked ? 0.3 : today ? 1 : 0.55;
           return (
             <Pressable key={day} disabled={future} onPress={() => setPicked(on ? null : day)}
@@ -495,7 +491,7 @@ function VsLastMonth({ c }: { c: SpendingCompare }) {
     : [`${amount} more than ${span}`, C.amber];
   const arrow = Math.abs(c.change) < 1 ? '→ ' : c.change < 0 ? '↓ ' : '↑ '; // level, down or up: always a result, never just a label
   return (
-    <View style={[s.vsChip, { backgroundColor: `${tone}1f` }]} accessible accessibilityLabel={`Compared with last month: ${text}`}>
+    <View style={[s.vsChip, { backgroundColor: alpha(tone, '1f') }]} accessible accessibilityLabel={`Compared with last month: ${text}`}>
       <Text style={[s.vs, { color: tone }]} numberOfLines={1}>{arrow}{text}</Text>
     </View>
   );
@@ -542,15 +538,15 @@ const s = StyleSheet.create({
   monthText: { fontFamily: F.bodySemi, fontSize: 15, color: C.text },
   menu: {
     position: 'absolute', width: MENU_W, padding: 8, borderRadius: 22, backgroundColor: C.card2, transformOrigin: 'top right',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: C.hover,
     shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 14 }, elevation: 20,
   },
   menuHead: { fontFamily: F.cond, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: C.text3, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 46, paddingHorizontal: 12, borderRadius: 14 },
-  menuItemOn: { backgroundColor: 'rgba(255,255,255,0.07)' },
+  menuItemOn: { backgroundColor: C.hover },
   menuText: { flex: 1, fontFamily: F.bodySemi, fontSize: 16, color: C.text2 },
   menuSub: { fontFamily: F.body, fontSize: 13, color: C.text3 },
-  check: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#3a4147', alignItems: 'center', justifyContent: 'center' },
+  check: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: C.grab, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: C.green, borderColor: C.green },
   empty: { fontFamily: F.body, fontSize: 15, color: C.text2, paddingVertical: 10 },
   donutWrap: { alignSelf: 'center', width: SIZE, height: SIZE },

@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { C } from '@/constants/runway';
+import { alpha, C } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
@@ -51,7 +51,7 @@ export function ApprovalCard({ action, compact = false, onDone, onViewRunway }: 
 
   const head = (icon: string, tone: string, title: string) => (
     <View style={s.hd}>
-      <View style={[s.ic, { backgroundColor: `${tone}29` }]}><Icon name={icon} size={18} color={tone} /></View>
+      <View style={[s.ic, { backgroundColor: alpha(tone, '29') }]}><Icon name={icon} size={18} color={tone} /></View>
       <Caps size={15} style={{ flex: 1 }}>{title}</Caps>
     </View>
   );

@@ -13,7 +13,7 @@ import { Amount, Avatar, Fine, List, Row, SectionLabel } from '@/components/rw/l
 import { PageTitle, TopBar } from '@/components/rw/top-bar';
 import { Sheet } from '@/components/rw/sheet';
 import { LoadState, Page, PressableScale, useWide } from '@/components/rw/ui';
-import { C, F } from '@/constants/runway';
+import { alpha, C, F } from '@/constants/runway';
 import { useLoad } from '@/hooks/use-load';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -135,7 +135,7 @@ function MyCircle({ me, d, sup, picked, onPick, onReview, onDone }: {
   const helping = sup.supporting.filter((a) => a.state === 'active').length;
   const [status, tone] = borrowed ? ['Covered', C.green]
     : protectedBy ? ['Protected', C.green]
-    : helping ? [`Supporting ${helping}`, '#7cb8ff']
+    : helping ? [`Supporting ${helping}`, C.cover]
     : ['Not set up', C.text3];
   const sel = people.find((p) => p.key === picked);
   const agreement = sel && (sel.role === 'supporter'
@@ -264,7 +264,7 @@ function ExposureCap({ sup, onSaved }: { sup: SupportSummary | null; onSaved: ()
   }
   return (
     <List style={{ marginTop: 12 }}>
-      <Row first left={<Avatar tint="#7cb8ff"><Icon name="shield" size={18} color="#7cb8ff" /></Avatar>}
+      <Row first left={<Avatar tint={C.cover}><Icon name="shield" size={18} color={C.cover} /></Avatar>}
         title="Most out at once"
         sub={`Across everyone you support · ${money(sup?.committed ?? 0, 0)} out now`}
         right={
@@ -387,7 +387,7 @@ function ConsentSheet({ a, onClose, onDone }: { a: SupportAgreement | null; onCl
           )}
           {!x?.i_agreed && (
             <PressableScale onPress={() => act('agree')} disabled={!!busy} accessibilityRole="button" style={[s.btn, s.yes, busy && { opacity: 0.7 }]}>
-              <Text style={[s.btnText, { color: '#111' }]}>{busy === 'agree' ? 'Saving…' : 'Agree'}</Text>
+              <Text style={[s.btnText, { color: C.onPrimary }]}>{busy === 'agree' ? 'Saving…' : 'Agree'}</Text>
             </PressableScale>
           )}
         </View>
@@ -455,13 +455,13 @@ function HelpCard({ d, floor, onDone }: { d: SafetyNetSummary; floor?: number; o
     }
   }
   return (
-    <View style={[s.ask, { borderColor: `${C.red}55`, marginTop: 8 }]}>
+    <View style={[s.ask, { borderColor: alpha(C.red, '55'), marginTop: 8 }]}>
       <Text style={s.askTitle}>You dip to {money(low.balance, 0)} on {weekdayDate(low.date)}</Text>
       <Text style={s.askBody}>That’s before payday, under the {money(floor, 0)} you keep. People in your circle agreed to cover gaps like this. Runway works out who can safely help, and they only see the amount and when it’s back.</Text>
       {note && <Text style={[s.askBody, { color: C.amber }]}>{plain(note)}</Text>}
       <View style={s.askBtns}>
         <PressableScale onPress={ask} disabled={busy} accessibilityRole="button" style={[s.btn, s.yes, busy && { opacity: 0.7 }]}>
-          <Text style={[s.btnText, { color: '#111' }]}>{busy ? 'Arranging…' : 'Cover it with my circle'}</Text>
+          <Text style={[s.btnText, { color: C.onPrimary }]}>{busy ? 'Arranging…' : 'Cover it with my circle'}</Text>
         </PressableScale>
       </View>
     </View>
@@ -566,7 +566,7 @@ function SendOrRequest({ ppl, onDone }: { ppl: PeopleSummary | null; onDone: () 
   return (
     <>
       <SectionLabel>Send or request</SectionLabel>
-      <View style={[s.ask, { borderColor: '#2f363c' }]}>
+      <View style={[s.ask, { borderColor: C.line2 }]}>
         <View style={s.chips}>
           {(['send', 'ask'] as const).map((m) => (
             <Pick key={m} on={mode === m} label={m === 'send' ? 'Send' : 'Request'} onPress={() => { setMode(m); setMsg(null); }} />
@@ -680,7 +680,7 @@ function MyCirclesManager({ list, ppl, onDone }: { list: CircleView[] | null; pp
     <>
       <SectionLabel>My circles</SectionLabel>
       {list.map((c) => <CircleCard key={c.id} c={c} ppl={ppl} onDone={onDone} />)}
-      <View style={[s.ask, { borderColor: '#2f363c', marginTop: list.length ? 10 : 0 }]}>
+      <View style={[s.ask, { borderColor: C.line2, marginTop: list.length ? 10 : 0 }]}>
         <Text style={s.switchTitle}>Start a circle</Text>
         <View style={[s.owe, { marginTop: 10 }]}>
           <TextInput value={name} onChangeText={setName} placeholder="Roommates, Family, Trip crew…" placeholderTextColor={C.text3}
@@ -742,7 +742,7 @@ function CircleCard({ c, ppl, onDone }: { c: CircleView; ppl: PeopleSummary | nu
             <Text style={[s.btnText, { color: C.text2 }]}>Decline</Text>
           </PressableScale>
           <PressableScale onPress={() => act('accept')} accessibilityRole="button" style={[s.btn, s.yes]}>
-            <Text style={[s.btnText, { color: '#111' }]}>Join</Text>
+            <Text style={[s.btnText, { color: C.onPrimary }]}>Join</Text>
           </PressableScale>
         </View>
         {msg && <Text style={s.askBody}>{msg}</Text>}
@@ -798,7 +798,7 @@ function CircleCard({ c, ppl, onDone }: { c: CircleView; ppl: PeopleSummary | nu
 function Pick({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} style={[s.pick, on && s.pickOn]}>
-      <Text style={[s.askBtnText, { color: on ? '#111' : C.text }]}>{label}</Text>
+      <Text style={[s.askBtnText, { color: on ? C.onPrimary : C.text }]}>{label}</Text>
     </PressableScale>
   );
 }
@@ -952,7 +952,7 @@ function AskCard({ b, onDone }: { b: Bridge; onDone: () => void }) {
           ? <View style={[s.btn, s.no]}><Text style={[s.btnText, { color: C.text2, fontSize: 14 }]}>Approve on your phone</Text></View>
           : (
             <PressableScale onPress={() => answer(true)} disabled={busy} accessibilityRole="button" style={[s.btn, s.yes, busy && { opacity: 0.7 }]}>
-              <Text style={[s.btnText, { color: '#111' }]}>{busy ? 'Sending…' : `Approve ${money(b.amount, 0)}`}</Text>
+              <Text style={[s.btnText, { color: C.onPrimary }]}>{busy ? 'Sending…' : `Approve ${money(b.amount, 0)}`}</Text>
             </PressableScale>
           )}
       </View>
@@ -1077,23 +1077,23 @@ const s = StyleSheet.create({
   trackOn: { backgroundColor: C.green },
   knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   knobOn: { transform: [{ translateX: 18 }] },
-  ask: { borderRadius: 20, backgroundColor: C.card, padding: 16, borderWidth: 1, borderColor: `${C.amber}55` },
+  ask: { borderRadius: 20, backgroundColor: C.card, padding: 16, borderWidth: 1, borderColor: alpha(C.amber, '55') },
   askTitle: { fontFamily: F.bodySemi, fontSize: 17, color: C.text },
   askBody: { fontFamily: F.body, fontSize: 14, lineHeight: 20, color: C.text2, marginTop: 4 },
   askBtns: { flexDirection: 'row', gap: 10, marginTop: 14 },
   btn: { flex: 1, height: 46, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  no: { borderWidth: 1, borderColor: '#2f363c' },
-  yes: { backgroundColor: '#fff' },
+  no: { borderWidth: 1, borderColor: C.line2 },
+  yes: { backgroundColor: C.primary },
   btnText: { fontFamily: F.bodySemi, fontSize: 15 },
   owe: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  askBtn: { height: 32, paddingHorizontal: 14, borderRadius: 999, backgroundColor: '#fff', justifyContent: 'center' },
-  askBtnText: { fontFamily: F.bodySemi, fontSize: 13, color: '#111' },
-  ghostBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#2f363c' },
+  askBtn: { height: 32, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.primary, justifyContent: 'center' },
+  askBtnText: { fontFamily: F.bodySemi, fontSize: 13, color: C.onPrimary },
+  ghostBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.line2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pick: { height: 36, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
-  pickOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  pick: { height: 36, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: C.line2, justifyContent: 'center' },
+  pickOn: { backgroundColor: C.primary, borderColor: C.primary },
   fineText: { fontFamily: F.body, fontSize: 13, lineHeight: 18, color: C.text2, marginTop: 8 },
-  custom: { height: 36, minWidth: 90, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
+  custom: { height: 36, minWidth: 90, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: C.line2, color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   sheet: { padding: 22, paddingBottom: 26 },

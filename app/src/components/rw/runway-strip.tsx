@@ -179,7 +179,7 @@ export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey, mi
     };
   });
 
-  const keys = [0, 1, 2, 3].map((i) => <Rect key={i} x={X0 + 5} y={Y + 3 + i * 4.4} width={9} height={2.4} rx={1} fill="#fff" opacity={0.5} />);
+  const keys = [0, 1, 2, 3].map((i) => <Rect key={i} x={X0 + 5} y={Y + 3 + i * 4.4} width={9} height={2.4} rx={1} fill={C.text} opacity={0.5} />);
 
   return (
     <View onLayout={onLayout} style={{ width: '100%', aspectRatio: W / H }}
@@ -189,14 +189,14 @@ export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey, mi
         <>
           <Svg width={width} height={width * (H / W)} viewBox={`0 0 ${W} ${H}`}>
             {/* the rest of the month, where the runway would need to be */}
-            <Line x1={X0} x2={X1} y1={MID} y2={MID} stroke="rgba(255,255,255,0.16)" strokeDasharray="2 5" strokeLinecap="round" />
-            <AnimatedRect x={X0} y={Y} height={RH} rx={6} fill="#363e47" animatedProps={runwayProps} />
+            <Line x1={X0} x2={X1} y1={MID} y2={MID} stroke={C.text} strokeOpacity={0.16} strokeDasharray="2 5" strokeLinecap="round" />
+            <AnimatedRect x={X0} y={Y} height={RH} rx={6} fill={C.grab} animatedProps={runwayProps} />
             {keys}
-            <AnimatedLine x1={X0 + 26} y1={MID} y2={MID} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="10 9" animatedProps={dashProps} />
+            <AnimatedLine x1={X0 + 26} y1={MID} y2={MID} stroke={C.text} strokeOpacity={0.35} strokeWidth={2} strokeDasharray="10 9" animatedProps={dashProps} />
             <AnimatedRect y={Y} width={22} height={RH} fill={C.red} animatedProps={fadeProps} fillOpacity={0.18} />
             <AnimatedRect y={Y - 5} width={4} height={RH + 10} rx={2} fill={C.red} animatedProps={endProps} />
             {!minimal && (
-              <AnimatedPath d={SWOOSH} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="3 6" strokeLinecap="round" animatedProps={ghostProps} />
+              <AnimatedPath d={SWOOSH} fill="none" stroke={C.text} strokeOpacity={0.2} strokeWidth={2} strokeDasharray="3 6" strokeLinecap="round" animatedProps={ghostProps} />
             )}
             <AnimatedPath d={SWOOSH} fill="none" stroke={C.red} strokeWidth={3.5} strokeLinecap="round"
               strokeDasharray={`${PATH_SAMPLES.swooshLen} ${PATH_SAMPLES.swooshLen}`} animatedProps={swooshProps} />
@@ -210,7 +210,7 @@ export function RunwayStrip({ days, horizon, endLabel, lastLabel, takeoffKey, mi
           </Svg>
           <Animated.View pointerEvents="none" style={[s.shadow, { width: 18, height: 6 }, shadowStyle]} />
           <Animated.View pointerEvents="none" style={[s.plane, planeStyle]}>
-            <Svg width={24} height={24} viewBox="0 0 24 24"><Path d={PLANE} fill="#fff" /></Svg>
+            <Svg width={24} height={24} viewBox="0 0 24 24"><Path d={PLANE} fill={C.text} /></Svg>
           </Animated.View>
         </>
       )}

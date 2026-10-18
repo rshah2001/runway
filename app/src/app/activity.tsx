@@ -26,13 +26,13 @@ const IN_FILTER: Record<Filter, ActivityItem['kind'][]> = {
 };
 const LOOK: Record<ActivityItem['kind'], [string, string]> = {
   received: ['shield', C.green],
-  provided: ['shield', '#7cb8ff'],
+  provided: ['shield', C.cover],
   repaid_by_me: ['check', C.green],
   repaid_to_me: ['check', C.green],
   waiting: ['transfer', C.amber],
   pending_my_ok: ['transfer', C.amber],
   problem: ['close', C.text2],
-  sent: ['send', '#7cb8ff'],
+  sent: ['send', C.cover],
   got: ['send', C.green],
   asked: ['transfer', C.amber],
   asked_you: ['transfer', C.amber],
@@ -53,7 +53,7 @@ export default function ActivityScreen() {
         {FILTERS.map(([key, label]) => (
           <PressableScale key={key} onPress={() => setFilter(key)} accessibilityRole="button"
             accessibilityState={{ selected: filter === key }} style={[s.chip, filter === key && s.chipOn]}>
-            <Text style={[s.chipText, filter === key && { color: '#111' }]}>{label}</Text>
+            <Text style={[s.chipText, filter === key && { color: C.onPrimary }]}>{label}</Text>
           </PressableScale>
         ))}
       </View>
@@ -88,8 +88,8 @@ export default function ActivityScreen() {
 
 const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#2f363c', justifyContent: 'center' },
-  chipOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  chip: { height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: C.line2, justifyContent: 'center' },
+  chipOn: { backgroundColor: C.primary, borderColor: C.primary },
   chipText: { fontFamily: F.bodySemi, fontSize: 13, color: C.text },
   empty: { fontFamily: F.body, fontSize: 14, color: C.text2, padding: 16 },
   why: { paddingLeft: 56, paddingRight: 8, paddingBottom: 12, gap: 6 },
