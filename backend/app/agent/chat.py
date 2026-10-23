@@ -7,6 +7,11 @@ Rules that hold on every path:
 
 Without GEMINI_API_KEY (CI, tests, offline demo), or if Gemini fails mid-demo, a rule-based router
 answers with the same tools, so the app always gets a correct reply in the same shape.
+
+A visitor may bring their own Gemini key (`api_key`, from the X-Gemini-Key header): that request runs
+on their key and quota instead of ours, through the same tools and grounding check. Their key is used
+for this one request only — never stored, never logged — and if it fails we say so rather than quietly
+spending our key.
 """
 
 import json
@@ -145,9 +150,15 @@ Today is {today}. Current status: {status}."""
 
 
 def chat(
-    message: str, *, persona: str = engine.DEFAULT_PERSONA, client: Any = None, today: date | None = None
+    message: str,
+    *,
+    persona: str = engine.DEFAULT_PERSONA,
+    client: Any = None,
+    today: date | None = None,
+    api_key: str | None = None,
 ) -> ChatResponse:
-    """Answer one chat message in the voice for `persona`'s age. `client` is injectable for offline tests."""
+    """Answer one chat message in the voice for `persona`'s age. `client` is injectable for offline tests;
+    `api_key` is the visitor's own Gemini key, used instead of ours for this request."""
     today = today or sources.local_today()
     message = message.strip()
     if not message:
@@ -158,16 +169,37 @@ def chat(
     if (other := privacy.someone_else(message, *_names(persona))) is not None:
         return ChatResponse(reply=privacy.refusal(other), tool_calls=["privacy_guard"])
 
-    if client is None and os.getenv("GEMINI_API_KEY"):
+    own = client is None and bool(api_key)
+    if own:
+        client = _gemini_client(api_key)
+    elif client is None and os.getenv("GEMINI_API_KEY"):
         client = _gemini_client()
+    problem: str | None = None
     if client is not None:
         try:
-            return _chat_with_gemini(client, message, today, voice.voice_for_persona(persona), persona)
+            reply = _chat_with_gemini(client, message, today, voice.voice_for_persona(persona), persona)
+            return reply.model_copy(update={"own_key": "used"}) if own else reply
         except Ungrounded:
             log.warning("Discarded an ungrounded Gemini reply; answering with the rule-based router")
-        except Exception:  # any SDK, network or quota failure: the demo must still answer
-            log.exception("Gemini failed; answering with the rule-based router")
-    return _chat_with_rules(message, today, persona)
+        except Exception as e:  # any SDK, network or quota failure: the demo must still answer
+            if own:
+                problem = _key_problem(e)
+                # the type only: an SDK message can echo request details, and this is someone else's key
+                log.warning("Gemini failed on a visitor's own key (%s); using the rule-based router", type(e).__name__)
+            else:
+                log.exception("Gemini failed; answering with the rule-based router")
+    reply = _chat_with_rules(message, today, persona)
+    return reply.model_copy(update={"own_key": "failed", "own_key_problem": problem}) if problem else reply
+
+
+def _key_problem(e: Exception) -> str:
+    """Why a visitor's own key didn't answer, in words they can act on."""
+    code = getattr(e, "status_code", None) or getattr(e, "code", None)  # the SDKs name it either way
+    if code in (400, 401, 403):
+        return "Gemini rejected that key. Check it in Google AI Studio and try again."
+    if code == 429:
+        return "That key is out of quota right now."
+    return "Gemini didn't answer with that key."
 
 
 ACTIONS_ON = "ON (they let you set things up; each one still waits for their approval)"
@@ -188,10 +220,10 @@ def _names(persona: str) -> tuple[str, list[str]]:
     return people.get(persona, persona.title()), list(people.values())
 
 
-def _gemini_client() -> Any:
+def _gemini_client(api_key: str | None = None) -> Any:
     from google import genai  # imported lazily so the rule-based path has no SDK dependency
 
-    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
 
 
 def _chat_with_gemini(

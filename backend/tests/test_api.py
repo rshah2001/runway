@@ -212,7 +212,9 @@ def test_chat_passes_the_persona_to_the_agent(monkeypatch: pytest.MonkeyPatch) -
 
     seen = {}
     monkeypatch.setattr(
-        agent, "chat", lambda message, persona="maya": seen.setdefault("p", persona) and ChatResponse(reply="ok")
+        agent,
+        "chat",
+        lambda message, persona="maya", api_key=None: seen.setdefault("p", persona) and ChatResponse(reply="ok"),
     )
     client.post("/agent/chat", json={"message": "hi", "persona": "jordan"})
     assert seen["p"] == "jordan"

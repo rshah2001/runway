@@ -3,6 +3,7 @@
  * Desktop: a chat window anchored to the bottom-right corner. Phones: a sheet that rises most of the
  * way up over the dimmed page (tap the dim area or the handle to close), so you keep your place.
  * The conversation lives as long as the app, so closing and reopening keeps it.
+ * Under the title: whose Gemini key answers — Runway's, or the visitor's own (lib/gemini-key.ts).
  *
  * Motion: opening is occasional → standard animation, off the JS thread.
  *  - desktop window: scale 0.96 → 1 + fade from its corner, 200ms ease-out (closes in 150ms)
@@ -29,6 +30,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { C, F } from '@/constants/runway';
 import { api } from '@/lib/api';
+import { looksLikeKey, setGeminiKey, useGeminiKey } from '@/lib/gemini-key';
 import { zoom } from '@/lib/zoom';
 import { useSession } from '@/lib/session';
 import { setStore, useStore } from '@/lib/store';
@@ -39,7 +41,7 @@ import { Icon } from './icons';
 import { Caps, PressableScale, T, useWide } from './ui';
 
 type Msg =
-  | { id: number; kind: 'text'; from: 'me' | 'bot'; text: string; tools?: string[] }
+  | { id: number; kind: 'text'; from: 'me' | 'bot'; text: string; tools?: string[]; ownKey?: boolean }
   | { id: number; kind: 'approval'; action: PendingAction }
   | { id: number; kind: 'error'; text: string };
 
@@ -147,7 +149,11 @@ function ChatPanel({ wide }: { wide: boolean }) {
       const r = await api.chat(message);
       setMsgs((m) => [
         ...m,
-        { id: nextId++, kind: 'text', from: 'bot', text: r.reply, tools: r.tool_calls },
+        // their key didn't answer: say so, rather than let a rule-based reply pass for Gemini's
+        ...(r.own_key === 'failed'
+          ? [{ id: nextId++, kind: 'error' as const, text: `${r.own_key_problem ?? 'Your Gemini key didn’t answer.'} This reply came from Runway’s built-in rules.` }]
+          : []),
+        { id: nextId++, kind: 'text', from: 'bot', text: r.reply, tools: r.tool_calls, ownKey: r.own_key === 'used' },
         ...(r.pending_action ? [{ id: nextId++, kind: 'approval' as const, action: r.pending_action }] : []),
       ]);
     } catch {
@@ -171,6 +177,7 @@ function ChatPanel({ wide }: { wide: boolean }) {
         <View style={{ flex: 1 }}>
           <Text style={[s.title, wide && { fontSize: 20 }]}>Ask Runway</Text>
           <T tone="dim" style={{ fontSize: 14, marginTop: 2 }}>Every number comes from your forecast, never guessed.</T>
+          <OwnKey />
         </View>
       </View>
       <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={[s.thread, !wide && { justifyContent: 'flex-start' }]} keyboardShouldPersistTaps="handled"
@@ -182,6 +189,7 @@ function ChatPanel({ wide }: { wide: boolean }) {
                 <View style={[s.msg, m.from === 'me' ? s.me : s.bot]}>
                   <T style={[s.msgText, m.from === 'me' && { color: C.onPrimary }]}>{m.text}</T>
                 </View>
+                {m.ownKey && <Caps tone="faint" size={11} style={s.ownTag}>Answered with your Gemini key</Caps>}
                 {m.tools?.length ? (
                   <View style={s.tools}>
                     <Icon name="tool" size={12} color={C.text3} />
@@ -213,6 +221,62 @@ function ChatPanel({ wide }: { wide: boolean }) {
         </PressableScale>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * "Gemini: Runway's key · Use your own" → a field for the visitor's own key. Set, it reads
+ * "Gemini: your key ••••wxyz · Remove". The key stays in this tab and goes only with chat messages.
+ */
+function OwnKey() {
+  const own = useGeminiKey();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const ok = looksLikeKey(draft.trim());
+
+  if (own) {
+    return (
+      <View style={s.keyRow}>
+        <T tone="dim" style={s.keyText}>Gemini: your key ••••{own.slice(-4)}</T>
+        <Pressable onPress={() => setGeminiKey(null)} accessibilityRole="button" accessibilityLabel="Stop using my Gemini key">
+          <T style={[s.keyText, s.keyLink]}>Remove</T>
+        </Pressable>
+      </View>
+    );
+  }
+  if (!editing) {
+    return (
+      <View style={s.keyRow}>
+        <T tone="dim" style={s.keyText}>Gemini: Runway’s key</T>
+        <Pressable onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="Use my own Gemini API key">
+          <T style={[s.keyText, s.keyLink]}>Use your own</T>
+        </Pressable>
+      </View>
+    );
+  }
+  function save() {
+    if (!ok) return;
+    setGeminiKey(draft.trim());
+    setDraft('');
+    setEditing(false);
+  }
+  return (
+    <View style={{ gap: 6, marginTop: 8 }}>
+      <View style={s.keyRow}>
+        <TextInput value={draft} onChangeText={setDraft} placeholder="Paste your Gemini API key" placeholderTextColor={C.text3}
+          secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="off" onSubmitEditing={save}
+          style={[s.input, s.keyInput]} accessibilityLabel="Your Gemini API key" />
+        <PressableScale onPress={save} disabled={!ok} accessibilityRole="button" style={[s.keySave, !ok && { opacity: 0.35 }]}>
+          <Text style={s.keySaveText}>Use</Text>
+        </PressableScale>
+        <Pressable onPress={() => { setDraft(''); setEditing(false); }} accessibilityRole="button">
+          <T tone="dim" style={s.keyText}>Cancel</T>
+        </Pressable>
+      </View>
+      <T tone="faint" style={s.keyNote}>
+        Kept in this tab only and sent only with your chat messages. Runway never stores it. Get a free key at aistudio.google.com/apikey.
+      </T>
+    </View>
   );
 }
 
@@ -252,6 +316,14 @@ const s = StyleSheet.create({
   input: { flex: 1, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.card2, borderWidth: 1, borderColor: C.line2,
     color: C.text, fontFamily: F.body, fontSize: 16 },
   send: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  ownTag: { marginTop: 4, marginLeft: 6 },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' },
+  keyText: { fontSize: 13 },
+  keyLink: { color: C.primary, fontFamily: F.bodySemi },
+  keyInput: { flex: 1, minWidth: 160, height: 38, fontSize: 14 },
+  keySave: { height: 38, paddingHorizontal: 16, borderRadius: 999, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  keySaveText: { fontFamily: F.bodySemi, fontSize: 14, color: C.onPrimary },
+  keyNote: { fontSize: 12, lineHeight: 17 },
   fabWrap: { position: 'absolute', zIndex: 30 },
   fab: { width: 58, height: 58, borderRadius: 29, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 10 },

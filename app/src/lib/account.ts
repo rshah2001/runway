@@ -1,5 +1,5 @@
 /**
- * Getting in and out: Auth0 sign-in and sign-out. There is no anonymous way in.
+ * Getting in and out: Auth0 sign-in, looking around as a demo customer (read-only), signing out.
  * Each step that ends on the login screen returns its result first, so the screen can play the
  * takeoff before the app replaces it (`enter…` commits the session).
  */
@@ -9,9 +9,11 @@ import { Platform } from 'react-native';
 
 import { httpStatus } from '../hooks/use-load';
 import { AFTER_KEY, completeWebSignIn, forgetSession, isSignedIn, login, logout } from './auth';
-import { setSession } from './session';
+import { getSession, rememberGuest, restoreGuest, setSession } from './session';
 
 export type Profile = { persona: string; name: string };
+
+const titleCase = (slug: string) => slug.charAt(0).toUpperCase() + slug.slice(1);
 
 /** Whose data the signed-in account sees — the server decides, from the Auth0 token. */
 async function signedInProfile(): Promise<Profile> {
@@ -19,7 +21,8 @@ async function signedInProfile(): Promise<Profile> {
   return { persona: me.first_name.toLowerCase(), name: me.first_name };
 }
 
-/** On launch: finish a sign-in Auth0 just returned from (web), resume a session, else the login screen. */
+/** On launch: finish a sign-in Auth0 just returned from (web), resume a session, else this tab's demo
+ * choice, else the login screen. */
 export async function bootSession(): Promise<void> {
   // back from Auth0: once handled, drop ?code=…&state=… from the address (via the router, which
   // would otherwise put its own copy of the URL back)
@@ -56,7 +59,8 @@ export async function bootSession(): Promise<void> {
     });
     return;
   }
-  setSession({ mode: 'signed-out' });
+  const guest = restoreGuest();
+  setSession(guest ? { mode: 'guest', persona: guest, name: titleCase(guest) } : { mode: 'signed-out' });
 }
 
 export class NotLinked extends Error {}
@@ -77,11 +81,19 @@ export async function signIn(): Promise<Profile | null> {
 }
 
 export function enterSignedIn(p: Profile) {
+  rememberGuest(null);
   setSession({ mode: 'signed-in', ...p });
 }
 
-/** Ends the Auth0 session and returns to the login screen. */
+/** Look around as a demo customer. No token is sent, so the server shows that persona read-only. */
+export function enterAsGuest(p: Profile) {
+  rememberGuest(p.persona);
+  setSession({ mode: 'guest', ...p, notice: null });
+}
+
+/** Back to the login screen. Signed in, this also ends the Auth0 session. */
 export async function leave(): Promise<void> {
-  await logout();
+  if (getSession().mode === 'signed-in') await logout();
+  rememberGuest(null);
   setSession({ mode: 'signed-out', persona: 'maya', name: null });
 }

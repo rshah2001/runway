@@ -41,7 +41,7 @@ export default function RootLayout() {
 
   // money moved by someone else (a payment, an approval, the safety net) shows up without a manual refresh
   useEffect(() => {
-    if (session.mode !== 'signed-in') return;
+    if (session.mode !== 'signed-in' && session.mode !== 'guest') return; // guests watch the demo move too
     const stop = startAutoRefresh();
     const sub = AppState.addEventListener('change', (st) => st === 'active' && moneyMoved()); // phones: back to the app
     return () => {
@@ -60,7 +60,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={THEMES[scheme]}>
-      <StatusBar style={scheme === 'light' && session.mode === 'signed-in' ? 'dark' : 'light'} />
+      <StatusBar style={scheme === 'light' && (session.mode === 'signed-in' || session.mode === 'guest') ? 'dark' : 'light'} />
       {session.mode === 'checking' ? null : session.mode === 'signed-out' ? <View style={{ flex: 1 }} {...PIN_DARK}><LoginScreen /></View> : (
         <>
           <AppTabs />

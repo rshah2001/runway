@@ -16,6 +16,15 @@ accounts, sees a shortfall coming, and quietly arranges help from people who alr
 > as two real Nessie transfers. Sam sees *"$90 with Maya, expected back Fri"* — never her balance, her
 > spending, or that Emma helped too. On Maya's next **verified** payday it goes back automatically.
 
+## Try it
+
+Open **[sixsevenbucksleft.vip](https://sixsevenbucksleft.vip)** and pick a demo customer under *Or look around
+as a demo customer*. Maya (20), Jordan (40), Sam (60), Emma and Alex are fictional people with live Nessie
+data. Looking around is read-only: the API refuses every change and money move from a visitor who isn't
+signed in. To run **Ask Runway** on your own Gemini key instead of ours, open the chat and choose
+*Use your own*. The key stays in your browser tab, goes only with your chat messages, and is never
+stored or logged on our server.
+
 ## What it does
 
 - **Today:** a day-by-day balance line for the next month, the day you'd dip, a cautious range, how sure

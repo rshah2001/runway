@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import data, forecast_history, safety_views, spending_compare
@@ -72,6 +72,7 @@ from app.schemas import (
 from app.sync_loop import run_periodically
 
 log = logging.getLogger("runway")
+GEMINI_KEY = re.compile(r"[A-Za-z0-9_\-]{20,200}")  # Google AI Studio keys: letters, digits, - and _
 PERSONA = Query(data.DEFAULT_PERSONA, pattern=r"^[a-z]{1,32}$", description="demo persona slug, e.g. maya")
 
 # ---------- who may do what ----------
@@ -962,8 +963,14 @@ def recurring(user: OptionalUser, persona: str = PERSONA) -> list[Recurring]:
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-def agent_chat(req: ChatRequest, user: OptionalUser) -> ChatResponse:
-    return agent.chat(req.message, persona=persona_for(user, req.persona))
+def agent_chat(
+    req: ChatRequest, user: OptionalUser, x_gemini_key: str | None = Header(None, max_length=200)
+) -> ChatResponse:
+    """One chat message. An X-Gemini-Key header runs it on the visitor's own Gemini key instead of
+    ours (used for this request only; never stored or logged)."""
+    if x_gemini_key is not None and not GEMINI_KEY.fullmatch(x_gemini_key):
+        raise HTTPException(422, "That doesn't look like a Gemini API key.")
+    return agent.chat(req.message, persona=persona_for(user, req.persona), api_key=x_gemini_key)
 
 
 @app.post("/agent/fix", response_model=ChatResponse)

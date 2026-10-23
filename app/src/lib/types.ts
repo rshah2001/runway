@@ -85,6 +85,9 @@ export type ChatResponse = {
   reply: string;
   tool_calls: string[];
   pending_action: PendingAction | null;
+  /** only when the visitor sent their own Gemini key: it answered ('used'), or it didn't ('failed') */
+  own_key?: 'used' | 'failed' | null;
+  own_key_problem?: string | null;
 };
 
 export type Persona = { slug: string; first_name: string; age: number; story: string };
