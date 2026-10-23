@@ -26,6 +26,7 @@ import type {
   SupportSummary,
 } from './types';
 import { authHeader } from './auth';
+import { getGeminiKey } from './gemini-key';
 import { currentPersona } from './session';
 
 // Set EXPO_PUBLIC_API_URL in app/.env. On a physical phone use your laptop's LAN IP
@@ -141,8 +142,15 @@ export const api = {
     request<{ lender: string; amount: number; outcome: 'repaid' | 'waiting'; why: string | null }[]>(
       `/demo/payday?arrives=${arrives}`, { method: 'POST' }),
   // the agent answers with this persona's numbers, in the voice for their age
-  chat: (message: string, persona = currentPersona()) =>
-    request<ChatResponse>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, persona }) }),
+  // with the visitor's own Gemini key set, the server answers on it instead of Runway's (lib/gemini-key.ts)
+  chat: (message: string, persona = currentPersona()) => {
+    const own = getGeminiKey();
+    return request<ChatResponse>('/agent/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, persona }),
+      ...(own ? { headers: { 'X-Gemini-Key': own } } : {}),
+    });
+  },
   // the Fix it button: the savings transfer that covers the dip, without the AI (instant; no AI permission needed)
   fix: (persona = currentPersona()) =>
     request<ChatResponse>('/agent/fix', { method: 'POST', body: JSON.stringify({ persona }) }),

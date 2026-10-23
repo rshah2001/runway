@@ -1,5 +1,7 @@
 /**
- * The way in: sign in with Auth0 — the only way in, so every view of money belongs to its owner.
+ * The way in: sign in with Auth0, or look around as one of the demo customers. Looking around is
+ * read-only — no token is sent, and the server refuses every change and money move without one — so
+ * anyone can try Runway while every real action still belongs to a signed-in owner.
  *
  * One centred column above a hairline runway that runs off to the horizon (see airfield.tsx).
  *
@@ -8,7 +10,8 @@
  *  - open, once: the field draws itself, then the brand, words and button settle in on springs;
  *  - pointer: the runway's vanishing point follows the cursor a little, on a spring (website);
  *  - the button lifts under the pointer and presses in on touch-down;
- *  - sign-in: the words lift away, the plane rolls up the centre line into the horizon, the app opens.
+ *  - sign-in (or picking a demo customer): the words lift away, the plane rolls up the centre line
+ *    into the horizon, the app opens.
  */
 import { type PropsWithChildren, useEffect, useState } from 'react';
 import { type GestureResponderEvent, Platform, Pressable, type StyleProp, StyleSheet, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
@@ -30,9 +33,11 @@ import { Swoosh } from '@/components/rw/icons';
 import { T, useWide } from '@/components/rw/ui';
 import { F, PALETTES } from '@/constants/runway';
 import { httpStatus } from '@/hooks/use-load';
-import { enterSignedIn, NotLinked, signIn } from '@/lib/account';
+import { enterAsGuest, enterSignedIn, NotLinked, type Profile, signIn } from '@/lib/account';
+import { api } from '@/lib/api';
 import { isAuthConfigured } from '@/lib/auth';
 import { useSession } from '@/lib/session';
+import type { Persona } from '@/lib/types';
 
 
 // the sign-in screen is a night airfield in every theme
@@ -75,19 +80,30 @@ export function LoginScreen() {
         setBusy(false); // closed the Auth0 window: nothing to say
         return;
       }
-      if (reduced) {
-        enterSignedIn(profile);
-        return;
-      }
-      tilt.set(withSpring(0, FOLLOW)); // line the runway up for the takeoff
-      lift.set(withTiming(1, { duration: 420, easing: EASE_OUT }));
-      takeoff.set(withDelay(150, withTiming(1, { duration: TAKEOFF_MS - 150, easing: Easing.in(Easing.cubic) })));
-      setTimeout(() => enterSignedIn(profile), TAKEOFF_MS);
+      takeOff(() => enterSignedIn(profile));
     } catch (e) {
       setBusy(false);
       const code = httpStatus(e instanceof Error ? e.message : '');
       setError(e instanceof NotLinked ? e.message : `Sign-in didn’t finish${code ? ` (error ${code})` : ''}. Please try again.`);
     }
+  }
+
+  function onGuest(p: Profile) {
+    setBusy(true);
+    setError(null);
+    takeOff(() => enterAsGuest(p));
+  }
+
+  /** The plane rolls into the horizon, then `enter` opens the app (straight away with reduced motion). */
+  function takeOff(enter: () => void) {
+    if (reduced) {
+      enter();
+      return;
+    }
+    tilt.set(withSpring(0, FOLLOW)); // line the runway up for the takeoff
+    lift.set(withTiming(1, { duration: 420, easing: EASE_OUT }));
+    takeoff.set(withDelay(150, withTiming(1, { duration: TAKEOFF_MS - 150, easing: Easing.in(Easing.cubic) })));
+    setTimeout(enter, TAKEOFF_MS);
   }
 
   const liftStyle = useAnimatedStyle(() => ({ opacity: 1 - lift.get(), transform: [{ translateY: -18 * lift.get() }] }));
@@ -122,6 +138,7 @@ export function LoginScreen() {
           ) : (
             <T style={[s.note, { color: NIGHT.text2 }]}>Sign-in isn’t switched on for this build. Set the Auth0 settings and rebuild.</T>
           )}
+          <DemoPeople busy={busy} onPick={onGuest} />
           {shown && (
             <T style={[s.note, { color: NIGHT.red }]} accessibilityLiveRegion="polite">
               {shown}
@@ -130,6 +147,38 @@ export function LoginScreen() {
         </Settle>
       </Animated.View>
       <Airfield height={fieldHeight} tilt={tilt} takeoff={takeoff} />
+    </View>
+  );
+}
+
+/**
+ * "Or look around as …": one chip per demo customer, straight from /personas so it always matches
+ * who is seeded. Hidden until the list arrives (and if it never does, the screen is just sign-in).
+ */
+function DemoPeople({ busy, onPick }: { busy: boolean; onPick: (p: Profile) => void }) {
+  const [people, setPeople] = useState<Persona[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.personas().then((ps) => live && setPeople(ps)).catch(() => live && setPeople(null));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!people?.length) return null;
+  return (
+    <View style={s.demo}>
+      <T style={[s.note, { color: NIGHT.text2 }]}>Or look around as a demo customer</T>
+      <View style={s.chips}>
+        {people.map((p) => (
+          <Pressable key={p.slug} disabled={busy} onPress={() => onPick({ persona: p.slug, name: p.first_name })}
+            accessibilityRole="button" accessibilityLabel={`Look around as ${p.first_name}, ${p.age}. ${p.story}`}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.chip, (pressed || hovered) && s.chipOn, busy && { opacity: 0.6 }]}>
+            <Text style={s.chipName}>{p.first_name}</Text>
+            <Text style={[s.chipAge, { color: NIGHT.text3 }]}>{p.age}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <T style={[s.note, { color: NIGHT.text3 }]}>Look-only: moving money and changing settings need a sign-in.</T>
     </View>
   );
 }
@@ -225,4 +274,14 @@ const s = StyleSheet.create({
   glow: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 26, boxShadow: '0 10px 32px rgba(255,255,255,0.22)' },
   buttonText: { fontFamily: F.bodySemi, fontSize: 16, color: '#111', letterSpacing: 0.1 },
   note: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+
+  demo: { alignItems: 'center', gap: 10, marginTop: 8, maxWidth: 420 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
+  chip: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  chipOn: { backgroundColor: 'rgba(255,255,255,0.10)', borderColor: 'rgba(255,255,255,0.45)' },
+  chipName: { fontFamily: F.bodySemi, fontSize: 14, color: NIGHT.text },
+  chipAge: { fontFamily: F.bodyMedium, fontSize: 12 },
 });

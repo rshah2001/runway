@@ -8,6 +8,8 @@
  * people who avoid looking at their balance — see components/today/quiet-today.tsx).
  * "Appearance" picks Light, Dark, or Auto (follow the device) — see lib/theme.ts.
  * It replaces the plain "Maya · Sign out" chip (account-button.tsx) at the top of Today and on desktop.
+ * Looking around as a demo customer (guest), the button reads "Maya · Demo" and the menu keeps only
+ * what a look-only visitor can use: appearance, and the way back to switch person or sign in.
  */
 import { type ComponentRef, type ElementRef, useEffect, useRef, useState } from 'react';
 import { Dimensions, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -43,7 +45,8 @@ export function AccountMenu() {
   const [savingQuiet, setSavingQuiet] = useState(false);
   const [aiActs, setAiActs] = useState<boolean | null>(null); // may Ask Runway set things up?
   const [savingAi, setSavingAi] = useState(false);
-  if (session.mode !== 'signed-in') return null;
+  if (session.mode !== 'signed-in' && session.mode !== 'guest') return null;
+  const guest = session.mode === 'guest';
   const name = session.name ?? 'there';
 
   function open() {
@@ -53,6 +56,7 @@ export function AccountMenu() {
       const k = zoom(), vw = Dimensions.get('window').width;
       setAt({ top: (y + h) / k + 8, right: Math.max(8, (vw - (x + w)) / k) });
     });
+    if (guest) return; // a guest can't change these, so the menu doesn't offer them
     // only a real number counts: an older server (or a failed read) shows "…", never a guess
     api.me().then((m) => {
       setKeep(typeof m.safe_floor === 'number' ? m.safe_floor : null);
@@ -106,9 +110,9 @@ export function AccountMenu() {
   return (
     <>
       <View ref={button} collapsable={false}>
-        <PressableScale onPress={open} accessibilityRole="button" accessibilityLabel={`Signed in as ${name}. Account menu`}
+        <PressableScale onPress={open} accessibilityRole="button" accessibilityLabel={guest ? `Looking around as ${name}, a demo customer. Menu` : `Signed in as ${name}. Account menu`}
           accessibilityState={{ expanded: !!at }} style={s.hi}>
-          <Text style={s.hiText}>Hi, {name}</Text>
+          <Text style={s.hiText}>{guest ? `${name} · Demo` : `Hi, ${name}`}</Text>
           <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
             style={at ? { transform: [{ rotate: '180deg' }] } : undefined}>
             <Path d="m6 9 6 6 6-6" />
@@ -121,7 +125,7 @@ export function AccountMenu() {
           <MenuGrow style={[s.menu, { top: at.top, right: at.right }]}>
             <View style={s.who}>
               <Text style={s.whoName}>{name}</Text>
-              <Text style={s.whoSub}>Signed in with Auth0</Text>
+              <Text style={s.whoSub}>{guest ? 'Demo customer · look only. Sign in to move money.' : 'Signed in with Auth0'}</Text>
               {mfa && (
                 <View style={s.guard} accessibilityLabel="Protected by Auth0 Guardian: this sign-in used a second factor">
                   <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
@@ -132,7 +136,7 @@ export function AccountMenu() {
                 </View>
               )}
             </View>
-            {(
+            {!guest && (
               <Pressable onPress={() => { close(); setEditing(true); }} disabled={keep === null} accessibilityRole="menuitem"
                 accessibilityLabel={`Money I keep in checking: ${keep === null ? 'loading' : money(keep, 0)}. Change`}
                 style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [s.item, (pressed || hovered) && { backgroundColor: C.hover }]}>
@@ -175,7 +179,7 @@ export function AccountMenu() {
               <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />
               </Svg>
-              <Text style={s.itemText}>{leaving ? 'Signing out…' : 'Sign out'}</Text>
+              <Text style={s.itemText}>{guest ? 'Switch person or sign in' : leaving ? 'Signing out…' : 'Sign out'}</Text>
             </Pressable>
           </MenuGrow>
         )}

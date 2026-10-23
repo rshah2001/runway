@@ -127,6 +127,10 @@ class ChatResponse(BaseModel):
     reply: str
     tool_calls: list[str] = []
     pending_action: PendingAction | None = None
+    # only when the visitor sent their own Gemini key: "used" = it answered; "failed" = it didn't, and
+    # the reply came from the rule-based router instead (own_key_problem says why)
+    own_key: Literal["used", "failed"] | None = None
+    own_key_problem: str | None = None
 
 
 class Persona(BaseModel):
